@@ -1,0 +1,44 @@
+/* 
+  Localizable.strings
+  HSBWatchApp
+
+  Created by Antigravity.
+*/
+
+"Connection_Status" = "连接状态";
+"Connected" = "已连接";
+"Disconnected" = "未连接";
+"Start_Service" = "启动服务";
+"Stop_Service" = "停止服务";
+"Action_Label" = "动作: ";
+"Pitch_Format" = "俯仰角: %.2f";
+
+"Select TV to Connect:" = "选择要连接的电视：";
+"Scanning..." = "正在扫描...";
+"Status:" = "状态：";
+"Disconnect" = "断开连接";
+"Start Monitoring" = "开始监测";
+"Stop Monitoring" = "停止监测";
+"Last Action:" = "上一个动作：";
+"Unknown Device" = "未知设备";
+"Preparing..." = "准备中...";
+"Waiting..." = "等待中...";
+"Searching..." = "搜索中...";
+"Found service..." = "发现服务...";
+"Resolving..." = "解析中...";
+"Cancelled" = "已取消";
+"Failed:" = "失败: ";
+
+// Phase 2 New Strings
+"Scanning for TVs..." = "正在扫描电视...";
+"Select a TV" = "选择设备";
+"Connecting..." = "连接中...";
+"Connection Failed" = "连接失败";
+"Error" = "错误";
+"Unknown Error" = "未知错误";
+"Connection timeout or unreachable:" = "连接超时或无法触达:";
+"Connection Failed:" = "连接失败:";
+"Connection closed unexpectedly." = "连接意外断开。";
+"Motion sensors not available on this device." = "此设备不可用运动传感器。";
+"Back to Devices" = "返回设备列表";
+"Last Action" = "最后的动作";

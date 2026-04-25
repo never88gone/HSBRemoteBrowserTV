@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>需要您的许可，以便扫描并连接局域网内的展示屏幕，从而将您的实时运动与体感数据投影至大屏进行展示。</string>
+	<key>NSMotionUsageDescription</key>
+	<string>我们需要利用设备传感器来统计您白天的走动步数和进行体感健身动作判断并参与打卡。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_thltv._tcp</string>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

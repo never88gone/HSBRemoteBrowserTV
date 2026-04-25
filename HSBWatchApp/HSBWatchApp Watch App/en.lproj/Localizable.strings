@@ -1,0 +1,44 @@
+/* 
+  Localizable.strings
+  HSBWatchApp
+
+  Created by Antigravity.
+*/
+
+"Connection_Status" = "Connection";
+"Connected" = "Connected";
+"Disconnected" = "Disconnected";
+"Start_Service" = "Start Service";
+"Stop_Service" = "Stop Service";
+"Action_Label" = "Action: ";
+"Pitch_Format" = "Pitch: %.2f";
+
+"Select TV to Connect:" = "Select TV to Connect:";
+"Scanning..." = "Scanning...";
+"Status:" = "Status:";
+"Disconnect" = "Disconnect";
+"Start Monitoring" = "Start Monitoring";
+"Stop Monitoring" = "Stop Monitoring";
+"Last Action:" = "Last Action:";
+"Unknown Device" = "Unknown Device";
+"Preparing..." = "Preparing...";
+"Waiting..." = "Waiting...";
+"Searching..." = "Searching...";
+"Found service..." = "Found service...";
+"Resolving..." = "Resolving...";
+"Cancelled" = "Cancelled";
+"Failed:" = "Failed: ";
+
+// Phase 2 New Strings
+"Scanning for TVs..." = "Scanning for TVs...";
+"Select a TV" = "Select a TV";
+"Connecting..." = "Connecting...";
+"Connection Failed" = "Connection Failed";
+"Error" = "Error";
+"Unknown Error" = "Unknown Error";
+"Connection timeout or unreachable:" = "Connection timeout or unreachable:";
+"Connection Failed:" = "Connection Failed:";
+"Connection closed unexpectedly." = "Connection closed unexpectedly.";
+"Motion sensors not available on this device." = "Motion sensors not available on this device.";
+"Back to Devices" = "Back to Devices";
+"Last Action" = "Last Action";
