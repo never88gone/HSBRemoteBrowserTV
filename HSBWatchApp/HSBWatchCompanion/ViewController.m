@@ -166,7 +166,7 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)setupUI {
     self.view.backgroundColor = [UIColor systemBackgroundColor];
-    self.navigationItem.title = L(@"ZE Watch", @"糖葫芦修仙");
+    self.navigationItem.title = L(@"ZE Watch", @"糖葫芦遥控器");
     
     // Settings Button
     UIBarButtonItem *settingsItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"gearshape.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(openSettings)];
