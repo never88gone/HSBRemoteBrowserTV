@@ -6,6 +6,8 @@
 #import "BrowserControlViewController.h"
 #import <UIKit/UIKit.h>
 #import <UIKit/UIGestureRecognizerSubclass.h>
+#import "HSBLocalLLMManager.h"
+
 
 // 自定义四指拖动手势识别器
 // 与 UIPanGestureRecognizer 不同：四指按下时即刻进入 Began，无需等待移动
@@ -122,6 +124,15 @@ static NSString * L(NSString *en, NSString *zh) {
     [closeBtn addTarget:self action:@selector(dismissAction) forControlEvents:UIControlEventTouchUpInside];
     closeBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [headerView addSubview:closeBtn];
+    
+    // AI Assistant Button
+    UIButton *aiBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [aiBtn setImage:[UIImage systemImageNamed:@"sparkles" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20]] forState:UIControlStateNormal];
+    aiBtn.tintColor = [UIColor systemPurpleColor];
+    [aiBtn addTarget:self action:@selector(aiAssistantAction) forControlEvents:UIControlEventTouchUpInside];
+    aiBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [headerView addSubview:aiBtn];
+
     
     // Large Trackpad View
     self.trackpadView = [[UIView alloc] init];
@@ -257,6 +268,10 @@ static NSString * L(NSString *en, NSString *zh) {
         [closeBtn.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor constant:4],
         [closeBtn.trailingAnchor constraintEqualToAnchor:headerView.trailingAnchor constant:-20],
         
+        [aiBtn.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor constant:4],
+        [aiBtn.leadingAnchor constraintEqualToAnchor:headerView.leadingAnchor constant:20],
+
+        
         // Trackpad
         [self.trackpadView.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:10],
         [self.trackpadView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
@@ -302,6 +317,75 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)dismissAction {
     [self dismissViewControllerAnimated:YES completion:nil];
 }
+
+- (void)aiAssistantAction {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"AI Assistant", @"AI 助手")
+                                                                   message:L(@"Describe what you want to do...", @"描述你想做的事情...")
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = L(@"e.g. Translate this page, or make background red", @"例如：翻译这段话，或让网页背景变红");
+    }];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"Translate", @"翻译") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *text = alert.textFields.firstObject.text;
+        [self processAIRequest:text type:1];
+    }]];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"Generate JS", @"生成 JS") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *text = alert.textFields.firstObject.text;
+        [self processAIRequest:text type:2];
+    }]];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"Cancel", @"取消") style:UIAlertActionStyleCancel handler:nil]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)processAIRequest:(NSString *)text type:(NSInteger)type {
+    if (text.length == 0) return;
+    
+    self.trackpadStatusLabel.text = L(@"AI Thinking...", @"AI 思考中...");
+    
+    [[HSBLocalLLMManager shared] processMessage:text type:type completion:^(NSString * _Nonnull response) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.trackpadStatusLabel.text = L(@"AI Done", @"AI 处理完成");
+            
+            NSDictionary *payload = @{
+                @"action": (type == 1 ? @"show_translation" : @"run_js"),
+                @"content": response,
+                @"timestamp": @([[NSDate date] timeIntervalSince1970]),
+                @"requestId": [[NSUUID UUID] UUIDString]
+            };
+            
+            if (type == 1) { // 翻译结果
+                // 1. 手机弹窗
+                UIAlertController *res = [UIAlertController alertControllerWithTitle:L(@"Translation Result", @"翻译结果")
+                                                                             message:response
+                                                                      preferredStyle:UIAlertControllerStyleAlert];
+                [res addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:res animated:YES completion:nil];
+                
+                // 2. 同步到 TV (可选功能：在大屏显示翻译结果)
+                [self sendDirectPayload:payload];
+            } else { // JS 脚本
+                // 直接下发执行
+                NSMutableDictionary *jsPayload = [payload mutableCopy];
+                [jsPayload setObject:response forKey:@"script"]; // 保持兼容性
+                [self sendDirectPayload:jsPayload];
+                
+                // 触觉反馈
+                UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+                [hap impactOccurred];
+            }
+            
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
+            });
+        });
+    }];
+}
+
 
 - (void)browserActionEditHome {
     if (self.editHomeBlock) {

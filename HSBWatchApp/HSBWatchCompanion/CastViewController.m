@@ -15,30 +15,32 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 @interface CastViewController () <UITextFieldDelegate>
 @property (nonatomic, strong) UITextField *urlTextField;
+@property (nonatomic, strong) UIButton *goBtn;
+@property (nonatomic, strong) UIView *urlBarContainer;
+@property (nonatomic, strong) UILabel *hint;
 @end
 
 @implementation CastViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
     
-    // URL Bar
-    UIView *urlBarContainer = [[UIView alloc] init];
-    urlBarContainer.backgroundColor = [UIColor secondarySystemBackgroundColor];
-    urlBarContainer.layer.cornerRadius = 10;
-    urlBarContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:urlBarContainer];
+    // URL Bar Container - 高贵 8% 磨砂白叠底
+    self.urlBarContainer = [[UIView alloc] init];
+    self.urlBarContainer.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
+    self.urlBarContainer.layer.cornerRadius = 12;
+    self.urlBarContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.urlBarContainer];
     
     UIImageView *urlIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"globe" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightMedium]]];
-    urlIcon.tintColor = [UIColor secondaryLabelColor];
+    urlIcon.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
     urlIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    [urlBarContainer addSubview:urlIcon];
+    [self.urlBarContainer addSubview:urlIcon];
     
     self.urlTextField = [[UITextField alloc] init];
-    self.urlTextField.placeholder = L(@"Enter URL to cast...", @"输入视频或网页链接并投屏...");
+    self.urlTextField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:L(@"Enter URL to cast...", @"输入视频或网页链接并投屏...") attributes:@{NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.3]}];
     self.urlTextField.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    self.urlTextField.textColor = [UIColor labelColor];
+    self.urlTextField.textColor = [UIColor whiteColor];
     self.urlTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.urlTextField.autocorrectionType = UITextAutocorrectionTypeNo;
     self.urlTextField.keyboardType = UIKeyboardTypeURL;
@@ -46,48 +48,54 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.urlTextField.clearButtonMode = UITextFieldViewModeWhileEditing;
     self.urlTextField.delegate = self;
     self.urlTextField.translatesAutoresizingMaskIntoConstraints = NO;
-    [urlBarContainer addSubview:self.urlTextField];
+    [self.urlBarContainer addSubview:self.urlTextField];
     
-    UIButton *goBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [goBtn setImage:[UIImage systemImageNamed:@"paperplane.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightMedium]] forState:UIControlStateNormal];
-    goBtn.tintColor = [UIColor systemBlueColor];
-    [goBtn addTarget:self action:@selector(sendUrl) forControlEvents:UIControlEventTouchUpInside];
-    goBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [urlBarContainer addSubview:goBtn];
+    self.goBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.goBtn setImage:[UIImage systemImageNamed:@"paperplane.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightMedium]] forState:UIControlStateNormal];
+    self.goBtn.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
+    [self.goBtn addTarget:self action:@selector(sendUrl) forControlEvents:UIControlEventTouchUpInside];
+    self.goBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.urlBarContainer addSubview:self.goBtn];
     
-    UILabel *hint = [[UILabel alloc] init];
-    hint.text = L(@"Send any web link directly to the TV's browser.", @"支持发送绝大部分流媒体网页链接至大屏浏览器直接解析播放。");
-    hint.font = [UIFont systemFontOfSize:13];
-    hint.textColor = [UIColor secondaryLabelColor];
-    hint.numberOfLines = 0;
-    hint.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:hint];
+    self.hint = [[UILabel alloc] init];
+    self.hint.text = L(@"Send any web link directly to the TV's browser.", @"支持发送绝大部分流媒体网页链接至大屏浏览器直接解析播放。");
+    self.hint.font = [UIFont systemFontOfSize:13];
+    self.hint.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
+    self.hint.numberOfLines = 0;
+    self.hint.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.hint];
     
     [NSLayoutConstraint activateConstraints:@[
-        [urlBarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:40],
-        [urlBarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [urlBarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [urlBarContainer.heightAnchor constraintEqualToConstant:55],
+        [self.urlBarContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:40],
+        [self.urlBarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [self.urlBarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [self.urlBarContainer.heightAnchor constraintEqualToConstant:55],
         
-        [urlIcon.leadingAnchor constraintEqualToAnchor:urlBarContainer.leadingAnchor constant:16],
-        [urlIcon.centerYAnchor constraintEqualToAnchor:urlBarContainer.centerYAnchor],
+        [urlIcon.leadingAnchor constraintEqualToAnchor:self.urlBarContainer.leadingAnchor constant:16],
+        [urlIcon.centerYAnchor constraintEqualToAnchor:self.urlBarContainer.centerYAnchor],
         [urlIcon.widthAnchor constraintEqualToConstant:20],
         [urlIcon.heightAnchor constraintEqualToConstant:20],
         
         [self.urlTextField.leadingAnchor constraintEqualToAnchor:urlIcon.trailingAnchor constant:12],
-        [self.urlTextField.topAnchor constraintEqualToAnchor:urlBarContainer.topAnchor],
-        [self.urlTextField.bottomAnchor constraintEqualToAnchor:urlBarContainer.bottomAnchor],
+        [self.urlTextField.topAnchor constraintEqualToAnchor:self.urlBarContainer.topAnchor],
+        [self.urlTextField.bottomAnchor constraintEqualToAnchor:self.urlBarContainer.bottomAnchor],
         
-        [goBtn.leadingAnchor constraintEqualToAnchor:self.urlTextField.trailingAnchor constant:4],
-        [goBtn.trailingAnchor constraintEqualToAnchor:urlBarContainer.trailingAnchor constant:-12],
-        [goBtn.centerYAnchor constraintEqualToAnchor:urlBarContainer.centerYAnchor],
-        [goBtn.widthAnchor constraintEqualToConstant:35],
-        [goBtn.heightAnchor constraintEqualToConstant:35],
+        [self.goBtn.leadingAnchor constraintEqualToAnchor:self.urlTextField.trailingAnchor constant:4],
+        [self.goBtn.trailingAnchor constraintEqualToAnchor:self.urlBarContainer.trailingAnchor constant:-12],
+        [self.goBtn.centerYAnchor constraintEqualToAnchor:self.urlBarContainer.centerYAnchor],
+        [self.goBtn.widthAnchor constraintEqualToConstant:35],
+        [self.goBtn.heightAnchor constraintEqualToConstant:35],
         
-        [hint.topAnchor constraintEqualToAnchor:urlBarContainer.bottomAnchor constant:16],
-        [hint.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:25],
-        [hint.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-25]
+        [self.hint.topAnchor constraintEqualToAnchor:self.urlBarContainer.bottomAnchor constant:16],
+        [self.hint.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:25],
+        [self.hint.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-25]
     ]];
+}
+
+- (void)applyThemeStyle {
+    [super applyThemeStyle];
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    self.goBtn.tintColor = palette.primaryColor;
 }
 
 - (void)sendUrl {

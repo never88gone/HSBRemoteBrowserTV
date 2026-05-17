@@ -5,13 +5,15 @@
 
 #import "ViewController.h"
 #import <UIKit/UIKit.h>
-#import <WatchConnectivity/WatchConnectivity.h>
 #import <Network/Network.h>
 #import <CoreMotion/CoreMotion.h>
 #import "HomeConfigEditViewController.h"
 #import "BrowserControlViewController.h"
 #import "SettingsViewController.h"
 #import "TVDetailViewController.h"
+#import "HSBThemeManager.h"
+#import "HSBTVOSConnectionManager.h"
+#import "HSBWatchSessionManager.h"
 
 #define BONJOUR_SERVICE_TYPE "_thltv._tcp"
 
@@ -25,11 +27,10 @@ static NSString * L(NSString *en, NSString *zh) {
 
 
 
-@interface ViewController () <WCSessionDelegate, UITableViewDelegate, UITableViewDataSource, UIGestureRecognizerDelegate, UITextFieldDelegate>
+@interface ViewController () <UITableViewDelegate, UITableViewDataSource, UIGestureRecognizerDelegate, UITextFieldDelegate>
 
 @property (nonatomic, strong) nw_browser_t browser;
-@property (nonatomic, strong) nw_connection_t connection;
-@property (nonatomic, strong) dispatch_queue_t queue;
+@property (nonatomic, strong) dispatch_queue_t browserQueue;
 @property (nonatomic, assign) BOOL isConnectedToTV;
 
 // UI Properties
@@ -38,6 +39,10 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) UILabel *logLabel;
 @property (nonatomic, strong) UITableView *tvTableView;
 @property (nonatomic, strong) UIActivityIndicatorView *scanSpinner;
+@property (nonatomic, strong) UISwitch *watchSyncSwitch;
+@property (nonatomic, strong) UISwitch *tvScanSwitch;
+@property (nonatomic, assign) BOOL watchSyncEnabled;
+@property (nonatomic, assign) BOOL tvScanEnabled;
 
 // Data Source
 @property (nonatomic, strong) NSMutableArray<nw_endpoint_t> *discoveredEndpoints;
@@ -68,13 +73,30 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, assign) NSInteger dailyActionCount;
 @property (nonatomic, assign) NSInteger dailyTargetCount;
 
+// Theme controls upgrade
+@property (nonatomic, strong) UIButton *goBtn;
+@property (nonatomic, strong) UIButton *openTrackpadBtn;
+@property (nonatomic, strong) NSMutableArray<UIView *> *themeCards;
+
 @end
 
 @implementation ViewController
 
 - (void)viewDidLoad {
-    [super viewDidLoad];
+    self.themeCards = [NSMutableArray array];
     self.discoveredEndpoints = [NSMutableArray array];
+    
+    self.watchSyncEnabled = YES;
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"WatchSyncEnabled"]) {
+        self.watchSyncEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"WatchSyncEnabled"];
+    }
+    
+    self.tvScanEnabled = YES;
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"TVScanEnabled"]) {
+        self.tvScanEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"TVScanEnabled"];
+    }
+    
+    [super viewDidLoad];
     
     // Prevent the iPhone screen from sleeping and dropping the network connection
     [UIApplication sharedApplication].idleTimerDisabled = YES;
@@ -83,7 +105,51 @@ static NSString * L(NSString *en, NSString *zh) {
     [self setupUI];
     [self startBridge];
     [self startPedometer];
+    
+    // 注册 TVOSConnectionManager 通知
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSConnectionStateChanged:) name:HSBTVOSConnectionStateNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSStateUpdated:) name:HSBTVOSStateUpdatedNotification object:nil];
+    
+    [self applyThemeStyle];
 }
+
+- (void)applyThemeStyle {
+    [super applyThemeStyle];
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    
+    for (UIView *card in self.themeCards) {
+        card.backgroundColor = palette.cardBgColor;
+    }
+    
+    if (self.goBtn) {
+        self.goBtn.tintColor = palette.primaryColor;
+    }
+    if (self.openTrackpadBtn) {
+        self.openTrackpadBtn.backgroundColor = palette.primaryColor;
+    }
+    if (self.videoSlider) {
+        self.videoSlider.minimumTrackTintColor = palette.primaryColor;
+    }
+    if (self.watchSyncSwitch) {
+        self.watchSyncSwitch.onTintColor = palette.primaryColor;
+    }
+    if (self.tvScanSwitch) {
+        self.tvScanSwitch.onTintColor = palette.primaryColor;
+    }
+    
+    // 动态同步首页右上角设置齿轮按钮的颜色
+    self.navigationItem.rightBarButtonItem.tintColor = palette.primaryColor;
+    
+    // 实时重绘主列表里的电视设备图标颜色
+    if (self.tvTableView) {
+        [self.tvTableView reloadData];
+    }
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+}
+
 
 #pragma mark - Pedometer & Activity Logic
 
@@ -158,26 +224,23 @@ static NSString * L(NSString *en, NSString *zh) {
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-}
+
 
 #pragma mark - UI Setup
 
 - (void)setupUI {
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
     self.navigationItem.title = L(@"ZE Watch", @"糖葫芦遥控器");
     
     // Settings Button
     UIBarButtonItem *settingsItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"gearshape.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(openSettings)];
-    settingsItem.tintColor = [UIColor secondaryLabelColor];
+    settingsItem.tintColor = [UIColor whiteColor];
     self.navigationItem.rightBarButtonItem = settingsItem;
     
     // Subtitle
     UILabel *subtitleLabel = [[UILabel alloc] init];
     subtitleLabel.text = L(@"Keep this app open while using your Watch.", @"在使用手表遥控时保持此应用在前台运行");
     subtitleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    subtitleLabel.textColor = [UIColor secondaryLabelColor];
+    subtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:subtitleLabel];
     
@@ -186,36 +249,19 @@ static NSString * L(NSString *en, NSString *zh) {
     self.logLabel = [self createLabel];
     self.statsLabel = [self createLabel];
     
-    self.stepsLabel = [self createLabel];
-    self.stepsLabel.text = L(@"Local Steps (Today): --", @"今日设备走动步数: 获取中...");
-    self.stepsLabel.textColor = [UIColor systemOrangeColor];
+    self.watchSyncSwitch = [[UISwitch alloc] init];
+    self.watchSyncSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.watchSyncSwitch setOn:self.watchSyncEnabled animated:NO];
+    [self.watchSyncSwitch addTarget:self action:@selector(watchSyncSwitchChanged:) forControlEvents:UIControlEventValueChanged];
     
-    // Cards
-    self.statsCard = [self createCard:L(@"🏆 DAILY ACTIVITY TARGET", @"🏆 今日体感训练打卡目标") valueLabel:self.statsLabel];
-    [self.statsCard addSubview:self.stepsLabel];
+    self.tvScanSwitch = [[UISwitch alloc] init];
+    self.tvScanSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.tvScanSwitch setOn:self.tvScanEnabled animated:NO];
+    [self.tvScanSwitch addTarget:self action:@selector(tvScanSwitchChanged:) forControlEvents:UIControlEventValueChanged];
     
-    // Add constraints to stepsLabel inside statsCard
-    self.stepsLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [NSLayoutConstraint activateConstraints:@[
-        [self.stepsLabel.topAnchor constraintEqualToAnchor:self.statsLabel.bottomAnchor constant:4],
-        [self.stepsLabel.leadingAnchor constraintEqualToAnchor:self.statsCard.leadingAnchor constant:16],
-        [self.stepsLabel.trailingAnchor constraintEqualToAnchor:self.statsCard.trailingAnchor constant:-16],
-        [self.stepsLabel.bottomAnchor constraintEqualToAnchor:self.statsCard.bottomAnchor constant:-16]
-    ]];
-    // Override the statsLabel bottom constraint in the card
-    for (NSLayoutConstraint *c in self.statsCard.constraints) {
-        if (c.firstItem == self.statsLabel && c.firstAttribute == NSLayoutAttributeBottom) {
-            c.active = NO;
-        }
-    }
-    
-    // Set up goal hit box
-    UITapGestureRecognizer *tapGoal = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showSetGoalAlert)];
-    [self.statsCard addGestureRecognizer:tapGoal];
-    
-    UIView *card1 = [self createCard:L(@" WATCH SYNC ENGINE", @" 穿戴设备运动同步引擎") valueLabel:self.watchStatusLabel];
-    UIView *card2 = [self createCard:L(@"💻 EXTERNAL DISPLAY LINK", @"💻 外部扩展大屏直连") valueLabel:self.tvStatusLabel];
-    UIView *card3 = [self createCard:L(@"LATEST DETECTED ACTION", @"最终判定体感动作") valueLabel:self.logLabel];
+    UIView *card1 = [self createCard:L(@" WATCH SYNC ENGINE", @" 穿戴设备运动同步引擎") valueLabel:self.watchStatusLabel switchView:self.watchSyncSwitch];
+    UIView *card2 = [self createCard:L(@"💻 EXTERNAL DISPLAY LINK", @"💻 外部扩展大屏直连") valueLabel:self.tvStatusLabel switchView:self.tvScanSwitch];
+    UIView *card3 = [self createCard:L(@"LATEST DETECTED ACTION", @"最终判定体感动作") valueLabel:self.logLabel switchView:nil];
     
     // Video Control Card
     self.videoControlCard = [self createVideoControlCard];
@@ -229,10 +275,9 @@ static NSString * L(NSString *en, NSString *zh) {
     self.tvStatusLabel.text = L(@"⚪️ Link Inactive", @"⚪️ 未连接外置显示器");
     self.logLabel.text = L(@"Waiting for gestures...", @"等待进行体感动作...");
     self.logLabel.textColor = [UIColor tertiaryLabelColor];
-    [self updateStatsUI];
     
     // Stack View
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[self.statsCard, card1, card2, card3, ]];
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[card1, card2, card3]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 8;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -243,6 +288,7 @@ static NSString * L(NSString *en, NSString *zh) {
     tableContainer.backgroundColor = [UIColor secondarySystemBackgroundColor];
     tableContainer.layer.cornerRadius = 16;
     tableContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.themeCards addObject:tableContainer];
     
     tableContainer.layer.shadowColor = [UIColor blackColor].CGColor;
     tableContainer.layer.shadowOpacity = 0.05;
@@ -254,11 +300,12 @@ static NSString * L(NSString *en, NSString *zh) {
     UILabel *tableTitle = [[UILabel alloc] init];
     tableTitle.text = L(@"SELECT EXTERNAL DISPLAY (SSDP)", @"选择连接可用外部显示单元");
     tableTitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
-    tableTitle.textColor = [UIColor secondaryLabelColor];
+    tableTitle.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     tableTitle.translatesAutoresizingMaskIntoConstraints = NO;
     [tableContainer addSubview:tableTitle];
     
     self.scanSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    self.scanSpinner.color = [UIColor whiteColor];
     self.scanSpinner.translatesAutoresizingMaskIntoConstraints = NO;
     [self.scanSpinner startAnimating];
     [tableContainer addSubview:self.scanSpinner];
@@ -275,7 +322,7 @@ static NSString * L(NSString *en, NSString *zh) {
     UILabel *emptyLabel = [[UILabel alloc] init];
     emptyLabel.text = L(@"No nearby screens found.\nLocal tracking active.", @"局域网未发现可用投影显示单元\n手表本地体感记录仍在进行中");
     emptyLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-    emptyLabel.textColor = [UIColor tertiaryLabelColor];
+    emptyLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
     emptyLabel.textAlignment = NSTextAlignmentCenter;
     emptyLabel.numberOfLines = 0;
     self.tvTableView.backgroundView = emptyLabel;
@@ -312,17 +359,23 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (UILabel *)createLabel {
     UILabel *l = [[UILabel alloc] init];
-    l.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
+    l.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+    l.textColor = [UIColor whiteColor];
     l.translatesAutoresizingMaskIntoConstraints = NO;
     l.numberOfLines = 0;
     return l;
 }
 
 - (UIView *)createCard:(NSString *)title valueLabel:(UILabel *)valueLabel {
+    return [self createCard:title valueLabel:valueLabel switchView:nil];
+}
+
+- (UIView *)createCard:(NSString *)title valueLabel:(UILabel *)valueLabel switchView:(UISwitch *)switchView {
     UIView *view = [[UIView alloc] init];
     view.backgroundColor = [UIColor secondarySystemBackgroundColor];
     view.layer.cornerRadius = 16;
     view.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.themeCards addObject:view];
     
     view.layer.shadowColor = [UIColor blackColor].CGColor;
     view.layer.shadowOpacity = 0.05;
@@ -332,22 +385,39 @@ static NSString * L(NSString *en, NSString *zh) {
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.text = [title uppercaseString];
     titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
-    titleLabel.textColor = [UIColor secondaryLabelColor];
+    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     
     [view addSubview:titleLabel];
     [view addSubview:valueLabel];
     
-    [NSLayoutConstraint activateConstraints:@[
-        [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:8],
-        [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
-        [titleLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
-        
-        [valueLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
-        [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
-        [valueLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
-        [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-8]
-    ]];
+    if (switchView) {
+        [view addSubview:switchView];
+        [NSLayoutConstraint activateConstraints:@[
+            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:8],
+            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
+            
+            [switchView.centerYAnchor constraintEqualToAnchor:view.centerYAnchor],
+            [switchView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
+            [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-8],
+            
+            [valueLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
+            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
+            [valueLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-8],
+            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-8]
+        ]];
+    } else {
+        [NSLayoutConstraint activateConstraints:@[
+            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:8],
+            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
+            [titleLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
+            
+            [valueLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
+            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
+            [valueLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
+            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-8]
+        ]];
+    }
     
     return view;
 }
@@ -357,6 +427,7 @@ static NSString * L(NSString *en, NSString *zh) {
     view.backgroundColor = [UIColor secondarySystemBackgroundColor];
     view.layer.cornerRadius = 16;
     view.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.themeCards addObject:view];
     
     view.layer.shadowColor = [UIColor blackColor].CGColor;
     view.layer.shadowOpacity = 0.05;
@@ -366,26 +437,26 @@ static NSString * L(NSString *en, NSString *zh) {
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.text = L(@"BROWSER CONTROLS", @"网页浏览器控制");
     titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
-    titleLabel.textColor = [UIColor secondaryLabelColor];
+    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:titleLabel];
     
     // URL Input Bar
     UIView *urlBarContainer = [[UIView alloc] init];
-    urlBarContainer.backgroundColor = [UIColor tertiarySystemBackgroundColor];
+    urlBarContainer.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
     urlBarContainer.layer.cornerRadius = 10;
     urlBarContainer.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:urlBarContainer];
     
     UIImageView *urlIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"globe" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightMedium]]];
-    urlIcon.tintColor = [UIColor secondaryLabelColor];
+    urlIcon.tintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
     urlIcon.translatesAutoresizingMaskIntoConstraints = NO;
     [urlBarContainer addSubview:urlIcon];
     
     self.mainUrlTextField = [[UITextField alloc] init];
-    self.mainUrlTextField.placeholder = L(@"Enter URL...", @"输入网址跳转...");
+    self.mainUrlTextField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:L(@"Enter URL...", @"输入网址跳转...") attributes:@{NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.3]}];
     self.mainUrlTextField.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
-    self.mainUrlTextField.textColor = [UIColor labelColor];
+    self.mainUrlTextField.textColor = [UIColor whiteColor];
     self.mainUrlTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.mainUrlTextField.autocorrectionType = UITextAutocorrectionTypeNo;
     self.mainUrlTextField.spellCheckingType = UITextSpellCheckingTypeNo;
@@ -396,29 +467,30 @@ static NSString * L(NSString *en, NSString *zh) {
     self.mainUrlTextField.translatesAutoresizingMaskIntoConstraints = NO;
     [urlBarContainer addSubview:self.mainUrlTextField];
     
-    UIButton *goBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [goBtn setImage:[UIImage systemImageNamed:@"arrow.right.circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightMedium]] forState:UIControlStateNormal];
-    goBtn.tintColor = [UIColor systemBlueColor];
-    [goBtn addTarget:self action:@selector(mainUrlGoAction) forControlEvents:UIControlEventTouchUpInside];
-    goBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [urlBarContainer addSubview:goBtn];
+    self.goBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.goBtn setImage:[UIImage systemImageNamed:@"arrow.right.circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightMedium]] forState:UIControlStateNormal];
+    self.goBtn.tintColor = [HSBThemeManager shared].themeColor;
+    [self.goBtn addTarget:self action:@selector(mainUrlGoAction) forControlEvents:UIControlEventTouchUpInside];
+    self.goBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [urlBarContainer addSubview:self.goBtn];
     
-    UIButton *openTrackpadBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [openTrackpadBtn setTitle:L(@"Open Fullscreen Trackpad", @"打开全屏触控板界面") forState:UIControlStateNormal];
-    openTrackpadBtn.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
-    openTrackpadBtn.backgroundColor = [UIColor systemBlueColor];
-    [openTrackpadBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    openTrackpadBtn.layer.cornerRadius = 12;
-    [openTrackpadBtn addTarget:self action:@selector(openFullscreenTrackpad) forControlEvents:UIControlEventTouchUpInside];
-    openTrackpadBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [view addSubview:openTrackpadBtn];
+    self.openTrackpadBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.openTrackpadBtn setTitle:L(@"Open Fullscreen Trackpad", @"打开全屏触控板界面") forState:UIControlStateNormal];
+    self.openTrackpadBtn.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightSemibold];
+    self.openTrackpadBtn.backgroundColor = [HSBThemeManager shared].themeColor;
+    [self.openTrackpadBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.openTrackpadBtn.layer.cornerRadius = 12;
+    [self.openTrackpadBtn addTarget:self action:@selector(openFullscreenTrackpad) forControlEvents:UIControlEventTouchUpInside];
+    self.openTrackpadBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [view addSubview:self.openTrackpadBtn];
     
     // Config editor button
     UIButton *editBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     [editBtn setTitle:L(@"Edit Home Config", @"编辑主页配置") forState:UIControlStateNormal];
     editBtn.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    editBtn.backgroundColor = [UIColor quaternarySystemFillColor];
-    [editBtn setTitleColor:[UIColor labelColor] forState:UIControlStateNormal];
+    editBtn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.06];
+    [editBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    editBtn.tintColor = [UIColor whiteColor];
     editBtn.layer.cornerRadius = 12;
     [editBtn addTarget:self action:@selector(browserActionEditHome) forControlEvents:UIControlEventTouchUpInside];
     editBtn.translatesAutoresizingMaskIntoConstraints = NO;
@@ -441,20 +513,20 @@ static NSString * L(NSString *en, NSString *zh) {
         [urlIcon.heightAnchor constraintEqualToConstant:18],
         
         [self.mainUrlTextField.leadingAnchor constraintEqualToAnchor:urlIcon.trailingAnchor constant:8],
-        [self.mainUrlTextField.trailingAnchor constraintEqualToAnchor:goBtn.leadingAnchor constant:-6],
+        [self.mainUrlTextField.trailingAnchor constraintEqualToAnchor:self.goBtn.leadingAnchor constant:-6],
         [self.mainUrlTextField.centerYAnchor constraintEqualToAnchor:urlBarContainer.centerYAnchor],
         
-        [goBtn.trailingAnchor constraintEqualToAnchor:urlBarContainer.trailingAnchor constant:-8],
-        [goBtn.centerYAnchor constraintEqualToAnchor:urlBarContainer.centerYAnchor],
-        [goBtn.widthAnchor constraintEqualToConstant:28],
-        [goBtn.heightAnchor constraintEqualToConstant:28],
+        [self.goBtn.trailingAnchor constraintEqualToAnchor:urlBarContainer.trailingAnchor constant:-8],
+        [self.goBtn.centerYAnchor constraintEqualToAnchor:urlBarContainer.centerYAnchor],
+        [self.goBtn.widthAnchor constraintEqualToConstant:28],
+        [self.goBtn.heightAnchor constraintEqualToConstant:28],
         
-        [openTrackpadBtn.topAnchor constraintEqualToAnchor:urlBarContainer.bottomAnchor constant:12],
-        [openTrackpadBtn.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
-        [openTrackpadBtn.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
-        [openTrackpadBtn.heightAnchor constraintEqualToConstant:54],
+        [self.openTrackpadBtn.topAnchor constraintEqualToAnchor:urlBarContainer.bottomAnchor constant:12],
+        [self.openTrackpadBtn.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
+        [self.openTrackpadBtn.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
+        [self.openTrackpadBtn.heightAnchor constraintEqualToConstant:54],
         
-        [editBtn.topAnchor constraintEqualToAnchor:openTrackpadBtn.bottomAnchor constant:10],
+        [editBtn.topAnchor constraintEqualToAnchor:self.openTrackpadBtn.bottomAnchor constant:10],
         [editBtn.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
         [editBtn.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
         [editBtn.heightAnchor constraintEqualToConstant:44],
@@ -477,25 +549,20 @@ static NSString * L(NSString *en, NSString *zh) {
         [weakSelf sendDirectPayload:p msg:nil];
     };
     vc.checkConnectionBlock = ^BOOL {
-        return weakSelf.connection && weakSelf.isConnectedToTV;
+        return [HSBTVOSConnectionManager sharedManager].isConnected;
     };
     [self presentViewController:vc animated:YES completion:nil];
 }
 
 
 - (void)sendDirectPayload:(NSDictionary *)payload msg:(NSString *)msg {
-    NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
-    if (data && data.length > 0) {
-        dispatch_data_t dispatchData = dispatch_data_create(data.bytes, data.length, dispatch_get_main_queue(), ^{ [data self]; });
-        nw_connection_send(self.connection, dispatchData, NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t error) {
-            if (!error && msg) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [self updateUI:^{
-                        self.logLabel.text = msg;
-                        self.logLabel.textColor = [UIColor systemBlueColor];
-                    }];
-                });
-            }
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+    if (msg) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self updateUI:^{
+                self.logLabel.text = msg;
+                self.logLabel.textColor = [UIColor systemBlueColor];
+            }];
         });
     }
 }
@@ -511,6 +578,10 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)openSettings {
     SettingsViewController *settingsVC = [[SettingsViewController alloc] initWithStyle:UITableViewStyleGrouped];
+    __weak typeof(self) weakSelf = self;
+    settingsVC.sendPayloadBlock = ^(NSDictionary *payload) {
+        [weakSelf sendDirectPayload:payload msg:nil];
+    };
     [self.navigationController pushViewController:settingsVC animated:YES];
 }
 
@@ -525,7 +596,7 @@ static NSString * L(NSString *en, NSString *zh) {
         urlString = [NSString stringWithFormat:@"https://%@", urlString];
     }
     
-    if (!self.connection || !self.isConnectedToTV) {
+    if (![HSBTVOSConnectionManager sharedManager].isConnected) {
         [self showTVNotConnectedError];
         return;
     }
@@ -575,7 +646,7 @@ static NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)sendJSONToTV:(NSString *)jsonString {
-    if (!self.connection || !self.isConnectedToTV) {
+    if (![HSBTVOSConnectionManager sharedManager].isConnected) {
         [self updateUI:^{
             self.logLabel.text = L(@"⚠️ Cannot Sync: TV Not Connected", @"⚠️ 无法同步: 电视未连接");
             self.logLabel.textColor = [UIColor systemOrangeColor];
@@ -587,22 +658,16 @@ static NSString * L(NSString *en, NSString *zh) {
     payload[@"action"] = @"update_home_json";
     payload[@"payload"] = jsonString;
     
-    NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
-    if (data && data.length > 0) {
-        dispatch_data_t dispatchData = dispatch_data_create(data.bytes, data.length, dispatch_get_main_queue(), ^{ [data self]; });
-        nw_connection_send(self.connection, dispatchData, NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t error) {
-            if (!error) {
-                [self updateUI:^{
-                    self.logLabel.text = L(@"✅ Synced JSON Configuration to TV", @"✅ 已将最新的 JSON 配置推送到电视");
-                    self.logLabel.textColor = [UIColor systemGreenColor];
-                    self.logLabel.alpha = 0.3;
-                    [UIView animateWithDuration:0.3 animations:^{
-                        self.logLabel.alpha = 1.0;
-                    }];
-                }];
-            }
-        });
-    }
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+    
+    [self updateUI:^{
+        self.logLabel.text = L(@"✅ Synced JSON Configuration to TV", @"✅ 已将最新的 JSON 配置推送到电视");
+        self.logLabel.textColor = [UIColor systemGreenColor];
+        self.logLabel.alpha = 0.3;
+        [UIView animateWithDuration:0.3 animations:^{
+            self.logLabel.alpha = 1.0;
+        }];
+    }];
 }
 
 
@@ -611,6 +676,7 @@ static NSString * L(NSString *en, NSString *zh) {
     view.backgroundColor = [UIColor secondarySystemBackgroundColor];
     view.layer.cornerRadius = 16;
     view.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.themeCards addObject:view];
     
     view.layer.shadowColor = [UIColor blackColor].CGColor;
     view.layer.shadowOpacity = 0.05;
@@ -620,19 +686,21 @@ static NSString * L(NSString *en, NSString *zh) {
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.text = L(@"VIDEO PLAYBACK", @"电视播放进度");
     titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
-    titleLabel.textColor = [UIColor secondaryLabelColor];
+    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:titleLabel];
     
     self.currentTimeLabel = [[UILabel alloc] init];
     self.currentTimeLabel.text = @"00:00";
     self.currentTimeLabel.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightMedium];
+    self.currentTimeLabel.textColor = [UIColor whiteColor];
     self.currentTimeLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:self.currentTimeLabel];
     
     self.durationLabel = [[UILabel alloc] init];
     self.durationLabel.text = @"00:00";
     self.durationLabel.font = [UIFont monospacedDigitSystemFontOfSize:14 weight:UIFontWeightMedium];
+    self.durationLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     self.durationLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:self.durationLabel];
     
@@ -688,9 +756,12 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)sendSeekToTV:(float)seekTime {
     [self sendActionToTV:@"seek" withValue:@(seekTime)];
 }
+- (void)sendActionToTV:(NSString *)action {
+    [self sendActionToTV:action withValue:nil];
+}
 
 - (void)sendActionToTV:(NSString *)action withValue:(NSNumber *)value {
-    if (!self.connection || !self.isConnectedToTV) {
+    if (![HSBTVOSConnectionManager sharedManager].isConnected) {
         NSLog(@"[BonjourBridge] TV not connected yet. Dropping action.");
         // 错误触觉反馈
         UINotificationFeedbackGenerator *hap = [[UINotificationFeedbackGenerator alloc] init];
@@ -708,22 +779,16 @@ static NSString * L(NSString *en, NSString *zh) {
         payload[@"value"] = value;
     }
     
-    NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
-    if (data && data.length > 0) {
-        dispatch_data_t dispatchData = dispatch_data_create(data.bytes, data.length, dispatch_get_main_queue(), ^{ [data self]; });
-        nw_connection_send(self.connection, dispatchData, NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t error) {
-            if (!error) {
-                [self updateUI:^{
-                    self.logLabel.text = [NSString stringWithFormat:L(@"✅ Sent '%@' to TV", @"✅ 已将动作 '%@' 投送至电视"), action];
-                    self.logLabel.textColor = [UIColor labelColor];
-                    self.logLabel.alpha = 0.3;
-                    [UIView animateWithDuration:0.3 animations:^{
-                        self.logLabel.alpha = 1.0;
-                    }];
-                }];
-            }
-        });
-    }
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+    
+    [self updateUI:^{
+        self.logLabel.text = [NSString stringWithFormat:L(@"✅ Sent '%@' to TV", @"✅ 已将动作 '%@' 投送至电视"), action];
+        self.logLabel.textColor = [UIColor labelColor];
+        self.logLabel.alpha = 0.3;
+        [UIView animateWithDuration:0.3 animations:^{
+            self.logLabel.alpha = 1.0;
+        }];
+    }];
 }
 
 - (void)updateUI:(void (^)(void))block {
@@ -740,6 +805,12 @@ static NSString * L(NSString *en, NSString *zh) {
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TVCell" forIndexPath:indexPath];
     cell.backgroundColor = [UIColor clearColor];
     
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    
+    UIView *selectedBg = [[UIView alloc] init];
+    selectedBg.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.15];
+    cell.selectedBackgroundView = selectedBg;
+    
     nw_endpoint_t ep = self.discoveredEndpoints[indexPath.row];
     const char *name = nw_endpoint_get_bonjour_service_name(ep);
     NSString *nameStr = name ? [NSString stringWithUTF8String:name] : L(@"Unknown TV", @"未命名电视");
@@ -749,9 +820,9 @@ static NSString * L(NSString *en, NSString *zh) {
     }
     cell.textLabel.text = nameStr;
     cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    cell.textLabel.textColor = [UIColor labelColor];
+    cell.textLabel.textColor = [UIColor whiteColor];
     cell.imageView.image = [UIImage systemImageNamed:@"tv.fill"];
-    cell.imageView.tintColor = [UIColor systemIndigoColor];
+    cell.imageView.tintColor = palette.primaryColor;
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     
@@ -763,28 +834,30 @@ static NSString * L(NSString *en, NSString *zh) {
     
     if (self.discoveredEndpoints.count == 0) return;
     
+    __weak typeof(self) weakSelf = self;
+    
     nw_endpoint_t selectedEndpoint = self.discoveredEndpoints[indexPath.row];
     
     [self updateUI:^{
         self.tvStatusLabel.text = L(@"🟡 Connecting to selected TV...", @"🟡 正在连接选中的电视...");
     }];
     
-    [self connectToTV:selectedEndpoint];
+    const char *name = nw_endpoint_get_bonjour_service_name(selectedEndpoint);
+    NSString *nameStr = name ? [NSString stringWithUTF8String:name] : @"";
+    
+    [[HSBTVOSConnectionManager sharedManager] connectToEndpoint:selectedEndpoint deviceName:nameStr];
     
     TVDetailViewController *vc = [[TVDetailViewController alloc] init];
-    __weak typeof(self) weakSelf = self;
+    vc.deviceName = nameStr;
+    
     vc.sendPayloadBlock = ^(NSDictionary *payload) {
-        NSError *error = nil;
-        NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:&error];
-        if (data && weakSelf.connection) {
-            nw_connection_send(weakSelf.connection, dispatch_data_create(data.bytes, data.length, dispatch_get_main_queue(), ^{}), NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t  _Nullable error) { });
-        }
+        [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
     };
     vc.sendActionBlock = ^(NSString *action) {
-        [weakSelf sendActionToTV:action];
+        [[HSBTVOSConnectionManager sharedManager] sendAction:action];
     };
     vc.checkConnectionBlock = ^BOOL{
-        return weakSelf.isConnectedToTV;
+        return [HSBTVOSConnectionManager sharedManager].isConnected;
     };
     
     vc.editHomeBlock = ^{
@@ -809,20 +882,79 @@ static NSString * L(NSString *en, NSString *zh) {
 
 #pragma mark - Bridge Lifecycle
 
-- (void)startBridge {
-    self.queue = dispatch_queue_create("com.bridge.bonjour.queue", DISPATCH_QUEUE_SERIAL);
-
-    if ([WCSession isSupported]) {
-        WCSession.defaultSession.delegate = self;
-        [WCSession.defaultSession activateSession];
-        NSLog(@"[BonjourBridge] WCSession Activated...");
-    } else {
+- (void)updateWatchSessionState {
+    if (!self.watchSyncEnabled) {
         [self updateUI:^{
-            self.watchStatusLabel.text = L(@"🔴 WCSession Not Supported", @"🔴 当前设备不支持 WCSession");
+            self.watchStatusLabel.text = L(@"🔴 Gesture Sync Disabled (Power Save)", @"🔴 手势同步已关闭 (省电模式)");
+            self.watchStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
         }];
+        return;
     }
     
-    [self startBrowsing];
+    __weak typeof(self) weakSelf = self;
+    [[HSBWatchSessionManager sharedManager] updateWatchSessionStateWithHandler:^(NSString * _Nonnull statusText) {
+        [weakSelf updateUI:^{
+            weakSelf.watchStatusLabel.textColor = [UIColor whiteColor];
+            weakSelf.watchStatusLabel.text = statusText;
+        }];
+    }];
+}
+
+- (void)startBridge {
+    if (self.watchSyncEnabled) {
+        [[HSBWatchSessionManager sharedManager] startSession];
+        [self updateWatchSessionState];
+    } else {
+        [self updateWatchSessionState];
+    }
+    
+    if (self.tvScanEnabled) {
+        [self startBrowsing];
+    } else {
+        [self updateUI:^{
+            self.tvStatusLabel.text = L(@"🔴 TV Discovery Disabled (Power Save)", @"🔴 电视通道已关闭 (省电模式)");
+            self.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
+        }];
+        [self.scanSpinner stopAnimating];
+        self.scanSpinner.hidden = YES;
+    }
+}
+
+- (void)handleTVOSConnectionStateChanged:(NSNotification *)note {
+    NSDictionary *userInfo = note.userInfo;
+    NSString *message = userInfo[@"message"];
+    nw_connection_state_t state = [userInfo[@"state"] intValue];
+    
+    __weak typeof(self) weakSelf = self;
+    [self updateUI:^{
+        weakSelf.tvStatusLabel.text = message;
+        if (state == nw_connection_state_ready) {
+            weakSelf.isConnectedToTV = YES;
+        } else {
+            weakSelf.isConnectedToTV = NO;
+        }
+    }];
+}
+
+- (void)handleTVOSStateUpdated:(NSNotification *)note {
+    NSDictionary *userInfo = note.userInfo;
+    NSNumber *currentTime = userInfo[@"currentTime"];
+    NSNumber *duration = userInfo[@"duration"];
+    NSNumber *hiddenObj = userInfo[@"hidden"];
+    BOOL isHidden = hiddenObj ? [hiddenObj boolValue] : NO;
+    
+    __weak typeof(self) weakSelf = self;
+    if (currentTime && duration) {
+        [self updateUI:^{
+            weakSelf.videoControlCard.hidden = isHidden;
+            if (!weakSelf.isDraggingSlider && !isHidden) {
+                weakSelf.videoSlider.maximumValue = duration.floatValue;
+                weakSelf.videoSlider.value = currentTime.floatValue;
+                weakSelf.currentTimeLabel.text = [weakSelf formatTime:currentTime.floatValue];
+                weakSelf.durationLabel.text = [weakSelf formatTime:duration.floatValue];
+            }
+        }];
+    }
 }
 
 #pragma mark - Bonjour / Network
@@ -884,7 +1016,10 @@ static NSString * L(NSString *en, NSString *zh) {
         }
     });
     
-    nw_browser_set_queue(self.browser, self.queue);
+    if (!self.browserQueue) {
+        self.browserQueue = dispatch_queue_create("com.tv.browse.queue", DISPATCH_QUEUE_SERIAL);
+    }
+    nw_browser_set_queue(self.browser, self.browserQueue);
     nw_browser_start(self.browser);
     
     // Add Timeout for Empty State
@@ -896,164 +1031,55 @@ static NSString * L(NSString *en, NSString *zh) {
     });
 }
 
-- (void)connectToTV:(nw_endpoint_t)endpoint {
-    self.currentEndpoint = endpoint;
+- (void)watchSyncSwitchChanged:(UISwitch *)sender {
+    UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [hap impactOccurred];
     
-    if (self.connection) {
-        nw_connection_cancel(self.connection);
-        self.connection = nil;
+    self.watchSyncEnabled = sender.isOn;
+    [[NSUserDefaults standardUserDefaults] setBool:self.watchSyncEnabled forKey:@"WatchSyncEnabled"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    if (self.watchSyncEnabled) {
+        [[HSBWatchSessionManager sharedManager] startSession];
     }
-    
-    nw_parameters_t parameters = [self createTCPParameters];
-    self.connection = nw_connection_create(endpoint, parameters);
-    
-    __weak typeof(self) weakSelf = self;
-    nw_connection_set_state_changed_handler(self.connection, ^(nw_connection_state_t state, nw_error_t error) {
-        switch (state) {
-            case nw_connection_state_ready: {
-                NSLog(@"[BonjourBridge] Connected to External Display!");
-                weakSelf.isConnectedToTV = YES;
-                [weakSelf updateUI:^{
-                    weakSelf.tvStatusLabel.text = L(@"🟢 Connected to Display", @"🟢 外部显示单元连接成功");
-                }];
-                [weakSelf startReceivingFromTV];
-                break;
-            }
-            case nw_connection_state_failed: {
-                NSLog(@"[BonjourBridge] Connection failed: %@. Reconnecting in 2s...", error);
-                weakSelf.isConnectedToTV = NO;
-                weakSelf.connection = nil;
-                [weakSelf updateUI:^{
-                    weakSelf.tvStatusLabel.text = L(@"🔴 Error. Reconnecting...", @"🔴 连接断开，正在尝试重连...");
-                }];
-                // Auto-reconnect after 2 seconds
-                if (weakSelf.currentEndpoint) {
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), weakSelf.queue, ^{
-                        [weakSelf connectToTV:weakSelf.currentEndpoint];
-                    });
-                }
-                break;
-            }
-            case nw_connection_state_cancelled: {
-                NSLog(@"[BonjourBridge] Connection cancelled.");
-                weakSelf.isConnectedToTV = NO;
-                [weakSelf updateUI:^{
-                    if (![weakSelf.tvStatusLabel.text containsString:@"Failed"] && ![weakSelf.tvStatusLabel.text containsString:@"断开"]) {
-                        weakSelf.tvStatusLabel.text = L(@"⚪️ Disconnected", @"⚪️ 当前无连接");
-                    }
-                }];
-                break;
-            }
-            default:
-                break;
-        }
-    });
-    
-    nw_connection_set_queue(self.connection, self.queue);
-    nw_connection_start(self.connection);
+    [self updateWatchSessionState];
 }
 
-- (void)sendActionToTV:(NSString *)action {
-    [self sendActionToTV:action withValue:nil];
-}
-
-- (void)startReceivingFromTV {
-    if (!self.connection) return;
+- (void)tvScanSwitchChanged:(UISwitch *)sender {
+    UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [hap impactOccurred];
     
-    __weak typeof(self) weakSelf = self;
-    nw_connection_receive(self.connection, 1, 65536, ^(dispatch_data_t content, nw_content_context_t context, bool is_complete, nw_error_t error) {
-        if (content) {
-            const void *buffer = NULL;
-            size_t size = 0;
-            dispatch_data_t contiguousContent = dispatch_data_create_map(content, &buffer, &size);
-            if (buffer && size > 0) {
-                NSData *data = [NSData dataWithBytes:buffer length:size];
-                NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-                if (json && [json isKindOfClass:[NSDictionary class]]) {
-                    NSString *action = json[@"action"];
-                    if ([action isEqualToString:@"sync_progress"]) {
-                        NSNumber *currentTime = json[@"currentTime"];
-                        NSNumber *duration = json[@"duration"];
-                        NSNumber *hiddenObj = json[@"hidden"];
-                        BOOL isHidden = hiddenObj ? [hiddenObj boolValue] : NO;
-                        
-                        if (currentTime && duration) {
-                            [weakSelf updateUI:^{
-                                weakSelf.videoControlCard.hidden = isHidden;
-                                if (!weakSelf.isDraggingSlider && !isHidden) {
-                                    weakSelf.videoSlider.maximumValue = duration.floatValue;
-                                    weakSelf.videoSlider.value = currentTime.floatValue;
-                                    weakSelf.currentTimeLabel.text = [weakSelf formatTime:currentTime.floatValue];
-                                    weakSelf.durationLabel.text = [weakSelf formatTime:duration.floatValue];
-                                }
-                            }];
-                        }
-                    }
-                }
-            }
-        }
-        
-        if (!is_complete && !error) {
-            [weakSelf startReceivingFromTV];
-        }
-    });
-}
-
-
-#pragma mark - WCSessionDelegate
-
-- (void)session:(WCSession *)session activationDidCompleteWithState:(WCSessionActivationState)activationState error:(NSError *)error {
-    if (error) {
+    self.tvScanEnabled = sender.isOn;
+    [[NSUserDefaults standardUserDefaults] setBool:self.tvScanEnabled forKey:@"TVScanEnabled"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    if (self.tvScanEnabled) {
+        [self startBrowsing];
+        [self.scanSpinner startAnimating];
+        self.scanSpinner.hidden = NO;
         [self updateUI:^{
-            self.watchStatusLabel.text = [NSString stringWithFormat:L(@"🔴 Activation Error: %@", @"🔴 通道激活失败: %@"), error.localizedDescription];
+            self.tvStatusLabel.text = L(@"🟡 Connecting...", @"🟡 获取显示状态中...");
+            self.tvStatusLabel.textColor = [UIColor whiteColor];
         }];
     } else {
+        if (self.browser) {
+            nw_browser_cancel(self.browser);
+            self.browser = nil;
+        }
+        [self.discoveredEndpoints removeAllObjects];
+        [self.tvTableView reloadData];
+        
+        [self.scanSpinner stopAnimating];
+        self.scanSpinner.hidden = YES;
+        
+        [[HSBTVOSConnectionManager sharedManager] disconnect];
+        self.isConnectedToTV = NO;
+        self.videoControlCard.hidden = YES;
+        
         [self updateUI:^{
-            if (activationState == WCSessionActivationStateActivated) {
-                self.watchStatusLabel.text = L(@"🟢 Listening to Watch Gestures", @"🟢 正在监听苹果手表手势");
-            } else {
-                self.watchStatusLabel.text = L(@"🟡 Session Inactive", @"🟡 通道未激活");
-            }
+            self.tvStatusLabel.text = L(@"🔴 TV Discovery Disabled (Power Save)", @"🔴 电视通道已关闭 (省电模式)");
+            self.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
         }];
-    }
-}
-
-- (void)sessionDidBecomeInactive:(WCSession *)session {
-    [self updateUI:^{
-        self.watchStatusLabel.text = L(@"🟡 Session Inactive", @"🟡 通道未激活");
-    }];
-}
-
-- (void)sessionDidDeactivate:(WCSession *)session {
-    [self updateUI:^{
-        self.watchStatusLabel.text = L(@"⚪️ Session Deactivated", @"⚪️ 通道已断开");
-    }];
-    [WCSession.defaultSession activateSession];
-}
-
-// Receive Message from Watch (Foreground)
-- (void)session:(WCSession *)session didReceiveMessage:(NSDictionary<NSString *,id> *)message {
-    NSString *action = message[@"action"];
-    if (action) {
-        [self incrementActivityScore];
-        [self updateUI:^{
-            self.logLabel.text = [NSString stringWithFormat:L(@"📥 Detected Task: '%@'", @"📥 捕捉体感动作任务: '%@'"), action];
-            self.logLabel.textColor = [UIColor systemBlueColor];
-        }];
-        [self sendActionToTV:action];
-    }
-}
-
-// Receive UserInfo from Watch (Background / Fallback)
-- (void)session:(WCSession *)session didReceiveUserInfo:(NSDictionary<NSString *,id> *)userInfo {
-    NSString *action = userInfo[@"action"];
-    if (action) {
-        [self incrementActivityScore];
-        [self updateUI:^{
-            self.logLabel.text = [NSString stringWithFormat:L(@"📥 Detected Task: '%@' (BG)", @"📥 捕捉体感动作(后台唤醒): '%@'"), action];
-            self.logLabel.textColor = [UIColor systemIndigoColor];
-        }];
-        [self sendActionToTV:action];
     }
 }
 

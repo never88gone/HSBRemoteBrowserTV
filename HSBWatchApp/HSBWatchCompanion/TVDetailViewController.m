@@ -8,6 +8,7 @@
 #import "VideoControlViewController.h"
 #import "BrowserControlViewController.h"
 #import "IPTVRemoteViewController.h"
+#import "PDFControlViewController.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
     NSString *language = [[NSLocale preferredLanguages] firstObject];
@@ -29,18 +30,32 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
     self.title = L(@"TV Control Center", @"电视遥控中枢");
     
+    // 根据连接的设备名智能判断默认展示不同的分页面 Tab
+    NSInteger defaultIndex = 0; // 默认投屏 (Cast)
+    if (self.deviceName && self.deviceName.length > 0) {
+        NSString *lowerName = [self.deviceName lowercaseString];
+        if ([lowerName containsString:@"iptv"]) {
+            defaultIndex = 3; // IPTV
+        } else if ([lowerName containsString:@"pdf"] || [lowerName containsString:@"reader"] || [lowerName containsString:@"doc"]) {
+            defaultIndex = 4; // PDF
+        } else if ([lowerName containsString:@"video"] || [lowerName containsString:@"player"] || [lowerName containsString:@"media"] || [lowerName containsString:@"movie"]) {
+            defaultIndex = 1; // Video
+        } else if ([lowerName containsString:@"browser"] || [lowerName containsString:@"web"] || [lowerName containsString:@"safari"] || [lowerName containsString:@"chrome"]) {
+            defaultIndex = 2; // Browser
+        }
+    }
 
     // Segment Control
     self.segmentControl = [[UISegmentedControl alloc] initWithItems:@[
         L(@"Cast", @"投屏"),
         L(@"Video", @"视频"),
         L(@"Browser", @"浏览器"),
-        L(@"IPTV", @"IPTV")
+        L(@"IPTV", @"IPTV"),
+        L(@"PDF", @"PDF")
     ]];
-    self.segmentControl.selectedSegmentIndex = 3; // Default: IPTV
+    self.segmentControl.selectedSegmentIndex = defaultIndex;
     [self.segmentControl addTarget:self action:@selector(segmentChanged:) forControlEvents:UIControlEventValueChanged];
     self.segmentControl.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.segmentControl];
@@ -66,9 +81,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
     // Build child controllers
     [self setupChildControllers];
     
-    // Show default (IPTV)
+    // Show default resolved segment index
     self.currentIndex = -1;
-    [self switchToIndex:3];
+    [self switchToIndex:defaultIndex];
+    
+    [self applyThemeStyle];
 }
 
 - (void)setupChildControllers {
@@ -93,7 +110,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
     iptvVC.sendActionBlock = self.sendActionBlock;
     iptvVC.checkConnectionBlock = self.checkConnectionBlock;
     
-    self.childControllers = @[castVC, videoVC, browserVC, iptvVC];
+    // 5. PDF
+    PDFControlViewController *pdfVC = [[PDFControlViewController alloc] init];
+    pdfVC.sendPayloadBlock = self.sendPayloadBlock;
+    
+    self.childControllers = @[castVC, videoVC, browserVC, iptvVC, pdfVC];
 }
 
 - (void)switchToIndex:(NSInteger)index {
@@ -121,6 +142,21 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)segmentChanged:(UISegmentedControl *)seg {
     [self switchToIndex:seg.selectedSegmentIndex];
+}
+
+- (void)applyThemeStyle {
+    [super applyThemeStyle];
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    
+    if (self.segmentControl) {
+        self.segmentControl.selectedSegmentTintColor = palette.primaryColor;
+    }
+    
+    for (UIViewController *child in self.childControllers) {
+        if ([child isKindOfClass:[HSBBaseViewController class]]) {
+            [(HSBBaseViewController *)child applyThemeStyle];
+        }
+    }
 }
 
 - (void)dismissSelf {

@@ -3,11 +3,11 @@
 //  HSBWatchCompanion
 //
 
-#import <UIKit/UIKit.h>
+#import "HSBBaseViewController.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface IPTVRemoteViewController : UIViewController
+@interface IPTVRemoteViewController : HSBBaseViewController
 
 @property (nonatomic, copy) void (^sendPayloadBlock)(NSDictionary *payload);
 @property (nonatomic, copy) void (^sendActionBlock)(NSString *actionString);

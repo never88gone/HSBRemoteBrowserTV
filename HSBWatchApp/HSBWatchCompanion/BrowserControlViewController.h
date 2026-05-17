@@ -3,12 +3,12 @@
 //  HSBWatchCompanion
 //
 
-#import <UIKit/UIKit.h>
+#import "HSBBaseViewController.h"
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface BrowserControlViewController : UIViewController
+@interface BrowserControlViewController : HSBBaseViewController
 
 // Block to send complex structured JSON event payloads
 @property (nonatomic, copy) void (^sendPayloadBlock)(NSDictionary *payload);

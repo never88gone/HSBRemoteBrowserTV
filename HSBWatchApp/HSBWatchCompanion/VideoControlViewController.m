@@ -26,24 +26,25 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
     self.isPlaying = YES;
     
     // --- Play / Pause ---
     self.playPauseBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     UIImageSymbolConfiguration *bigConfig = [UIImageSymbolConfiguration configurationWithPointSize:48 weight:UIImageSymbolWeightBold];
     [self.playPauseBtn setImage:[UIImage systemImageNamed:@"pause.circle.fill" withConfiguration:bigConfig] forState:UIControlStateNormal];
-    self.playPauseBtn.tintColor = [UIColor systemBlueColor];
+    self.playPauseBtn.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
     [self.playPauseBtn addTarget:self action:@selector(togglePlayPause) forControlEvents:UIControlEventTouchUpInside];
     self.playPauseBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.playPauseBtn];
     
     // --- Backward 10s ---
     UIButton *backBtn = [self createControlButtonWithIcon:@"gobackward.10" action:@selector(seekBackward)];
+    backBtn.tintColor = [UIColor whiteColor];
     [self.view addSubview:backBtn];
     
     // --- Forward 10s ---
     UIButton *fwdBtn = [self createControlButtonWithIcon:@"goforward.10" action:@selector(seekForward)];
+    fwdBtn.tintColor = [UIColor whiteColor];
     [self.view addSubview:fwdBtn];
     
     // --- Progress Slider ---
@@ -51,7 +52,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.progressSlider.minimumValue = 0;
     self.progressSlider.maximumValue = 1;
     self.progressSlider.value = 0;
-    self.progressSlider.tintColor = [UIColor systemBlueColor];
+    self.progressSlider.minimumTrackTintColor = [HSBThemeManager shared].currentPalette.primaryColor;
     [self.progressSlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
     [self.progressSlider addTarget:self action:@selector(sliderEnded:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
     self.progressSlider.translatesAutoresizingMaskIntoConstraints = NO;
@@ -61,14 +62,14 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.currentTimeLabel = [[UILabel alloc] init];
     self.currentTimeLabel.text = @"00:00";
     self.currentTimeLabel.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];
-    self.currentTimeLabel.textColor = [UIColor secondaryLabelColor];
+    self.currentTimeLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     self.currentTimeLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.currentTimeLabel];
     
     self.durationLabel = [[UILabel alloc] init];
     self.durationLabel.text = @"--:--";
     self.durationLabel.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];
-    self.durationLabel.textColor = [UIColor secondaryLabelColor];
+    self.durationLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     self.durationLabel.textAlignment = NSTextAlignmentRight;
     self.durationLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.durationLabel];
@@ -77,12 +78,13 @@ static inline NSString * L(NSString *en, NSString *zh) {
     UILabel *rateTitle = [[UILabel alloc] init];
     rateTitle.text = L(@"Playback Speed", @"播放速率");
     rateTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-    rateTitle.textColor = [UIColor secondaryLabelColor];
+    rateTitle.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     rateTitle.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:rateTitle];
     
     self.rateControl = [[UISegmentedControl alloc] initWithItems:@[@"0.5x", @"0.75x", @"1x", @"1.25x", @"1.5x", @"2x"]];
     self.rateControl.selectedSegmentIndex = 2; // 1x default
+    self.rateControl.selectedSegmentTintColor = [HSBThemeManager shared].currentPalette.primaryColor;
     [self.rateControl addTarget:self action:@selector(rateChanged:) forControlEvents:UIControlEventValueChanged];
     self.rateControl.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.rateControl];
@@ -189,6 +191,14 @@ static inline NSString * L(NSString *en, NSString *zh) {
     if (self.sendPayloadBlock) {
         self.sendPayloadBlock(@{@"action": @"set_rate", @"value": rate});
     }
+}
+
+- (void)applyThemeStyle {
+    [super applyThemeStyle];
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    self.playPauseBtn.tintColor = palette.primaryColor;
+    self.progressSlider.minimumTrackTintColor = palette.primaryColor;
+    self.rateControl.selectedSegmentTintColor = palette.primaryColor;
 }
 
 @end

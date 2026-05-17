@@ -5,10 +5,9 @@
 //  Created by never88gone on 2026/4/1.
 //
 
-#import <UIKit/UIKit.h>
+#import "HSBBaseViewController.h"
 
-@interface ViewController : UIViewController
-
+@interface ViewController : HSBBaseViewController
 
 @end
 

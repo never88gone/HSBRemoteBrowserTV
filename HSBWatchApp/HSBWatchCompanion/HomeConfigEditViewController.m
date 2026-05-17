@@ -18,7 +18,6 @@ static NSString * L_Local(NSString *en, NSString *zh) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = L_Local(@"Edit Home Data", @"编辑首页数据");
-    self.view.backgroundColor = [UIColor systemGroupedBackgroundColor];
     
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:L_Local(@"Cancel", @"取消") style:UIBarButtonItemStylePlain target:self action:@selector(cancel)];
     
@@ -35,6 +34,17 @@ static NSString * L_Local(NSString *en, NSString *zh) {
     _tableView.dataSource = self;
     [_tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"ItemCell"];
     [self.view addSubview:_tableView];
+    
+    [self applyThemeStyle];
+}
+
+- (void)applyThemeStyle {
+    [super applyThemeStyle];
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    
+    self.tableView.backgroundColor = palette.backgroundColor;
+    self.navigationController.navigationBar.tintColor = palette.primaryColor;
+    [self.tableView reloadData];
 }
 
 - (void)parseInitialJson {
@@ -116,16 +126,23 @@ static NSString * L_Local(NSString *en, NSString *zh) {
     cell.detailTextLabel.text = @"";
     cell.imageView.image = nil;
     
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    cell.backgroundColor = palette.cardBgColor;
+    
+    UIView *selectedBg = [[UIView alloc] init];
+    selectedBg.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.15];
+    cell.selectedBackgroundView = selectedBg;
+    
     NSArray *items = self.dataArray[indexPath.section][@"items"];
     if (indexPath.row == items.count) {
         cell.textLabel.text = L_Local(@"➕ Add Item", @"➕ 添加新项");
-        cell.textLabel.textColor = [UIColor systemBlueColor];
+        cell.textLabel.textColor = palette.primaryColor;
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
         cell.accessoryType = UITableViewCellAccessoryNone;
     } else {
         NSDictionary *item = items[indexPath.row];
         cell.textLabel.text = item[@"webTitle"];
-        cell.textLabel.textColor = [UIColor labelColor];
+        cell.textLabel.textColor = [UIColor whiteColor];
         cell.textLabel.font = [UIFont systemFontOfSize:16];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
@@ -200,7 +217,7 @@ static NSString * L_Local(NSString *en, NSString *zh) {
     
     UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(20, 10, tableView.bounds.size.width - 80, 20)];
     label.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    label.textColor = [UIColor secondaryLabelColor];
+    label.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     label.text = [self tableView:tableView titleForHeaderInSection:section];
     [headerView addSubview:label];
     

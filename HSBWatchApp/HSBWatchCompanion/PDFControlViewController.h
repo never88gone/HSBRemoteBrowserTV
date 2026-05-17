@@ -1,5 +1,5 @@
 //
-//  VideoControlViewController.h
+//  PDFControlViewController.h
 //  HSBWatchCompanion
 //
 
@@ -7,8 +7,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface VideoControlViewController : HSBBaseViewController
+@interface PDFControlViewController : HSBBaseViewController
+
 @property (nonatomic, copy) void (^sendPayloadBlock)(NSDictionary *payload);
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -3,11 +3,13 @@
 //  HSBWatchCompanion
 //
 
-#import <UIKit/UIKit.h>
+#import "HSBBaseViewController.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface TVDetailViewController : UIViewController
+@interface TVDetailViewController : HSBBaseViewController
+
+@property (nonatomic, copy) NSString *deviceName;
 
 @property (nonatomic, copy) void (^sendPayloadBlock)(NSDictionary *payload);
 @property (nonatomic, copy) void (^sendActionBlock)(NSString *actionString);

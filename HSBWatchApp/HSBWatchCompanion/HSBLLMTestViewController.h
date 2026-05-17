@@ -1,8 +1,8 @@
-#import <UIKit/UIKit.h>
+#import "HSBBaseViewController.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface SettingsViewController : UITableViewController
+@interface HSBLLMTestViewController : HSBBaseViewController
 
 @property (nonatomic, copy, nullable) void (^sendPayloadBlock)(NSDictionary *payload);
 
