@@ -32,33 +32,8 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [super viewDidLoad];
     self.title = L(@"TV Control Center", @"电视遥控中枢");
     
-    // 根据连接的设备名智能判断默认展示不同的分页面 Tab
-    NSInteger defaultIndex = 0; // 默认投屏 (Cast)
-    if (self.deviceName && self.deviceName.length > 0) {
-        NSString *lowerName = [self.deviceName lowercaseString];
-        if ([lowerName containsString:@"iptv"]) {
-            defaultIndex = 3; // IPTV
-        } else if ([lowerName containsString:@"pdf"] || [lowerName containsString:@"reader"] || [lowerName containsString:@"doc"]) {
-            defaultIndex = 4; // PDF
-        } else if ([lowerName containsString:@"video"] || [lowerName containsString:@"player"] || [lowerName containsString:@"media"] || [lowerName containsString:@"movie"]) {
-            defaultIndex = 1; // Video
-        } else if ([lowerName containsString:@"browser"] || [lowerName containsString:@"web"] || [lowerName containsString:@"safari"] || [lowerName containsString:@"chrome"]) {
-            defaultIndex = 2; // Browser
-        }
-    }
-
-    // Segment Control
-    self.segmentControl = [[UISegmentedControl alloc] initWithItems:@[
-        L(@"Cast", @"投屏"),
-        L(@"Video", @"视频"),
-        L(@"Browser", @"浏览器"),
-        L(@"IPTV", @"IPTV"),
-        L(@"PDF", @"PDF")
-    ]];
-    self.segmentControl.selectedSegmentIndex = defaultIndex;
-    [self.segmentControl addTarget:self action:@selector(segmentChanged:) forControlEvents:UIControlEventValueChanged];
-    self.segmentControl.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:self.segmentControl];
+    // 动态构建子控制器和 Segment Control 选项卡
+    [self setupChildControllersAndItems];
     
     // Container View
     self.containerView = [[UIView alloc] init];
@@ -78,17 +53,16 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [self.containerView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
     
-    // Build child controllers
-    [self setupChildControllers];
-    
-    // Show default resolved segment index
+    // 默认展示动态加载出的第 0 个选项卡页面
     self.currentIndex = -1;
-    [self switchToIndex:defaultIndex];
+    [self switchToIndex:0];
     
     [self applyThemeStyle];
 }
 
-- (void)setupChildControllers {
+- (void)setupChildControllersAndItems {
+    NSString *lowerName = self.deviceName ? [self.deviceName lowercaseString] : @"";
+    
     // 1. Cast
     CastViewController *castVC = [[CastViewController alloc] init];
     castVC.sendPayloadBlock = self.sendPayloadBlock;
@@ -113,8 +87,76 @@ static inline NSString * L(NSString *en, NSString *zh) {
     // 5. PDF
     PDFControlViewController *pdfVC = [[PDFControlViewController alloc] init];
     pdfVC.sendPayloadBlock = self.sendPayloadBlock;
+
+    NSMutableArray<NSString *> *items = [NSMutableArray array];
+    NSMutableArray<UIViewController *> *controllers = [NSMutableArray array];
+
+    if ([lowerName containsString:@"pdf"] || [lowerName containsString:@"doc"] || [lowerName containsString:@"reader"] || [lowerName containsString:@"糖葫芦pdf"]) {
+        // 糖葫芦PDF：显示 PDF、视频、浏览器
+        [items addObject:L(@"PDF", @"PDF")];
+        [controllers addObject:pdfVC];
+        
+        [items addObject:L(@"Video", @"视频")];
+        [controllers addObject:videoVC];
+        
+        [items addObject:L(@"Browser", @"浏览器")];
+        [controllers addObject:browserVC];
+        
+    } else if ([lowerName containsString:@"cast"] || [lowerName containsString:@"投屏"] || [lowerName containsString:@"糖葫芦投屏"]) {
+        // 糖葫芦投屏：显示 投屏、视频、浏览器
+        [items addObject:L(@"Cast", @"投屏")];
+        [controllers addObject:castVC];
+        
+        [items addObject:L(@"Video", @"视频")];
+        [controllers addObject:videoVC];
+        
+        [items addObject:L(@"Browser", @"浏览器")];
+        [controllers addObject:browserVC];
+        
+    } else if ([lowerName containsString:@"browser"] || [lowerName containsString:@"web"] || [lowerName containsString:@"safari"] || [lowerName containsString:@"chrome"] || [lowerName containsString:@"浏览器"] || [lowerName containsString:@"糖葫芦浏览器"]) {
+        // 糖葫芦浏览器：显示 视频、浏览器
+        [items addObject:L(@"Video", @"视频")];
+        [controllers addObject:videoVC];
+        
+        [items addObject:L(@"Browser", @"浏览器")];
+        [controllers addObject:browserVC];
+        
+    } else if ([lowerName containsString:@"tv"] || [lowerName containsString:@"iptv"] || [lowerName containsString:@"糖葫芦tv"] || [lowerName containsString:@"糖葫芦"]) {
+        // 糖葫芦TV：显示 视频、浏览器、IPTV
+        [items addObject:L(@"Video", @"视频")];
+        [controllers addObject:videoVC];
+        
+        [items addObject:L(@"Browser", @"浏览器")];
+        [controllers addObject:browserVC];
+        
+        [items addObject:L(@"IPTV", @"IPTV")];
+        [controllers addObject:iptvVC];
+        
+    } else {
+        // 兜底（Fallback）：全部显示
+        [items addObject:L(@"Cast", @"投屏")];
+        [controllers addObject:castVC];
+        
+        [items addObject:L(@"Video", @"视频")];
+        [controllers addObject:videoVC];
+        
+        [items addObject:L(@"Browser", @"浏览器")];
+        [controllers addObject:browserVC];
+        
+        [items addObject:L(@"IPTV", @"IPTV")];
+        [controllers addObject:iptvVC];
+        
+        [items addObject:L(@"PDF", @"PDF")];
+        [controllers addObject:pdfVC];
+    }
+
+    self.childControllers = [controllers copy];
     
-    self.childControllers = @[castVC, videoVC, browserVC, iptvVC, pdfVC];
+    self.segmentControl = [[UISegmentedControl alloc] initWithItems:items];
+    self.segmentControl.selectedSegmentIndex = 0;
+    [self.segmentControl addTarget:self action:@selector(segmentChanged:) forControlEvents:UIControlEventValueChanged];
+    self.segmentControl.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.segmentControl];
 }
 
 - (void)switchToIndex:(NSInteger)index {
@@ -150,6 +192,10 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     if (self.segmentControl) {
         self.segmentControl.selectedSegmentTintColor = palette.primaryColor;
+        if (@available(iOS 13.0, *)) {
+            [self.segmentControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.6]} forState:UIControlStateNormal];
+            [self.segmentControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [UIColor whiteColor]} forState:UIControlStateSelected];
+        }
     }
     
     for (UIViewController *child in self.childControllers) {

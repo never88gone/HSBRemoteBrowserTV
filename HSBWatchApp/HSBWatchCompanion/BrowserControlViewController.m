@@ -78,6 +78,12 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) UILabel *trackpadStatusLabel; // 当前操作状态提示
 @property (nonatomic, strong) UITextField *urlTextField; // URL 输入框
 
+// 视频扩展控件
+@property (nonatomic, strong) UIButton *openPlayerBtn;
+@property (nonatomic, strong) UIButton *closePlayerBtn;
+@property (nonatomic, strong) UISlider *videoSlider;
+@property (nonatomic, strong) UILabel *videoPercentLabel;
+
 // 节流处理
 @property (nonatomic, assign) CFTimeInterval lastPanSendTime;  // 单指滑动节流
 @property (nonatomic, assign) CFTimeInterval lastScrollSendTime; // 双指滚动节流
@@ -117,13 +123,7 @@ static NSString * L(NSString *en, NSString *zh) {
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [headerView addSubview:titleLabel];
     
-    // Close button
-    UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [closeBtn setImage:[UIImage systemImageNamed:@"xmark.circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:24]] forState:UIControlStateNormal];
-    closeBtn.tintColor = [UIColor tertiaryLabelColor];
-    [closeBtn addTarget:self action:@selector(dismissAction) forControlEvents:UIControlEventTouchUpInside];
-    closeBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [headerView addSubview:closeBtn];
+
     
     // AI Assistant Button
     UIButton *aiBtn = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -250,6 +250,88 @@ static NSString * L(NSString *en, NSString *zh) {
     btnStack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:btnStack];
     
+    // Video Control Panel Stack
+    UIStackView *videoPanel = [[UIStackView alloc] init];
+    videoPanel.axis = UILayoutConstraintAxisVertical;
+    videoPanel.spacing = 12;
+    videoPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:videoPanel];
+    
+    // 1. Player Button Row (Open & Close in one row)
+    UIStackView *playerBtnRow = [[UIStackView alloc] init];
+    playerBtnRow.axis = UILayoutConstraintAxisHorizontal;
+    playerBtnRow.distribution = UIStackViewDistributionFillEqually;
+    playerBtnRow.spacing = 12;
+    playerBtnRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [videoPanel addArrangedSubview:playerBtnRow];
+    
+    self.openPlayerBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.openPlayerBtn.backgroundColor = [[HSBThemeManager shared].currentPalette.primaryColor colorWithAlphaComponent:0.15];
+    self.openPlayerBtn.layer.cornerRadius = 12;
+    [self.openPlayerBtn setTitle:L(@"Open Video Player", @"打开播放器") forState:UIControlStateNormal];
+    [self.openPlayerBtn setTitleColor:[HSBThemeManager shared].currentPalette.primaryColor forState:UIControlStateNormal];
+    [self.openPlayerBtn setImage:[UIImage systemImageNamed:@"play.rectangle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightBold]] forState:UIControlStateNormal];
+    self.openPlayerBtn.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    self.openPlayerBtn.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
+    
+    self.openPlayerBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, 0);
+    self.openPlayerBtn.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 8);
+    self.openPlayerBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.openPlayerBtn.heightAnchor constraintEqualToConstant:46].active = YES;
+    [self.openPlayerBtn addTarget:self action:@selector(openPlayerAction) forControlEvents:UIControlEventTouchUpInside];
+    [playerBtnRow addArrangedSubview:self.openPlayerBtn];
+    
+    self.closePlayerBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.closePlayerBtn.backgroundColor = [[HSBThemeManager shared].currentPalette.primaryColor colorWithAlphaComponent:0.15];
+    self.closePlayerBtn.layer.cornerRadius = 12;
+    [self.closePlayerBtn setTitle:L(@"Close Player", @"关闭播放器") forState:UIControlStateNormal];
+    [self.closePlayerBtn setTitleColor:[HSBThemeManager shared].currentPalette.primaryColor forState:UIControlStateNormal];
+    [self.closePlayerBtn setImage:[UIImage systemImageNamed:@"xmark.rectangle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightBold]] forState:UIControlStateNormal];
+    self.closePlayerBtn.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    self.closePlayerBtn.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
+    
+    self.closePlayerBtn.titleEdgeInsets = UIEdgeInsetsMake(0, 8, 0, 0);
+    self.closePlayerBtn.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 8);
+    self.closePlayerBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.closePlayerBtn.heightAnchor constraintEqualToConstant:46].active = YES;
+    [self.closePlayerBtn addTarget:self action:@selector(closePlayerAction) forControlEvents:UIControlEventTouchUpInside];
+    [playerBtnRow addArrangedSubview:self.closePlayerBtn];
+    
+    // 2. Video Slider Row
+    UIStackView *sliderRow = [[UIStackView alloc] init];
+    sliderRow.axis = UILayoutConstraintAxisHorizontal;
+    sliderRow.spacing = 10;
+    sliderRow.alignment = UIStackViewAlignmentCenter;
+    sliderRow.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    UIImageView *sliderIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"video.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightMedium]]];
+    sliderIcon.tintColor = [UIColor secondaryLabelColor];
+    sliderIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    [sliderIcon.widthAnchor constraintEqualToConstant:20].active = YES;
+    [sliderIcon.heightAnchor constraintEqualToConstant:20].active = YES;
+    [sliderRow addArrangedSubview:sliderIcon];
+    
+    self.videoSlider = [[UISlider alloc] init];
+    self.videoSlider.minimumValue = 0.0;
+    self.videoSlider.maximumValue = 1.0;
+    self.videoSlider.value = 0.5;
+    self.videoSlider.minimumTrackTintColor = [HSBThemeManager shared].currentPalette.primaryColor;
+    [self.videoSlider addTarget:self action:@selector(videoSliderChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.videoSlider addTarget:self action:@selector(videoSliderEnded:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
+    self.videoSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    [sliderRow addArrangedSubview:self.videoSlider];
+    
+    self.videoPercentLabel = [[UILabel alloc] init];
+    self.videoPercentLabel.text = @"50%";
+    self.videoPercentLabel.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];
+    self.videoPercentLabel.textColor = [UIColor secondaryLabelColor];
+    self.videoPercentLabel.textAlignment = NSTextAlignmentRight;
+    self.videoPercentLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.videoPercentLabel.widthAnchor constraintEqualToConstant:40].active = YES;
+    [sliderRow addArrangedSubview:self.videoPercentLabel];
+    
+    [videoPanel addArrangedSubview:sliderRow];
+    
     [NSLayoutConstraint activateConstraints:@[
         // Header
         [headerView.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:10],
@@ -265,8 +347,7 @@ static NSString * L(NSString *en, NSString *zh) {
         [titleLabel.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor constant:4],
         [titleLabel.centerXAnchor constraintEqualToAnchor:headerView.centerXAnchor],
         
-        [closeBtn.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor constant:4],
-        [closeBtn.trailingAnchor constraintEqualToAnchor:headerView.trailingAnchor constant:-20],
+
         
         [aiBtn.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor constant:4],
         [aiBtn.leadingAnchor constraintEqualToAnchor:headerView.leadingAnchor constant:20],
@@ -289,7 +370,7 @@ static NSString * L(NSString *en, NSString *zh) {
         // URL Bar
         [urlBarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
         [urlBarContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [urlBarContainer.bottomAnchor constraintEqualToAnchor:btnStack.topAnchor constant:-12],
+        [urlBarContainer.bottomAnchor constraintEqualToAnchor:videoPanel.topAnchor constant:-16],
         [urlBarContainer.heightAnchor constraintEqualToConstant:48],
         
         [urlIcon.leadingAnchor constraintEqualToAnchor:urlBarContainer.leadingAnchor constant:14],
@@ -305,6 +386,11 @@ static NSString * L(NSString *en, NSString *zh) {
         [goBtn.centerYAnchor constraintEqualToAnchor:urlBarContainer.centerYAnchor],
         [goBtn.widthAnchor constraintEqualToConstant:32],
         [goBtn.heightAnchor constraintEqualToConstant:32],
+        
+        // Video Panel
+        [videoPanel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [videoPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [videoPanel.bottomAnchor constraintEqualToAnchor:btnStack.topAnchor constant:-16],
         
         // Button stack
         [btnStack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
@@ -489,6 +575,62 @@ static NSString * L(NSString *en, NSString *zh) {
     UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [hap impactOccurred];
     [self sendActionToTV:@"page_home"];
+}
+
+- (void)openPlayerAction {
+    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [fb impactOccurred];
+    
+    self.trackpadStatusLabel.text = L(@"▶️ Opening Player...", @"▶️ 正在打开播放器...");
+    
+    [self sendDirectPayload:@{@"action": @"open_player"}];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
+    });
+}
+
+- (void)closePlayerAction {
+    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [fb impactOccurred];
+    
+    self.trackpadStatusLabel.text = L(@"⏹️ Closing Player...", @"⏹️ 正在关闭播放器...");
+    
+    [self sendDirectPayload:@{@"action": @"close_player"}];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
+    });
+}
+
+- (void)videoSliderChanged:(UISlider *)slider {
+    self.videoPercentLabel.text = [NSString stringWithFormat:@"%.0f%%", slider.value * 100];
+}
+
+- (void)videoSliderEnded:(UISlider *)slider {
+    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [fb impactOccurred];
+    
+    [self sendDirectPayload:@{@"action": @"seek_percent", @"value": @(slider.value)}];
+}
+
+- (void)applyThemeStyle {
+    [super applyThemeStyle];
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    
+    if (self.openPlayerBtn) {
+        self.openPlayerBtn.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.15];
+        [self.openPlayerBtn setTitleColor:palette.primaryColor forState:UIControlStateNormal];
+        [self.openPlayerBtn setTintColor:palette.primaryColor];
+    }
+    if (self.closePlayerBtn) {
+        self.closePlayerBtn.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.15];
+        [self.closePlayerBtn setTitleColor:palette.primaryColor forState:UIControlStateNormal];
+        [self.closePlayerBtn setTintColor:palette.primaryColor];
+    }
+    if (self.videoSlider) {
+        self.videoSlider.minimumTrackTintColor = palette.primaryColor;
+    }
 }
 
 #pragma mark - Gestures

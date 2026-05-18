@@ -151,7 +151,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.playPauseBtn setImage:[UIImage systemImageNamed:icon withConfiguration:bigConfig] forState:UIControlStateNormal];
     
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": self.isPlaying ? @"video_play" : @"video_pause"});
+        self.sendPayloadBlock(@{@"action": self.isPlaying ? @"player_play" : @"player_pause"});
     }
 }
 
@@ -159,7 +159,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [fb impactOccurred];
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"seek_relative", @"value": @(-10)});
+        self.sendPayloadBlock(@{@"action": @"player_seek_relative", @"value": @(-10)});
     }
 }
 
@@ -167,7 +167,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [fb impactOccurred];
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"seek_relative", @"value": @(10)});
+        self.sendPayloadBlock(@{@"action": @"player_seek_relative", @"value": @(10)});
     }
 }
 
@@ -177,7 +177,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)sliderEnded:(UISlider *)slider {
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"seek_percent", @"value": @(slider.value)});
+        self.sendPayloadBlock(@{@"action": @"player_seek_percent", @"value": @(slider.value)});
     }
 }
 
@@ -189,7 +189,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [fb impactOccurred];
     
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"set_rate", @"value": rate});
+        self.sendPayloadBlock(@{@"action": @"player_set_rate", @"value": rate});
     }
 }
 
@@ -199,6 +199,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.playPauseBtn.tintColor = palette.primaryColor;
     self.progressSlider.minimumTrackTintColor = palette.primaryColor;
     self.rateControl.selectedSegmentTintColor = palette.primaryColor;
+    
+    if (@available(iOS 13.0, *)) {
+        [self.rateControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.6]} forState:UIControlStateNormal];
+        [self.rateControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [UIColor whiteColor]} forState:UIControlStateSelected];
+    }
 }
 
 @end

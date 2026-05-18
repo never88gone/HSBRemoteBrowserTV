@@ -39,6 +39,10 @@
 }
 
 - (void)applyThemeStyle {
+    if (@available(iOS 13.0, *)) {
+        self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    }
+    
     HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
     
     self.view.backgroundColor = palette.backgroundColor;
