@@ -65,9 +65,19 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+          
+          # 解析 iOS 主 App Profile UUID 并重命名拷贝
+          security cms -D -i "$PP_PATH" > $RUNNER_TEMP/main_pp.plist
+          MAIN_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/main_pp.plist)
+          echo "Main App Provisioning Profile UUID: $MAIN_UUID"
+          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$MAIN_UUID.mobileprovision"
+          
+          # 解析 Watch App Profile UUID 并重命名拷贝
           if [ -f "$WATCH_PP_PATH" ]; then
-            cp $WATCH_PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+            security cms -D -i "$WATCH_PP_PATH" > $RUNNER_TEMP/watch_pp.plist
+            WATCH_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/watch_pp.plist)
+            echo "Watch App Provisioning Profile UUID: $WATCH_UUID"
+            cp "$WATCH_PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$WATCH_UUID.mobileprovision"
           fi
 
       - name: Set up Ruby and Bundler
