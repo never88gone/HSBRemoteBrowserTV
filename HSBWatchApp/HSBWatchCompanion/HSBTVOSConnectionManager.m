@@ -191,7 +191,7 @@ NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdated
                         NSString *text = json[@"text"];
                         if (requestId && text.length > 0) {
                             NSString *systemPrompt = [HSBLocalLLMManager translationSystemPrompt];
-                            [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt completion:^(NSString * _Nullable response, BOOL isFinished) {
+                            [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt type:1 completion:^(NSString * _Nullable response, BOOL isFinished) {
                                 if (isFinished) {
                                     [weakSelf sendPayload:@{
                                         @"action": @"translation_result",
@@ -216,7 +216,7 @@ NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdated
                                     dispatch_group_enter(group);
                                     
                                     NSString *systemPrompt = [HSBLocalLLMManager translationSystemPrompt];
-                                    [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt completion:^(NSString * _Nullable response, BOOL isFinished) {
+                                    [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt type:1 completion:^(NSString * _Nullable response, BOOL isFinished) {
                                         if (isFinished) {
                                             if (response) {
                                                 translationMap[blockId] = response;

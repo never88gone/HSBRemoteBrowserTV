@@ -1,0 +1,5 @@
+app_identifier("com.never88gone.thlbrowserios") # iOS App 的 Bundle Identifier
+apple_id(ENV["APPLE_ID"]) # 您的 Apple ID 开发者账号
+
+# 对于 TestFlight 上传，我们将使用 App Store Connect API Key (环境 Secrets)，
+# 该 Key 会覆盖此文件中配置的 Apple ID 交互式登录凭据。

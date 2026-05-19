@@ -58,8 +58,22 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [super viewDidLoad];
     self.title = L(@"AI Model Testing", @"AI 模型测试");
     
-    self.selectedSourceLang = @"自动识别";
-    self.selectedTargetLang = @"英文";
+    NSDictionary *reverseMap = @{
+        @"Auto": @"自动识别",
+        @"Chinese": @"中文",
+        @"English": @"英文",
+        @"Japanese": @"日文",
+        @"Korean": @"韩文",
+        @"French": @"法文",
+        @"German": @"德文",
+        @"Spanish": @"西班牙文",
+        @"Russian": @"俄文"
+    };
+    NSString *sourceKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
+    NSString *targetKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
+    
+    self.selectedSourceLang = reverseMap[sourceKey] ?: @"自动识别";
+    self.selectedTargetLang = reverseMap[targetKey] ?: @"中文";
     
     [self setupUI];
     [self updateStatusCard];
@@ -533,13 +547,29 @@ static inline NSString * L(NSString *en, NSString *zh) {
     for (NSString *lang in langs) {
         __weak typeof(self) weakSelf = self;
         UIAction *action = [UIAction actionWithTitle:lang image:nil identifier:nil handler:^(__kindof UIAction * _Nonnull action) {
+            NSDictionary *map = @{
+                @"自动识别": @"Auto",
+                @"中文": @"Chinese",
+                @"英文": @"English",
+                @"日文": @"Japanese",
+                @"韩文": @"Korean",
+                @"法文": @"French",
+                @"德文": @"German",
+                @"西班牙文": @"Spanish",
+                @"俄文": @"Russian"
+            };
+            NSString *key = map[lang] ?: lang;
+            
             if (isSource) {
                 weakSelf.selectedSourceLang = lang;
                 [btn setTitle:[NSString stringWithFormat:@"源: %@", lang] forState:UIControlStateNormal];
+                [[NSUserDefaults standardUserDefaults] setObject:key forKey:@"HSBTranslationSourceLanguage"];
             } else {
                 weakSelf.selectedTargetLang = lang;
                 [btn setTitle:[NSString stringWithFormat:@"目标: %@", lang] forState:UIControlStateNormal];
+                [[NSUserDefaults standardUserDefaults] setObject:key forKey:@"HSBTranslationTargetLanguage"];
             }
+            [[NSUserDefaults standardUserDefaults] synchronize];
         }];
         [actions addObject:action];
     }
@@ -595,7 +625,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     }
     
     __weak typeof(self) weakSelf = self;
-    [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt completion:^(NSString * _Nonnull response, BOOL isFinished) {
+    [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt type:type completion:^(NSString * _Nonnull response, BOOL isFinished) {
         dispatch_async(dispatch_get_main_queue(), ^{
             // 无论是否结束，都实时更新文本和展示结果卡片
             weakSelf.resultCard.hidden = NO;

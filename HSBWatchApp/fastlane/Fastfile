@@ -1,0 +1,71 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload iOS Companion app to TestFlight"
+  lane :beta do
+    # 1. 从环境变量获取 App Store Connect API Key (解决 2FA 问题)
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_KEY_ID"] || "",
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"] || "",
+      key_content: ENV["APP_STORE_CONNECT_KEY_CONTENT"] || "",
+      in_house: false
+    )
+
+    # 2. 从 AppVersion.xcconfig 动态获取版本与构建号
+    version = ""
+    build_num = ""
+    begin
+      # 路径解析：相对于 Fastfile 所在目录的上级目录中的配置文件
+      xcconfig_path = File.expand_path("../HSBWatchCompanion/AppVersion.xcconfig", __FILE__)
+      if File.exist?(xcconfig_path)
+        File.foreach(xcconfig_path) do |line|
+          if line =~ /MARKETING_VERSION\s*=\s*(.+)/
+            version = $1.strip
+          end
+          if line =~ /GITHUB_VERSION\s*=\s*(.+)/
+            build_num = $1.strip
+          end
+        end
+      end
+    rescue => e
+      UI.important("Failed to read AppVersion.xcconfig: #{e.message}")
+    end
+
+    UI.message("📦 Starting Build for HSBWatchCompanion...")
+    UI.message("💡 Marketing Version: #{version}")
+    UI.message("💡 Build Number (GITHUB_VERSION): #{build_num}")
+
+    # 3. 将 GITHUB_VERSION 同步设置到 Xcode 工程中的 Build Version
+    if !build_num.empty?
+      increment_build_number(
+        build_number: build_num,
+        xcodeproj: "./HSBWatchApp.xcodeproj"
+      )
+    end
+
+    # 4. 执行 IPA 编译打包
+    build_app(
+      scheme: "HSBWatchCompanion",
+      project: "./HSBWatchApp.xcodeproj",
+      output_directory: "./build",
+      output_name: "HSBWatchCompanion.ipa",
+      export_method: "app-store",
+      export_options: {
+        method: "app-store",
+        compileBitcode: false
+      }
+    )
+
+    UI.message("🚀 Uploading IPA to TestFlight...")
+
+    # 5. 上传包到 App Store Connect TestFlight
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: "./build/HSBWatchCompanion.ipa",
+      skip_waiting_for_build_processing: true, # 不等待处理完成以缩短云端运行时长
+      skip_submission: true
+    )
+    
+    UI.success("🎉 TestFlight upload completed successfully!")
+  end
+end

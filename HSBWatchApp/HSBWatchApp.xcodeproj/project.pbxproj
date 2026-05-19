@@ -221,8 +221,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				3803AE412F0D10490047BF4A /* HSBWatchApp Watch App */,
 				382CD6EE2F7CDE640015A355 /* HSBWatchCompanion */,
+				3803AE412F0D10490047BF4A /* HSBWatchApp Watch App */,
 			);
 		};
 /* End PBXProject section */

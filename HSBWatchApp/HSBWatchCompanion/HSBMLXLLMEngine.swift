@@ -1,4 +1,9 @@
 import Foundation
+import UIKit
+import SwiftUI
+#if canImport(Translation)
+import Translation
+#endif
 import MLX
 import MLXLLM
 import MLXLMCommon
@@ -48,12 +53,7 @@ public class HSBMLXLLMEngine: NSObject {
                 self.accumulatedText = "【🚀 启动 Apple MLX 原生神经网络物理下载与编译模块】\n"
                 callback(self.accumulatedText, 0.0)
                 
-                let repoName: String
-                if modelId.contains("gemma") {
-                    repoName = "mlx-community/gemma-2b-it-4bit"
-                } else {
-                    repoName = "mlx-community/Qwen1.5-0.5B-Chat-4bit"
-                }
+                let repoName = getRepoName(from: modelId)
                 
                 let config = ModelConfiguration(id: repoName)
                 MLX.Memory.cacheLimit = 20 * 1024 * 1024
@@ -82,7 +82,7 @@ public class HSBMLXLLMEngine: NSObject {
                 }
                 
                 // 2. 物理下载阶段：读取用户在【AI模型中心】自定义指定的下载地址/镜像源 Host 基准值进行下载
-                let customHost = self.getCustomHubHost()
+                let customHost = self.getCustomHubHost(for: modelId)
                 self.accumulatedText += "正在桥接自定义镜像源 [\(customHost)] 拉取物理大模型张量...\n"
                 callback(self.accumulatedText, 0.1)
                 
@@ -112,8 +112,11 @@ public class HSBMLXLLMEngine: NSObject {
         }
     }
     
-    /// 获取用户设定的自定义 Host，默认 fallback 到 hf-mirror.com
-    private func getCustomHubHost() -> String {
+    /// 获取特定模型设定的自定义 Host，默认 fallback 到全局自定义 Host 或 hf-mirror.com
+    private func getCustomHubHost(for modelId: String) -> String {
+        if let modelHost = UserDefaults.standard.string(forKey: "HSBLocalLLM_ModelEndpoint_" + modelId), !modelHost.isEmpty {
+            return modelHost
+        }
         if let savedHost = UserDefaults.standard.string(forKey: "HSBLocalLLM_CustomHost"), !savedHost.isEmpty {
             return savedHost
         }
@@ -200,12 +203,7 @@ public class HSBMLXLLMEngine: NSObject {
     }
     
     private func loadAndActivateModelAsync(modelId: String) async throws {
-        let repoName: String
-        if modelId.contains("gemma") {
-            repoName = "mlx-community/gemma-2b-it-4bit"
-        } else {
-            repoName = "mlx-community/Qwen1.5-0.5B-Chat-4bit"
-        }
+        let repoName = getRepoName(from: modelId)
         
         MLX.Memory.cacheLimit = 20 * 1024 * 1024
         
@@ -236,12 +234,7 @@ public class HSBMLXLLMEngine: NSObject {
     /// 物理检查本地沙盒缓存是否存在完整的 Safetensors 模型文件
     @objc(isModelDownloaded:)
     public func isModelDownloaded(modelId: String) -> Bool {
-        let repoName: String
-        if modelId.contains("gemma") {
-            repoName = "mlx-community/gemma-2b-it-4bit"
-        } else {
-            repoName = "mlx-community/Qwen1.5-0.5B-Chat-4bit"
-        }
+        let repoName = getRepoName(from: modelId)
         
         let cache = HubCache.default
         guard let repoId = Repo.ID(rawValue: repoName),
@@ -263,5 +256,122 @@ public class HSBMLXLLMEngine: NSObject {
     @objc public func cancelCurrentInference() {
         self.lastInferenceTask?.cancel()
         self.lastInferenceTask = nil
+    }
+}
+
+#if canImport(Translation)
+@available(iOS 18.0, *)
+struct TranslationBridgeView: View {
+    let text: String
+    let configuration: TranslationSession.Configuration
+    let onCompletion: (String?, Error?) -> Void
+    
+    var body: some View {
+        Color.clear
+            .translationTask(configuration) { session in
+                do {
+                    let response = try await session.translate(text)
+                    onCompletion(response.targetText, nil)
+                } catch {
+                    onCompletion(nil, error)
+                }
+            }
+    }
+}
+#endif
+
+@objcMembers
+public class HSBAppleTranslationHelper: NSObject {
+    
+    @objc public static func translate(
+        text: String,
+        sourceLanguage: String?,
+        targetLanguage: String?,
+        completion: @escaping (String?, Error?) -> Void
+    ) {
+        #if canImport(Translation)
+        guard #available(iOS 18.0, *) else {
+            completion(nil, NSError(domain: "HSBTranslation", code: -1, userInfo: [NSLocalizedDescriptionKey: "Apple Translation framework is only available on iOS 18.0 or later."]))
+            return
+        }
+        
+        let sourceCode = self.mapLanguageToCode(sourceLanguage)
+        let targetCode = self.mapLanguageToCode(targetLanguage)
+        
+        DispatchQueue.main.async {
+            guard let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else {
+                completion(nil, NSError(domain: "HSBTranslation", code: -2, userInfo: [NSLocalizedDescriptionKey: "No active window scene found to host translation."]))
+                return
+            }
+            
+            var source: Locale.Language? = nil
+            if let src = sourceCode {
+                source = Locale.Language(identifier: src)
+            }
+            var target: Locale.Language? = nil
+            if let tgt = targetCode {
+                target = Locale.Language(identifier: tgt)
+            }
+            
+            // 创建一个独立的不可见临时 UIWindow，以此完全隔绝导航栏跳转引起的 UI 生命周期干扰
+            let translationWindow = UIWindow(windowScene: windowScene)
+            translationWindow.windowLevel = .normal - 1
+            translationWindow.frame = CGRect(x: -10, y: -10, width: 1, height: 1)
+            translationWindow.alpha = 0.01
+            translationWindow.isHidden = false
+            
+            let config = TranslationSession.Configuration(source: source, target: target)
+            var hostingController: UIHostingController<TranslationBridgeView>? = nil
+            
+            // 用局部变量强引用该 window，防止其生命周期在翻译完成前回调前被过早释放
+            var strongWindow: UIWindow? = translationWindow
+            
+            let bridgeView = TranslationBridgeView(text: text, configuration: config) { translatedText, error in
+                completion(translatedText, error)
+                
+                DispatchQueue.main.async {
+                    hostingController?.view.removeFromSuperview()
+                    hostingController = nil
+                    strongWindow?.isHidden = true
+                    strongWindow = nil
+                }
+            }
+            
+            hostingController = UIHostingController(rootView: bridgeView)
+            hostingController?.view.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
+            hostingController?.view.alpha = 0.01
+            hostingController?.view.isUserInteractionEnabled = false
+            
+            translationWindow.rootViewController = hostingController
+        }
+        #else
+        completion(nil, NSError(domain: "HSBTranslation", code: -3, userInfo: [NSLocalizedDescriptionKey: "Apple Translation SDK is not available in this build."]))
+        #endif
+    }
+    
+    private static func mapLanguageToCode(_ language: String?) -> String? {
+        guard let lang = language else { return nil }
+        switch lang {
+        case "Auto": return nil
+        case "Chinese": return "zh-Hans"
+        case "English": return "en-US"
+        case "Japanese": return "ja-JP"
+        case "Korean": return "ko-KR"
+        case "French": return "fr-FR"
+        case "German": return "de-DE"
+        case "Spanish": return "es-ES"
+        case "Russian": return "ru-RU"
+        default: return nil
+        }
+    }
+}
+
+fileprivate func getRepoName(from modelId: String) -> String {
+    if modelId.contains("/") {
+        return modelId
+    } else if modelId.contains("gemma") {
+        return "mlx-community/gemma-2b-it-4bit"
+    } else {
+        return "mlx-community/Qwen1.5-0.5B-Chat-4bit"
     }
 }

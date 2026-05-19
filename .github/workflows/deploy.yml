@@ -1,0 +1,85 @@
+name: Auto Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'HSBWatchApp/HSBWatchCompanion/AppVersion.xcconfig'
+
+jobs:
+  build-and-deploy:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check version change
+        id: check_ver
+        run: |
+          PATH_CONFIG="HSBWatchApp/HSBWatchCompanion/AppVersion.xcconfig"
+          curr_val=$(grep -E "^GITHUB_VERSION\s*=" "$PATH_CONFIG" | cut -d'=' -f2 | tr -d '[:space:]')
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            prev_content=$(git show HEAD~1:"$PATH_CONFIG" 2>/dev/null || echo "")
+            prev_val=$(echo "$prev_content" | grep -E "^GITHUB_VERSION\s*=" | cut -d'=' -f2 | tr -d '[:space:]')
+          else
+            prev_val=""
+          fi
+          echo "Old: '$prev_val', New: '$curr_val'"
+          if [ -n "$curr_val" ] && [ "$curr_val" != "$prev_val" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Apple Certificate and Provisioning Profile
+        if: steps.check_ver.outputs.changed == 'true'
+        env:
+          BUILD_CERT_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASS: ${{ secrets.P12_PASSWORD }}
+          PROVISION_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          WATCH_PROVISION_BASE64: ${{ secrets.BUILD_WATCH_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASS: "hsb_temp_keychain_password_999"
+        run: |
+          CERT_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          WATCH_PP_PATH=$RUNNER_TEMP/build_watch_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$BUILD_CERT_BASE64" | base64 --decode -o $CERT_PATH
+          echo -n "$PROVISION_BASE64" | base64 --decode -o $PP_PATH
+          if [ -n "$WATCH_PROVISION_BASE64" ]; then
+            echo -n "$WATCH_PROVISION_BASE64" | base64 --decode -o $WATCH_PP_PATH
+          fi
+          security create-keychain -p "$KEYCHAIN_PASS" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASS" $KEYCHAIN_PATH
+          security import $CERT_PATH -P "$P12_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+          if [ -f "$WATCH_PP_PATH" ]; then
+            cp $WATCH_PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+          fi
+
+      - name: Set up Ruby and Bundler
+        if: steps.check_ver.outputs.changed == 'true'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Run Fastlane Beta
+        if: steps.check_ver.outputs.changed == 'true'
+        working-directory: HSBWatchApp
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          gem install fastlane
+          fastlane beta

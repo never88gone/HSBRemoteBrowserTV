@@ -91,10 +91,10 @@
     [super viewDidLoad];
     self.title = @"AI 模型中心";
     
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"自定义地址"
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"添加模型"
                                                                               style:UIBarButtonItemStylePlain
                                                                              target:self
-                                                                             action:@selector(handleCustomHostSetting)];
+                                                                             action:@selector(handleCustomModelAdding)];
     
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.tableView.delegate = self;
@@ -108,41 +108,52 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleDownloadNotification:) name:@"HSBLocalLLMDownloadFailedNotification" object:nil];
 }
 
-- (void)handleCustomHostSetting {
-    NSString *currentHost = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBLocalLLM_CustomHost"];
-    if (!currentHost || currentHost.length == 0) {
-        currentHost = @"https://hf-mirror.com";
-    }
-    
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"自定义下载地址 / 镜像源"
-                                                                   message:@"请输入 HuggingFace 端侧模型的下载基准地址 (例如官方的 https://huggingface.co 或国内镜像 https://hf-mirror.com)"
+- (void)handleCustomModelAdding {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"添加自定义端侧模型"
+                                                                   message:@"请输入自定义显示名称及 HuggingFace 上的 MLX 格式模型仓库 ID。\n\n【⚠️重要提醒】：\n1. 必须是经过 mlx 转换的 4-bit/8-bit 量化端侧模型，例如：mlx-community/Qwen1.5-0.5B-Chat-4bit。\n2. 暂不支持未量化的原始 PyTorch/Safetensors 大模型。\n3. 请确保网络状况可顺畅访问 HuggingFace 镜像源。"
                                                             preferredStyle:UIAlertControllerStyleAlert];
     
     [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-        textField.text = currentHost;
-        textField.placeholder = @"https://hf-mirror.com";
-        textField.keyboardType = UIKeyboardTypeURL;
+        textField.placeholder = @"请输入模型显示名称 (例如: Qwen1.5-0.5B)";
+        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"请输入下载地址 (例如: mlx-community/Qwen1.5-0.5B-Chat-4bit)";
         textField.clearButtonMode = UITextFieldViewModeWhileEditing;
     }];
     
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"保存并应用" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        UITextField *tf = alert.textFields.firstObject;
-        NSString *newHost = [tf.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (newHost.length > 0) {
-            [[NSUserDefaults standardUserDefaults] setObject:newHost forKey:@"HSBLocalLLM_CustomHost"];
-            [[NSUserDefaults standardUserDefaults] synchronize];
-            
-            UIAlertController *hud = [UIAlertController alertControllerWithTitle:@"保存成功"
-                                                                         message:[NSString stringWithFormat:@"模型下载基准地址已更新为:\n%@", newHost]
+    [alert addAction:[UIAlertAction actionWithTitle:@"添加模型" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        UITextField *nameField = alert.textFields.firstObject;
+        UITextField *repoField = alert.textFields.lastObject;
+        NSString *name = [nameField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSString *repoId = [repoField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        NSError *error = nil;
+        BOOL success = [[HSBLocalLLMManager shared] addCustomModelWithName:name repoId:repoId error:&error];
+        if (success) {
+            UIAlertController *hud = [UIAlertController alertControllerWithTitle:@"添加成功"
+                                                                         message:[NSString stringWithFormat:@"模型 %@ 已成功添加！您可以向下滑动到列表底部查看并下载该模型。", name]
                                                                   preferredStyle:UIAlertControllerStyleAlert];
             [hud addAction:[UIAlertAction actionWithTitle:@"好的" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:hud animated:YES completion:nil];
+            [self.tableView reloadData];
+        } else {
+            UIAlertController *hud = [UIAlertController alertControllerWithTitle:@"添加失败"
+                                                                         message:error.localizedDescription ?: @"输入格式不合法或模型已存在。"
+                                                                  preferredStyle:UIAlertControllerStyleAlert];
+            [hud addAction:[UIAlertAction actionWithTitle:@"重新输入" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                [self handleCustomModelAdding];
+            }]];
+            [hud addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
             [self presentViewController:hud animated:YES completion:nil];
         }
     }]];
     
     [self presentViewController:alert animated:YES completion:nil];
 }
+
 
 - (void)applyThemeStyle {
     [super applyThemeStyle];
@@ -188,11 +199,57 @@
     [self.tableView reloadData];
 }
 
+- (void)translationSwitchChanged:(UISwitch *)sender {
+    [HSBLocalLLMManager setUseAppleTranslation:sender.on];
+    [self.tableView reloadData];
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return 2;
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (section == 0) {
+        return 1;
+    }
     return [HSBLocalLLMManager shared].availableModels.count;
 }
 
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (section == 0) {
+        return @"翻译引擎配置";
+    }
+    return [HSBLocalLLMManager useAppleTranslation] ? @"电视控制 JS 脚本生成专用模型" : @"通用端侧大模型 (翻译与JS生成共用)";
+}
+
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    
+    if (indexPath.section == 0) {
+        if (indexPath.row == 0) {
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"SettingCell"];
+            if (!cell) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"SettingCell"];
+            }
+            cell.textLabel.text = @"使用 Apple 原生翻译框架";
+            cell.detailTextLabel.text = @"开启后，翻译将调用 iOS 原生 Translation API，本地大模型仅用于 JS 脚本生成。";
+            cell.detailTextLabel.numberOfLines = 0;
+            cell.detailTextLabel.font = [UIFont systemFontOfSize:11];
+            
+            cell.backgroundColor = palette.cardBgColor;
+            cell.textLabel.textColor = [UIColor whiteColor];
+            cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+            
+            UISwitch *sw = [[UISwitch alloc] init];
+            sw.on = [HSBLocalLLMManager useAppleTranslation];
+            sw.onTintColor = palette.primaryColor;
+            [sw addTarget:self action:@selector(translationSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = sw;
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            return cell;
+        }
+    }
+    
     HSBLocalLLMModelCell *cell = [tableView dequeueReusableCellWithIdentifier:@"ModelCell" forIndexPath:indexPath];
     HSBLocalLLMModel *model = [HSBLocalLLMManager shared].availableModels[indexPath.row];
     
@@ -200,7 +257,6 @@
     cell.detailTextLabel.text = model.modelDescription;
     
     // OLED 高奢暗黑换肤适配
-    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
     cell.backgroundColor = palette.cardBgColor;
     cell.textLabel.textColor = [UIColor whiteColor];
     cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
@@ -217,7 +273,9 @@
     bgView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
     cell.selectedBackgroundView = bgView;
     
-    if (model.isActive) {
+    BOOL isCurrentlyActive = [HSBLocalLLMManager useAppleTranslation] ? model.isJSActive : model.isActive;
+    
+    if (isCurrentlyActive) {
         [cell.actionButton setTitle:@"关闭" forState:UIControlStateNormal];
         cell.actionButton.tintColor = [UIColor systemRedColor];
         cell.actionButton.backgroundColor = [[UIColor systemRedColor] colorWithAlphaComponent:0.1];
@@ -232,7 +290,7 @@
     }
     
     // 只有激活了才显示测试按钮
-    cell.testButton.hidden = !model.isActive;
+    cell.testButton.hidden = !isCurrentlyActive;
     
     [cell.actionButton removeTarget:nil action:NULL forControlEvents:UIControlEventTouchUpInside];
     [cell.actionButton addTarget:self action:@selector(handleAction:) forControlEvents:UIControlEventTouchUpInside];
@@ -252,14 +310,25 @@
     NSInteger index = sender.tag;
     HSBLocalLLMModel *model = [HSBLocalLLMManager shared].availableModels[index];
     
-    if (model.isActive) {
-        [[HSBLocalLLMManager shared] deactivateModel:model];
+    BOOL useApple = [HSBLocalLLMManager useAppleTranslation];
+    BOOL isCurrentlyActive = useApple ? model.isJSActive : model.isActive;
+    
+    if (isCurrentlyActive) {
+        if (useApple) {
+            [[HSBLocalLLMManager shared] deactivateJSModel:model];
+        } else {
+            [[HSBLocalLLMManager shared] deactivateModel:model];
+        }
     } else if (model.status == HSBLocalLLMDownloadStatusNone || model.status == HSBLocalLLMDownloadStatusPaused || model.status == HSBLocalLLMDownloadStatusFailed) {
         [[HSBLocalLLMManager shared] downloadModel:model progress:^(double p) {} completion:^(BOOL success, NSError * _Nullable error) {}];
     } else if (model.status == HSBLocalLLMDownloadStatusDownloading) {
         [[HSBLocalLLMManager shared] pauseDownloadModel:model];
     } else if (model.status == HSBLocalLLMDownloadStatusFinished) {
-        [[HSBLocalLLMManager shared] activateModel:model];
+        if (useApple) {
+            [[HSBLocalLLMManager shared] activateJSModel:model];
+        } else {
+            [[HSBLocalLLMManager shared] activateModel:model];
+        }
     }
     [self.tableView reloadData];
 }
@@ -268,9 +337,15 @@
     NSInteger index = sender.tag;
     HSBLocalLLMModel *model = [HSBLocalLLMManager shared].availableModels[index];
     
-    // 如果用户点击了测试，但模型还没激活，为了体验流畅，我们可以自动帮他激活（或提示他激活）
-    if (!model.isActive) {
-        [[HSBLocalLLMManager shared] activateModel:model];
+    BOOL useApple = [HSBLocalLLMManager useAppleTranslation];
+    BOOL isCurrentlyActive = useApple ? model.isJSActive : model.isActive;
+    
+    if (!isCurrentlyActive) {
+        if (useApple) {
+            [[HSBLocalLLMManager shared] activateJSModel:model];
+        } else {
+            [[HSBLocalLLMManager shared] activateModel:model];
+        }
         [self.tableView reloadData];
     }
     
@@ -281,5 +356,10 @@
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     return 70;
 }
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
 
 @end

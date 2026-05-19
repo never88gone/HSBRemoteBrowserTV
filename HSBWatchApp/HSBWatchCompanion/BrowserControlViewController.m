@@ -707,7 +707,22 @@ static NSString * L(NSString *en, NSString *zh) {
     
     if (type == 1) { // 翻译
         systemPrompt = @"你是一个精准的翻译助手。只输出最终的翻译结果，不要任何多余的解释、Markdown 或标注。";
-        enhancedUserPrompt = [NSString stringWithFormat:@"请将下面这句话自动识别并翻译成英文：\n%@", text];
+        NSString *sourceLang = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
+        NSString *targetLang = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
+        NSDictionary *map = @{
+            @"Auto": @"自动识别语言",
+            @"Chinese": @"中文",
+            @"English": @"英文",
+            @"Japanese": @"日文",
+            @"Korean": @"韩文",
+            @"French": @"法文",
+            @"German": @"德文",
+            @"Spanish": @"西班牙文",
+            @"Russian": @"俄文"
+        };
+        NSString *sourceStr = map[sourceLang] ?: @"自动识别语言";
+        NSString *targetStr = map[targetLang] ?: @"中文";
+        enhancedUserPrompt = [NSString stringWithFormat:@"请将下面这句话从【%@】翻译成【%@】：\n%@", sourceStr, targetStr, text];
     } else { // JS
         systemPrompt = @"You are a browser automation assistant. Generate ONLY executable browser JavaScript code based on the user's request. Keep the code extremely simple and solid.\n\n"
                        "RULES:\n"
@@ -727,7 +742,7 @@ static NSString * L(NSString *en, NSString *zh) {
         enhancedUserPrompt = [NSString stringWithFormat:@"Request: \"%@\"\nOutput: ", text];
     }
     
-    [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt completion:^(NSString * _Nonnull response, BOOL isFinished) {
+    [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt type:type completion:^(NSString * _Nonnull response, BOOL isFinished) {
         dispatch_async(dispatch_get_main_queue(), ^{
             // 🥇 防御式安全判断：如果用户在此期间已手动取消或推理超时，直接静默中断处理
             if ([self.trackpadStatusLabel.text isEqualToString:L(@"AI Cancelled", @"AI 已取消")] ||
