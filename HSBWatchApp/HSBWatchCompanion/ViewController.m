@@ -14,6 +14,8 @@
 #import "HSBThemeManager.h"
 #import "HSBTVOSConnectionManager.h"
 #import "HSBWatchSessionManager.h"
+#import "HSBLocalLLMManager.h"
+#import "HSBWatchCompanion-Swift.h"
 
 #define BONJOUR_SERVICE_TYPE "_thltv._tcp"
 
@@ -78,6 +80,8 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) UIButton *openTrackpadBtn;
 @property (nonatomic, strong) NSMutableArray<UIView *> *themeCards;
 
+@property (nonatomic, strong) UIVisualEffectView *aiLoadingHUD;
+
 @end
 
 @implementation ViewController
@@ -105,6 +109,20 @@ static NSString * L(NSString *en, NSString *zh) {
     [self setupUI];
     [self startBridge];
     [self startPedometer];
+    
+    [self setupAILoadingHUD];
+    
+    // 监听本地大模型异步后台载入（预热）状态的广播通知
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLLMPrewarmingStarted:) name:@"HSBLocalLLM_PrewarmingStartedNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLLMPrewarmingFinished:) name:@"HSBLocalLLM_PrewarmingFinishedNotification" object:nil];
+    
+    // 🥇 开机即时检测：若当前已激活大模型，且底层内存尚未完成装载，则直接拉起 Loading，保证状态丝滑同步
+    BOOL hasActiveModel = [HSBLocalLLMManager shared].activeModel != nil;
+    BOOL isLoaded = [[HSBMLXLLMEngine shared] isModelLoadedInMemory];
+    if (hasActiveModel && !isLoaded) {
+        self.aiLoadingHUD.hidden = NO;
+        self.aiLoadingHUD.alpha = 1.0;
+    }
     
     // 注册 TVOSConnectionManager 通知
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSConnectionStateChanged:) name:HSBTVOSConnectionStateNotification object:nil];
@@ -1081,6 +1099,67 @@ static NSString * L(NSString *en, NSString *zh) {
             self.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
         }];
     }
+}
+
+- (void)setupAILoadingHUD {
+    self.aiLoadingHUD = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
+    self.aiLoadingHUD.translatesAutoresizingMaskIntoConstraints = NO;
+    self.aiLoadingHUD.layer.cornerRadius = 16;
+    self.aiLoadingHUD.clipsToBounds = YES;
+    self.aiLoadingHUD.layer.borderWidth = 1;
+    self.aiLoadingHUD.layer.borderColor = [[UIColor systemPurpleColor] colorWithAlphaComponent:0.2].CGColor;
+    self.aiLoadingHUD.hidden = YES;
+    [self.view addSubview:self.aiLoadingHUD];
+    
+    UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    spinner.color = [UIColor systemPurpleColor];
+    spinner.translatesAutoresizingMaskIntoConstraints = NO;
+    [spinner startAnimating];
+    [self.aiLoadingHUD.contentView addSubview:spinner];
+    
+    UILabel *loadingLabel = [[UILabel alloc] init];
+    loadingLabel.text = L(@"AI Engine Warming Up...", @"本地大模型载入中...");
+    loadingLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    loadingLabel.textColor = [UIColor whiteColor];
+    loadingLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.aiLoadingHUD.contentView addSubview:loadingLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.aiLoadingHUD.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.aiLoadingHUD.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+        [self.aiLoadingHUD.widthAnchor constraintEqualToConstant:180],
+        [self.aiLoadingHUD.heightAnchor constraintEqualToConstant:100],
+        
+        [spinner.centerXAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.centerXAnchor],
+        [spinner.topAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.topAnchor constant:22],
+        
+        [loadingLabel.centerXAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.centerXAnchor],
+        [loadingLabel.bottomAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.bottomAnchor constant:-20]
+    ]];
+}
+
+- (void)handleLLMPrewarmingStarted:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.aiLoadingHUD.hidden = NO;
+        self.aiLoadingHUD.alpha = 0.0;
+        [UIView animateWithDuration:0.3 animations:^{
+            self.aiLoadingHUD.alpha = 1.0;
+        }];
+    });
+}
+
+- (void)handleLLMPrewarmingFinished:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [UIView animateWithDuration:0.3 animations:^{
+            self.aiLoadingHUD.alpha = 0.0;
+        } completion:^(BOOL finished) {
+            self.aiLoadingHUD.hidden = YES;
+        }];
+    });
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

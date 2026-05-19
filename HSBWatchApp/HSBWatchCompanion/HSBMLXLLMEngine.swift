@@ -58,14 +58,14 @@ public class HSBMLXLLMEngine: NSObject {
                 let config = ModelConfiguration(id: repoName)
                 MLX.Memory.cacheLimit = 20 * 1024 * 1024
                 
-                // 1. 智能判定：优先进行 100% 纯本地离线极速加载，绝不发起任何 HuggingFace 握手网络请求
+                // 1. 智能判定：优先进行 100% 纯本地离线极速加载，绝不发起 any HuggingFace 握手网络请求
                 let cache = HubCache.default
                 if let repoId = Repo.ID(rawValue: repoName),
                    let commitHash = cache.resolveRevision(repo: repoId, kind: .model, ref: "main") {
                     let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
                     let configJson = localModelDir.appendingPathComponent("config.json")
                     if FileManager.default.fileExists(atPath: configJson.path) {
-                        self.accumulatedText += "【📦 本地离线优先】发现本地完整缓存数据，正在进行 100% 纯本地离线装载...\n"
+                        self.accumulatedText += "【📦 本地离线优先】发现本地完整缓存数据，正在进行 100% 纯本地离线装装...\n"
                         callback(self.accumulatedText, 0.5)
                         
                         let container = try await LLMModelFactory.shared.loadContainer(
@@ -81,16 +81,43 @@ public class HSBMLXLLMEngine: NSObject {
                     }
                 }
                 
-                // 2. 如果本地缓存不存在，直接抛出本地未激活/未下载的明确错误，绝不进行任何网络请求
-                throw NSError(domain: "com.hsb.llm", code: 404, userInfo: [
-                    NSLocalizedDescriptionKey: "本地模型数据未就绪。请前往 [设置 -> AI模型中心] 下载并激活当前模型。"
-                ])
+                // 2. 物理下载阶段：读取用户在【AI模型中心】自定义指定的下载地址/镜像源 Host 基准值进行下载
+                let customHost = self.getCustomHubHost()
+                self.accumulatedText += "正在桥接自定义镜像源 [\(customHost)] 拉取物理大模型张量...\n"
+                callback(self.accumulatedText, 0.1)
+                
+                let customHubClient = HubClient(host: URL(string: customHost)!)
+                let container = try await LLMModelFactory.shared.loadContainer(
+                    from: #hubDownloader(customHubClient),
+                    using: #huggingFaceTokenizerLoader(),
+                    configuration: config
+                ) { progress in
+                    Task { @MainActor in
+                        let pct = progress.fractionCompleted * 100
+                        let progStr = String(format: "%.1f%%", pct)
+                        callback("【原生模型下载与挂载进度】: \(progStr)", progress.fractionCompleted)
+                    }
+                }
+                
+                self.modelContainer = container
+                self.currentModelId = modelId
+                
+                self.accumulatedText += "\n✅ 端侧纯血 MLX 模型加载并挂载完毕！硬件就绪。\n"
+                callback(self.accumulatedText, 1.0)
                 
             } catch {
-                self.accumulatedText += "\n❌ 原生 MLX 模型加载失败: \(error.localizedDescription)\n"
+                self.accumulatedText += "\n❌ 原生 MLX 模型加载/下载失败: \(error.localizedDescription)\n"
                 callback(self.accumulatedText, 0.0)
             }
         }
+    }
+    
+    /// 获取用户设定的自定义 Host，默认 fallback 到 hf-mirror.com
+    private func getCustomHubHost() -> String {
+        if let savedHost = UserDefaults.standard.string(forKey: "HSBLocalLLM_CustomHost"), !savedHost.isEmpty {
+            return savedHost
+        }
+        return "https://hf-mirror.com"
     }
     
     @objc public func generateWithMLX(systemPrompt: String, userPrompt: String, modelId: String, callback: @escaping (String, Bool) -> Void) {
@@ -217,5 +244,10 @@ public class HSBMLXLLMEngine: NSObject {
         let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
         let configJson = localModelDir.appendingPathComponent("config.json")
         return FileManager.default.fileExists(atPath: configJson.path)
+    }
+    
+    /// 检查大模型是否已经被成功载入内存中
+    @objc public func isModelLoadedInMemory() -> Bool {
+        return self.modelContainer != nil
     }
 }

@@ -91,6 +91,11 @@
     [super viewDidLoad];
     self.title = @"AI 模型中心";
     
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"自定义地址"
+                                                                              style:UIBarButtonItemStylePlain
+                                                                             target:self
+                                                                             action:@selector(handleCustomHostSetting)];
+    
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
@@ -101,6 +106,42 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleDownloadNotification:) name:@"HSBLocalLLMDownloadProgressNotification" object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleDownloadNotification:) name:@"HSBLocalLLMDownloadFinishedNotification" object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleDownloadNotification:) name:@"HSBLocalLLMDownloadFailedNotification" object:nil];
+}
+
+- (void)handleCustomHostSetting {
+    NSString *currentHost = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBLocalLLM_CustomHost"];
+    if (!currentHost || currentHost.length == 0) {
+        currentHost = @"https://hf-mirror.com";
+    }
+    
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"自定义下载地址 / 镜像源"
+                                                                   message:@"请输入 HuggingFace 端侧模型的下载基准地址 (例如官方的 https://huggingface.co 或国内镜像 https://hf-mirror.com)"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.text = currentHost;
+        textField.placeholder = @"https://hf-mirror.com";
+        textField.keyboardType = UIKeyboardTypeURL;
+        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存并应用" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        UITextField *tf = alert.textFields.firstObject;
+        NSString *newHost = [tf.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (newHost.length > 0) {
+            [[NSUserDefaults standardUserDefaults] setObject:newHost forKey:@"HSBLocalLLM_CustomHost"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            
+            UIAlertController *hud = [UIAlertController alertControllerWithTitle:@"保存成功"
+                                                                         message:[NSString stringWithFormat:@"模型下载基准地址已更新为:\n%@", newHost]
+                                                                  preferredStyle:UIAlertControllerStyleAlert];
+            [hud addAction:[UIAlertAction actionWithTitle:@"好的" style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:hud animated:YES completion:nil];
+        }
+    }]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)applyThemeStyle {

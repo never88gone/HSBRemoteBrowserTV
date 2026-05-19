@@ -6,7 +6,10 @@
 #import "BrowserControlViewController.h"
 #import <UIKit/UIKit.h>
 #import <UIKit/UIGestureRecognizerSubclass.h>
+#import <Speech/Speech.h>
+#import <AVFoundation/AVFoundation.h>
 #import "HSBLocalLLMManager.h"
+#import "HSBWatchCompanion-Swift.h"
 
 
 // 自定义四指拖动手势识别器
@@ -89,6 +92,20 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, assign) CFTimeInterval lastScrollSendTime; // 双指滚动节流
 @property (nonatomic, assign) BOOL isDragging; // Drag visual state
 
+// 🎙️ 实时语音听写引擎与右下角毛玻璃状态看板属性
+@property (nonatomic, strong) SFSpeechRecognizer *speechRecognizer;
+@property (nonatomic, strong) SFSpeechAudioBufferRecognitionRequest *recognitionRequest;
+@property (nonatomic, strong) SFSpeechRecognitionTask *recognitionTask;
+@property (nonatomic, strong) AVAudioEngine *audioEngine;
+@property (nonatomic, copy) NSString *recognizedSpeechText;
+
+@property (nonatomic, strong) UIView *speechPanel;
+@property (nonatomic, strong) UILabel *speechStatusLabel;
+@property (nonatomic, strong) UILabel *speechResultLabel;
+
+@property (nonatomic, strong) UIButton *aiBtn;
+@property (nonatomic, assign) BOOL isAIButtonPressed;
+
 @end
 
 @implementation BrowserControlViewController
@@ -99,6 +116,7 @@ static NSString * L(NSString *en, NSString *zh) {
     self.title = L(@"Fullscreen Trackpad", @"全屏触控板");
     
     [self setupUI];
+    [self setupSpeechPanel];
 }
 
 - (void)setupUI {
@@ -114,24 +132,27 @@ static NSString * L(NSString *en, NSString *zh) {
     handleIndicator.layer.cornerRadius = 3;
     handleIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     [headerView addSubview:handleIndicator];
-    
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.text = L(@"BROWSER CONTROLS", @"网页浏览器控制");
-    titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
-    titleLabel.textColor = [UIColor secondaryLabelColor];
-    titleLabel.textAlignment = NSTextAlignmentCenter;
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [headerView addSubview:titleLabel];
-    
 
     
-    // AI Assistant Button
-    UIButton *aiBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [aiBtn setImage:[UIImage systemImageNamed:@"sparkles" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20]] forState:UIControlStateNormal];
-    aiBtn.tintColor = [UIColor systemPurpleColor];
-    [aiBtn addTarget:self action:@selector(aiAssistantAction) forControlEvents:UIControlEventTouchUpInside];
-    aiBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [headerView addSubview:aiBtn];
+
+    // AI Assistant Floating Button
+    self.aiBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.aiBtn setImage:[UIImage systemImageNamed:@"sparkles" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightBold]] forState:UIControlStateNormal];
+    self.aiBtn.tintColor = [UIColor whiteColor];
+    self.aiBtn.backgroundColor = [UIColor systemPurpleColor];
+    self.aiBtn.layer.cornerRadius = 28;
+    self.aiBtn.clipsToBounds = NO;
+    
+    // 阴影效果
+    self.aiBtn.layer.shadowColor = [UIColor systemPurpleColor].CGColor;
+    self.aiBtn.layer.shadowOffset = CGSizeMake(0, 4);
+    self.aiBtn.layer.shadowOpacity = 0.4;
+    self.aiBtn.layer.shadowRadius = 8;
+    
+    [self.aiBtn addTarget:self action:@selector(aiButtonTouchDown) forControlEvents:UIControlEventTouchDown];
+    [self.aiBtn addTarget:self action:@selector(aiButtonTouchUp) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
+    self.aiBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.aiBtn];
 
     
     // Large Trackpad View
@@ -337,20 +358,19 @@ static NSString * L(NSString *en, NSString *zh) {
         [headerView.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:10],
         [headerView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [headerView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [headerView.heightAnchor constraintEqualToConstant:60],
+        [headerView.heightAnchor constraintEqualToConstant:20],
         
         [handleIndicator.topAnchor constraintEqualToAnchor:headerView.topAnchor constant:4],
         [handleIndicator.centerXAnchor constraintEqualToAnchor:headerView.centerXAnchor],
         [handleIndicator.widthAnchor constraintEqualToConstant:40],
         [handleIndicator.heightAnchor constraintEqualToConstant:6],
         
-        [titleLabel.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor constant:4],
-        [titleLabel.centerXAnchor constraintEqualToAnchor:headerView.centerXAnchor],
-        
 
         
-        [aiBtn.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor constant:4],
-        [aiBtn.leadingAnchor constraintEqualToAnchor:headerView.leadingAnchor constant:20],
+        [self.aiBtn.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
+        [self.aiBtn.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-90],
+        [self.aiBtn.widthAnchor constraintEqualToConstant:56],
+        [self.aiBtn.heightAnchor constraintEqualToConstant:56],
 
         
         // Trackpad
@@ -398,35 +418,253 @@ static NSString * L(NSString *en, NSString *zh) {
         [btnStack.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-20],
         [btnStack.heightAnchor constraintEqualToConstant:60]
     ]];
+    
+    // 🥇 强制将悬浮 AI 按钮置于视图层级最顶层，防止被 Trackpad 触控板等大视图遮挡
+    [self.view bringSubviewToFront:self.aiBtn];
 }
 
 - (void)dismissAction {
     [self dismissViewControllerAnimated:YES completion:nil];
 }
 
-- (void)aiAssistantAction {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"AI Assistant", @"AI 助手")
-                                                                   message:L(@"Describe what you want to do...", @"描述你想做的事情...")
-                                                            preferredStyle:UIAlertControllerStyleAlert];
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    if (self.audioEngine.isRunning) {
+        [self.audioEngine stop];
+        self.recognitionRequest = nil;
+        self.recognitionTask = nil;
+    }
+}
+
+- (void)aiButtonTouchDown {
+    self.isAIButtonPressed = YES;
     
-    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-        textField.placeholder = L(@"e.g. Translate this page, or make background red", @"例如：翻译这段话，或让网页背景变红");
+    // 触发触觉反馈并立刻开始录音
+    UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+    [hap impactOccurred];
+    
+    [self startRecordingAndRecognition];
+}
+
+- (void)aiButtonTouchUp {
+    if (!self.isAIButtonPressed) return;
+    self.isAIButtonPressed = NO;
+    
+    // 松开手就立刻停止录音并处理结果
+    [self stopRecordingAndRecognition];
+}
+
+- (void)startRecordingAndRecognition {
+    // 检查并申请语音听写与麦克风录音权限
+    [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (status == SFSpeechRecognizerAuthorizationStatusAuthorized) {
+                [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (granted) {
+                            [self performRecordingStart];
+                        } else {
+                            [self showSpeechAlertError:L(@"Microphone permission denied.", @"麦克风权限未开启")];
+                        }
+                    });
+                }];
+            } else {
+                [self showSpeechAlertError:L(@"Speech recognition permission denied.", @"语音识别权限未开启")];
+            }
+        });
+    }];
+}
+
+- (void)performRecordingStart {
+    // 🥇 智能防越界检查：如果异步麦克风或识别权限回调完成时，用户早已松开手指，则直接截断，拒绝启动录音
+    if (!self.isAIButtonPressed) {
+        NSLog(@"[Speech] User already released AI button before permissions granted. Aborting.");
+        return;
+    }
+    
+    // 1. 如果有旧任务，取消它
+    if (self.recognitionTask) {
+        [self.recognitionTask cancel];
+        self.recognitionTask = nil;
+    }
+    
+    // 2. 初始化音频会话
+    AVAudioSession *audioSession = [AVAudioSession sharedInstance];
+    NSError *error = nil;
+    [audioSession setCategory:AVAudioSessionCategoryRecord mode:AVAudioSessionModeMeasurement options:AVAudioSessionCategoryOptionDuckOthers error:&error];
+    [audioSession setActive:YES withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:&error];
+    
+    self.recognitionRequest = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
+    self.audioEngine = [[AVAudioEngine alloc] init];
+    
+    AVAudioInputNode *inputNode = self.audioEngine.inputNode;
+    self.recognitionRequest.shouldReportPartialResults = YES;
+    
+    // 3. 配置本地识别器（支持中英文识别）
+    NSString *localeStr = L(@"en-US", @"zh-CN");
+    self.speechRecognizer = [[SFSpeechRecognizer alloc] initWithLocale:[NSLocale localeWithLocaleIdentifier:localeStr]];
+    
+    __weak typeof(self) weakSelf = self;
+    self.recognitionTask = [self.speechRecognizer recognitionTaskWithRequest:self.recognitionRequest resultHandler:^(SFSpeechRecognitionResult * _Nullable result, NSError * _Nullable error) {
+        if (result) {
+            NSString *bestString = result.bestTranscription.formattedString;
+            weakSelf.recognizedSpeechText = bestString;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                weakSelf.speechResultLabel.text = bestString;
+            });
+        }
+        
+        if (error || (result && result.isFinal)) {
+            [weakSelf.audioEngine stop];
+            [inputNode removeTapOnBus:0];
+            weakSelf.recognitionRequest = nil;
+            weakSelf.recognitionTask = nil;
+        }
     }];
     
-    [alert addAction:[UIAlertAction actionWithTitle:L(@"Translate", @"翻译") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        NSString *text = alert.textFields.firstObject.text;
-        [self processAIRequest:text type:1];
-    }]];
+    // 4. 配置麦克风输入 Tap 缓存区
+    AVAudioFormat *recordingFormat = [inputNode outputFormatForBus:0];
+    [inputNode installTapOnBus:0 bufferSize:1024 format:recordingFormat block:^(AVAudioPCMBuffer * _Nonnull buffer, AVAudioTime * _Nonnull when) {
+        [weakSelf.recognitionRequest appendAudioPCMBuffer:buffer];
+    }];
     
-    [alert addAction:[UIAlertAction actionWithTitle:L(@"Generate JS", @"生成 JS") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-        NSString *text = alert.textFields.firstObject.text;
-        [self processAIRequest:text type:2];
-    }]];
+    [self.audioEngine prepare];
+    [self.audioEngine startAndReturnError:&error];
     
-    [alert addAction:[UIAlertAction actionWithTitle:L(@"Cancel", @"取消") style:UIAlertActionStyleCancel handler:nil]];
+    self.recognizedSpeechText = @"";
+    [self showSpeechPanel];
+}
+
+- (void)stopRecordingAndRecognition {
+    if (self.audioEngine.isRunning) {
+        [self.audioEngine stop];
+        [self.recognitionRequest endAudio];
+        [self hideSpeechPanel];
+        
+        // 触发触觉反馈
+        UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+        [hap impactOccurred];
+        
+        // 如果识别到了指令文本，直接丢给大模型处理并生成 JS 并下发
+        NSString *trimmedText = [self.recognizedSpeechText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (trimmedText.length > 0) {
+            [self processAIRequest:trimmedText type:2];
+        }
+    }
+}
+
+- (void)setupSpeechPanel {
+    self.speechPanel = [[UIView alloc] init];
+    self.speechPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.speechPanel.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.75];
+    self.speechPanel.layer.cornerRadius = 20;
+    self.speechPanel.layer.borderWidth = 1.5;
+    self.speechPanel.layer.borderColor = [[UIColor systemPurpleColor] colorWithAlphaComponent:0.4].CGColor;
     
+    // 阴影
+    self.speechPanel.layer.shadowColor = [UIColor systemPurpleColor].CGColor;
+    self.speechPanel.layer.shadowOpacity = 0.25;
+    self.speechPanel.layer.shadowOffset = CGSizeMake(0, 8);
+    self.speechPanel.layer.shadowRadius = 16;
+    self.speechPanel.hidden = YES;
+    [self.view addSubview:self.speechPanel];
+    
+    // 毛玻璃效果
+    UIBlurEffect *blur = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+    UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blur];
+    blurView.frame = self.speechPanel.bounds;
+    blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    blurView.layer.cornerRadius = 20;
+    blurView.clipsToBounds = YES;
+    [self.speechPanel addSubview:blurView];
+    
+    // 微缩麦克风图标
+    UIImageView *micIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"waveform.and.mic" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIFontWeightSemibold]]];
+    micIcon.tintColor = [UIColor systemPurpleColor];
+    micIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.speechPanel addSubview:micIcon];
+    
+    // 状态标题 Label
+    self.speechStatusLabel = [[UILabel alloc] init];
+    self.speechStatusLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    self.speechStatusLabel.textColor = [UIColor systemPurpleColor];
+    self.speechStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.speechPanel addSubview:self.speechStatusLabel];
+    
+    // 语音识别结果实时显示 Label
+    self.speechResultLabel = [[UILabel alloc] init];
+    self.speechResultLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    self.speechResultLabel.textColor = [UIColor whiteColor];
+    self.speechResultLabel.numberOfLines = 2;
+    self.speechResultLabel.textAlignment = NSTextAlignmentLeft;
+    self.speechResultLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.speechPanel addSubview:self.speechResultLabel];
+    
+    // 约束：放置在悬浮 AI 按钮（aiBtn）的上方，完美层叠对齐
+    [NSLayoutConstraint activateConstraints:@[
+        [self.speechPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
+        [self.speechPanel.bottomAnchor constraintEqualToAnchor:self.aiBtn.topAnchor constant:-12],
+        [self.speechPanel.widthAnchor constraintEqualToConstant:220],
+        [self.speechPanel.heightAnchor constraintEqualToConstant:100],
+        
+        [micIcon.leadingAnchor constraintEqualToAnchor:self.speechPanel.leadingAnchor constant:14],
+        [micIcon.topAnchor constraintEqualToAnchor:self.speechPanel.topAnchor constant:12],
+        [micIcon.widthAnchor constraintEqualToConstant:16],
+        [micIcon.heightAnchor constraintEqualToConstant:16],
+        
+        [self.speechStatusLabel.leadingAnchor constraintEqualToAnchor:micIcon.trailingAnchor constant:6],
+        [self.speechStatusLabel.centerYAnchor constraintEqualToAnchor:micIcon.centerYAnchor],
+        
+        [self.speechResultLabel.leadingAnchor constraintEqualToAnchor:self.speechPanel.leadingAnchor constant:14],
+        [self.speechResultLabel.trailingAnchor constraintEqualToAnchor:self.speechPanel.trailingAnchor constant:-14],
+        [self.speechResultLabel.topAnchor constraintEqualToAnchor:micIcon.bottomAnchor constant:10],
+        [self.speechResultLabel.bottomAnchor constraintEqualToAnchor:self.speechPanel.bottomAnchor constant:-12]
+    ]];
+    
+    // 🥇 强制将语音听写状态卡片也置于视图层级最顶端，保证随时显示可见
+    [self.view bringSubviewToFront:self.speechPanel];
+}
+
+- (void)showSpeechPanel {
+    self.speechPanel.hidden = NO;
+    self.speechPanel.alpha = 0.0;
+    self.speechPanel.transform = CGAffineTransformMakeTranslation(0, 30);
+    self.speechStatusLabel.text = L(@"Listening...", @"正在倾听...");
+    self.speechResultLabel.text = L(@"Speak your instruction...", @"请说出您的操作指令...");
+    
+    [UIView animateWithDuration:0.3 delay:0.0 usingSpringWithDamping:0.8 initialSpringVelocity:0.5 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+        self.speechPanel.alpha = 1.0;
+        self.speechPanel.transform = CGAffineTransformIdentity;
+    } completion:nil];
+    
+    CABasicAnimation *pulse = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+    pulse.duration = 1.0;
+    pulse.fromValue = @(0.95);
+    pulse.toValue = @(1.05);
+    pulse.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+    pulse.autoreverses = YES;
+    pulse.repeatCount = INFINITY;
+    [self.speechPanel.layer addAnimation:pulse forKey:@"pulseAnimation"];
+}
+
+- (void)hideSpeechPanel {
+    [UIView animateWithDuration:0.25 animations:^{
+        self.speechPanel.alpha = 0.0;
+        self.speechPanel.transform = CGAffineTransformMakeTranslation(0, 30);
+    } completion:^(BOOL finished) {
+        self.speechPanel.hidden = YES;
+        [self.speechPanel.layer removeAnimationForKey:@"pulseAnimation"];
+    }];
+}
+
+- (void)showSpeechAlertError:(NSString *)msg {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"Voice Control Error", @"语音控制失败")
+                                                                   message:msg
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"OK", @"好的") style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
+
 
 - (void)processAIRequest:(NSString *)text type:(NSInteger)type {
     if (text.length == 0) return;
@@ -440,14 +678,28 @@ static NSString * L(NSString *en, NSString *zh) {
         systemPrompt = @"你是一个精准的翻译助手。只输出最终的翻译结果，不要任何多余的解释、Markdown 或标注。";
         enhancedUserPrompt = [NSString stringWithFormat:@"请将下面这句话自动识别并翻译成英文：\n%@", text];
     } else { // JS
-        systemPrompt = @"你是一个前端开发助手。只输出纯 JavaScript 代码，不要任何 Markdown 格式(如 ```javascript) 或解释。";
-        enhancedUserPrompt = [NSString stringWithFormat:@"请写一段 JavaScript 代码来实现这个需求：%@", text];
+        systemPrompt = @"You are a browser automation assistant. Generate ONLY executable browser JavaScript code based on the user's request. Keep the code extremely simple and solid.\n\n"
+                       "RULES:\n"
+                       "1. Output ONLY executable browser JavaScript code. No explanations, no markdown formatting (DO NOT use ``` or ```javascript), no HTML tags, no intro/outro.\n"
+                       "2. The code must be immediately executable by browser eval().\n"
+                       "3. Do NOT output HTML like '<div>'. If changing background, use DOM style APIs.\n\n"
+                       "EXAMPLES:\n"
+                       "Request: \"让网页背景变黑\"\n"
+                       "Output: document.body.style.backgroundColor = 'black';\n\n"
+                       "Request: \"把背景变成绿色\"\n"
+                       "Output: document.body.style.backgroundColor = 'green';\n\n"
+                       "Request: \"滚动到最底部\"\n"
+                       "Output: window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });\n\n"
+                       "Request: \"将所有字体变大\"\n"
+                       "Output: document.querySelectorAll('*').forEach(el => { el.style.fontSize = '1.2em'; });";
+                       
+        enhancedUserPrompt = [NSString stringWithFormat:@"Request: \"%@\"\nOutput: ", text];
     }
     
     [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt completion:^(NSString * _Nonnull response, BOOL isFinished) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!isFinished) {
-                // 流式生成中，仅更新状态标签显示，不进行任何震动、弹窗或 TV 推送
+                // 流式生成中，仅更新状态标签显示，不进行 any 震动、弹窗或 TV 推送
                 self.trackpadStatusLabel.text = [NSString stringWithFormat:@"%@ (%lu)", L(@"AI Thinking...", @"AI 思考中..."), (unsigned long)response.length];
                 return;
             }
@@ -455,9 +707,34 @@ static NSString * L(NSString *en, NSString *zh) {
             // 物理生成完全结束
             self.trackpadStatusLabel.text = L(@"AI Done", @"AI 处理完成");
             
+            // 🥇 程序级安全过滤净化：过滤可能多余包裹的 markdown 代码块与前后空白
+            NSString *cleanResponse = [response stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if ([cleanResponse hasPrefix:@"```javascript"]) {
+                cleanResponse = [cleanResponse substringFromIndex:13];
+            } else if ([cleanResponse hasPrefix:@"```js"]) {
+                cleanResponse = [cleanResponse substringFromIndex:5];
+            } else if ([cleanResponse hasPrefix:@"```"]) {
+                cleanResponse = [cleanResponse substringFromIndex:3];
+            }
+            
+            if ([cleanResponse hasSuffix:@"```"]) {
+                cleanResponse = [cleanResponse substringToIndex:cleanResponse.length - 3];
+            }
+            
+            cleanResponse = [cleanResponse stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            
+            // 如果是以 Output: 开头，去掉它（防御式编程）
+            if ([cleanResponse hasPrefix:@"Output:"]) {
+                cleanResponse = [cleanResponse substringFromIndex:7];
+                cleanResponse = [cleanResponse stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            } else if ([cleanResponse hasPrefix:@"Output: "]) {
+                cleanResponse = [cleanResponse substringFromIndex:8];
+                cleanResponse = [cleanResponse stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            }
+            
             NSDictionary *payload = @{
                 @"action": (type == 1 ? @"show_translation" : @"run_js"),
-                @"content": response,
+                @"content": cleanResponse,
                 @"timestamp": @([[NSDate date] timeIntervalSince1970]),
                 @"requestId": [[NSUUID UUID] UUIDString]
             };

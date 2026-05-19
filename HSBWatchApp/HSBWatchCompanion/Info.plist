@@ -33,5 +33,9 @@
 	<false/>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>我们需要您的语音识别许可，以便您可以通过长按 AI 助手进行语音命令控制并自动生成操作脚本。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>我们需要使用您的麦克风，以便在长按 AI 助手时录制您的语音指令进行识别。</string>
 </dict>
 </plist>

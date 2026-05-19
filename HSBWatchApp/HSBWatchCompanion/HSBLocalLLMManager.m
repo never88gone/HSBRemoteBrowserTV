@@ -29,6 +29,7 @@
 // 🏆 私有方法前置声明以消除编译错误
 - (void)enterMockActivationModeForModel:(HSBLocalLLMModel *)model;
 - (CVPixelBufferRef)createPixelBufferWithSize:(CGSize)size seedString:(NSString *)seed;
+- (void)prewarmActiveModel;
 @end
 
 @implementation HSBLocalLLMManager
@@ -213,6 +214,28 @@
     [[NSUserDefaults standardUserDefaults] synchronize];
     
     [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
+    
+    // 异步预热并静默加载大模型文件到 GPU/Unified Memory，不阻塞 UI 线程
+    [self prewarmActiveModel];
+}
+
+- (void)prewarmActiveModel {
+    if (!self.activeModel) return;
+    
+    // 发送开始预热加载通知
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLM_PrewarmingStartedNotification" object:self.activeModel];
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [[HSBMLXLLMEngine shared] loadAndActivateModelWithModelId:self.activeModel.modelId callback:^(NSString * _Nonnull logText, double progress) {
+            if (progress >= 1.0) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSLog(@"[HSBLocalLLM] Active Model Pre-warmed & Loaded in Background Memory successfully.");
+                    // 发送预热加载完成通知
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLM_PrewarmingFinishedNotification" object:self.activeModel];
+                });
+            }
+        }];
+    });
 }
 
 - (void)deactivateModel:(HSBLocalLLMModel *)model {
