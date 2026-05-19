@@ -36,7 +36,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.canvasView = [[UIImageView alloc] initWithFrame:self.view.bounds];
     self.canvasView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.canvasView.userInteractionEnabled = YES;
-    self.canvasView.backgroundColor = [UIColor whiteColor]; // PDF content area background
+    self.canvasView.backgroundColor = [UIColor blackColor]; // PDF content area background
     [self.view addSubview:self.canvasView];
     
     // Title/Instruction
@@ -66,6 +66,10 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     if (self.instructionLabel) {
         self.instructionLabel.textColor = [palette.primaryColor colorWithAlphaComponent:0.8];
+    }
+    
+    if (self.canvasView) {
+        self.canvasView.backgroundColor = [UIColor blackColor];
     }
 }
 

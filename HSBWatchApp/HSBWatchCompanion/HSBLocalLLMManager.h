@@ -27,7 +27,7 @@ typedef NS_ENUM(NSInteger, HSBLocalLLMDownloadStatus) {
 
 typedef void (^HSBLocalLLMProgressBlock)(double progress);
 typedef void (^HSBLocalLLMCompletionBlock)(BOOL success, NSError * _Nullable error);
-typedef void (^HSBLocalLLMMessageCompletion)(NSString *response);
+typedef void (^HSBLocalLLMMessageCompletion)(NSString *response, BOOL isFinished);
 
 @interface HSBLocalLLMManager : NSObject
 
@@ -35,11 +35,13 @@ typedef void (^HSBLocalLLMMessageCompletion)(NSString *response);
 @property (nonatomic, strong, nullable) HSBLocalLLMModel *activeModel;
 
 + (instancetype)shared;
++ (NSString *)translationSystemPrompt;
 
 - (void)downloadModel:(HSBLocalLLMModel *)model progress:(HSBLocalLLMProgressBlock)progress completion:(HSBLocalLLMCompletionBlock)completion;
 - (void)pauseDownloadModel:(HSBLocalLLMModel *)model;
 - (void)activateModel:(HSBLocalLLMModel *)model;
-- (void)processMessage:(NSString *)message type:(NSInteger)type completion:(HSBLocalLLMMessageCompletion)completion;
+- (void)deactivateModel:(HSBLocalLLMModel *)model;
+- (void)processMessage:(NSString *)message systemPrompt:(NSString *)systemPrompt completion:(HSBLocalLLMMessageCompletion)completion;
 
 @end
 

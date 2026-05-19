@@ -24,6 +24,13 @@ static inline NSString * L(NSString *en, NSString *zh) {
 // Segmented Control
 @property (nonatomic, strong) UISegmentedControl *typeSegment;
 
+// 语言选择区
+@property (nonatomic, strong) UIView *languageConfigContainer;
+@property (nonatomic, strong) UIButton *sourceLangBtn;
+@property (nonatomic, strong) UIButton *targetLangBtn;
+@property (nonatomic, strong) NSString *selectedSourceLang;
+@property (nonatomic, strong) NSString *selectedTargetLang;
+
 // 快捷 Prompt 标签区
 @property (nonatomic, strong) UIScrollView *tagsScrollView;
 @property (nonatomic, strong) UIView *tagsContainer;
@@ -50,6 +57,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = L(@"AI Model Testing", @"AI 模型测试");
+    
+    self.selectedSourceLang = @"自动识别";
+    self.selectedTargetLang = @"英文";
     
     [self setupUI];
     [self updateStatusCard];
@@ -174,12 +184,43 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.statusCard addSubview:self.goToActivateBtn];
     
     // 3. Segmented Control
-    self.typeSegment = [[UISegmentedControl alloc] initWithItems:@[L(@"Translation Mode", @"同声传译(Type 1)"), L(@"Web Control", @"电视控制(Type 2)")]];
+    self.typeSegment = [[UISegmentedControl alloc] initWithItems:@[L(@"Translation", @"同声传译"), L(@"Web Control", @"电视控制")]];
     self.typeSegment.selectedSegmentIndex = 0;
     self.typeSegment.tintColor = [UIColor systemPurpleColor];
     [self.typeSegment addTarget:self action:@selector(segmentChanged:) forControlEvents:UIControlEventValueChanged];
     self.typeSegment.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentContainer addSubview:self.typeSegment];
+    
+    // 3.5 语言配置区
+    self.languageConfigContainer = [[UIView alloc] init];
+    self.languageConfigContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.contentContainer addSubview:self.languageConfigContainer];
+    
+    self.sourceLangBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.sourceLangBtn setTitle:[NSString stringWithFormat:@"源: %@", self.selectedSourceLang] forState:UIControlStateNormal];
+    self.sourceLangBtn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    self.sourceLangBtn.backgroundColor = [UIColor systemGray6Color];
+    self.sourceLangBtn.layer.cornerRadius = 8;
+    self.sourceLangBtn.showsMenuAsPrimaryAction = YES;
+    self.sourceLangBtn.menu = [self createLanguageMenuForButton:self.sourceLangBtn isSource:YES];
+    self.sourceLangBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.languageConfigContainer addSubview:self.sourceLangBtn];
+    
+    UILabel *arrowLabel = [[UILabel alloc] init];
+    arrowLabel.text = @"➡️";
+    arrowLabel.font = [UIFont systemFontOfSize:14];
+    arrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.languageConfigContainer addSubview:arrowLabel];
+    
+    self.targetLangBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.targetLangBtn setTitle:[NSString stringWithFormat:@"目标: %@", self.selectedTargetLang] forState:UIControlStateNormal];
+    self.targetLangBtn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    self.targetLangBtn.backgroundColor = [UIColor systemGray6Color];
+    self.targetLangBtn.layer.cornerRadius = 8;
+    self.targetLangBtn.showsMenuAsPrimaryAction = YES;
+    self.targetLangBtn.menu = [self createLanguageMenuForButton:self.targetLangBtn isSource:NO];
+    self.targetLangBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.languageConfigContainer addSubview:self.targetLangBtn];
     
     // 4. 快捷标签滚动容器
     self.tagsScrollView = [[UIScrollView alloc] init];
@@ -261,16 +302,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.clipboardBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [self.resultCard addSubview:self.clipboardBtn];
     
-    self.runOnTvBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    [self.runOnTvBtn setTitle:L(@"Run on TV", @"在电视上运行") forState:UIControlStateNormal];
-    self.runOnTvBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-    self.runOnTvBtn.backgroundColor = [UIColor systemIndigoColor];
-    [self.runOnTvBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    self.runOnTvBtn.layer.cornerRadius = 10;
-    self.runOnTvBtn.contentEdgeInsets = UIEdgeInsetsMake(6, 12, 6, 12);
-    [self.runOnTvBtn addTarget:self action:@selector(runOnTvAction) forControlEvents:UIControlEventTouchUpInside];
-    self.runOnTvBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.resultCard addSubview:self.runOnTvBtn];
+    // runOnTvBtn 已移除
     
     // 8. Auto Layout Constraints
     [NSLayoutConstraint activateConstraints:@[
@@ -310,8 +342,27 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [self.typeSegment.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor constant:-16],
         [self.typeSegment.heightAnchor constraintEqualToConstant:36],
         
+        // Language Config
+        [self.languageConfigContainer.topAnchor constraintEqualToAnchor:self.typeSegment.bottomAnchor constant:12],
+        [self.languageConfigContainer.centerXAnchor constraintEqualToAnchor:self.contentContainer.centerXAnchor],
+        [self.languageConfigContainer.heightAnchor constraintEqualToConstant:32],
+        
+        [self.sourceLangBtn.leadingAnchor constraintEqualToAnchor:self.languageConfigContainer.leadingAnchor],
+        [self.sourceLangBtn.centerYAnchor constraintEqualToAnchor:self.languageConfigContainer.centerYAnchor],
+        [self.sourceLangBtn.widthAnchor constraintEqualToConstant:100],
+        [self.sourceLangBtn.heightAnchor constraintEqualToConstant:32],
+        
+        [[self.languageConfigContainer.subviews objectAtIndex:1].leadingAnchor constraintEqualToAnchor:self.sourceLangBtn.trailingAnchor constant:12],
+        [[self.languageConfigContainer.subviews objectAtIndex:1].centerYAnchor constraintEqualToAnchor:self.languageConfigContainer.centerYAnchor],
+        
+        [self.targetLangBtn.leadingAnchor constraintEqualToAnchor:[self.languageConfigContainer.subviews objectAtIndex:1].trailingAnchor constant:12],
+        [self.targetLangBtn.centerYAnchor constraintEqualToAnchor:self.languageConfigContainer.centerYAnchor],
+        [self.targetLangBtn.trailingAnchor constraintEqualToAnchor:self.languageConfigContainer.trailingAnchor],
+        [self.targetLangBtn.widthAnchor constraintEqualToConstant:100],
+        [self.targetLangBtn.heightAnchor constraintEqualToConstant:32],
+        
         // Tags Scroll View
-        [self.tagsScrollView.topAnchor constraintEqualToAnchor:self.typeSegment.bottomAnchor constant:12],
+        [self.tagsScrollView.topAnchor constraintEqualToAnchor:self.languageConfigContainer.bottomAnchor constant:12],
         [self.tagsScrollView.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
         [self.tagsScrollView.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
         [self.tagsScrollView.heightAnchor constraintEqualToConstant:40],
@@ -359,11 +410,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
         
         [self.clipboardBtn.topAnchor constraintEqualToAnchor:self.resultTextView.bottomAnchor constant:10],
         [self.clipboardBtn.leadingAnchor constraintEqualToAnchor:self.resultCard.leadingAnchor constant:12],
-        [self.clipboardBtn.bottomAnchor constraintEqualToAnchor:self.resultCard.bottomAnchor constant:-12],
-        
-        [self.runOnTvBtn.topAnchor constraintEqualToAnchor:self.resultTextView.bottomAnchor constant:10],
-        [self.runOnTvBtn.trailingAnchor constraintEqualToAnchor:self.resultCard.trailingAnchor constant:-12],
-        [self.runOnTvBtn.bottomAnchor constraintEqualToAnchor:self.resultCard.bottomAnchor constant:-12]
+        [self.clipboardBtn.bottomAnchor constraintEqualToAnchor:self.resultCard.bottomAnchor constant:-12]
     ]];
 }
 
@@ -465,9 +512,38 @@ static inline NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)segmentChanged:(UISegmentedControl *)sender {
+    BOOL isTranslation = (sender.selectedSegmentIndex == 0);
+    self.languageConfigContainer.hidden = !isTranslation;
+    
+    // 更新 tags 下方的约束，这里为简化直接控制 hidden，Auto Layout 如果没做动态高度可能会留白，
+    // 由于是测试页面，留白 32pt 高度可以接受。
+    
     [self updateQuickPromptTags];
     self.inputTextView.text = @"";
     self.placeholderLabel.hidden = NO;
+}
+
+- (UIMenu *)createLanguageMenuForButton:(UIButton *)btn isSource:(BOOL)isSource {
+    NSArray *langs = @[@"自动识别", @"中文", @"英文", @"日文", @"韩文", @"法文", @"德文"];
+    if (!isSource) {
+        langs = @[@"中文", @"英文", @"日文", @"韩文", @"法文", @"德文"];
+    }
+    
+    NSMutableArray *actions = [NSMutableArray array];
+    for (NSString *lang in langs) {
+        __weak typeof(self) weakSelf = self;
+        UIAction *action = [UIAction actionWithTitle:lang image:nil identifier:nil handler:^(__kindof UIAction * _Nonnull action) {
+            if (isSource) {
+                weakSelf.selectedSourceLang = lang;
+                [btn setTitle:[NSString stringWithFormat:@"源: %@", lang] forState:UIControlStateNormal];
+            } else {
+                weakSelf.selectedTargetLang = lang;
+                [btn setTitle:[NSString stringWithFormat:@"目标: %@", lang] forState:UIControlStateNormal];
+            }
+        }];
+        [actions addObject:action];
+    }
+    return [UIMenu menuWithTitle:@"选择语言" children:actions];
 }
 
 - (void)tagPressed:(UIButton *)sender {
@@ -506,27 +582,38 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     NSInteger type = (self.typeSegment.selectedSegmentIndex == 0) ? 1 : 2;
     
+    NSString *systemPrompt = @"";
+    NSString *enhancedUserPrompt = @"";
+    
+    if (type == 1) { // 翻译
+        systemPrompt = @"你是一个精准的翻译助手。只输出最终的翻译结果，不要任何多余的解释、Markdown 或标注。";
+        NSString *sourceStr = [self.selectedSourceLang isEqualToString:@"自动识别"] ? @"自动识别语言" : self.selectedSourceLang;
+        enhancedUserPrompt = [NSString stringWithFormat:@"请将下面这句话从【%@】翻译成【%@】：\n%@", sourceStr, self.selectedTargetLang, prompt];
+    } else { // JS
+        systemPrompt = @"你是一个前端开发助手。只输出纯 JavaScript 代码，不要任何 Markdown 格式(如 ```javascript) 或解释。";
+        enhancedUserPrompt = [NSString stringWithFormat:@"请写一段 JavaScript 代码来实现这个需求：%@", prompt];
+    }
+    
     __weak typeof(self) weakSelf = self;
-    [[HSBLocalLLMManager shared] processMessage:prompt type:type completion:^(NSString * _Nonnull response) {
+    [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt completion:^(NSString * _Nonnull response, BOOL isFinished) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            [weakSelf.spinner stopAnimating];
-            weakSelf.testBtn.enabled = YES;
-            weakSelf.testBtn.alpha = 1.0;
-            [weakSelf.testBtn setTitle:L(@"Start AI Inference", @"开始端侧 AI 推理") forState:UIControlStateNormal];
-            
-            // 展示结果卡片
+            // 无论是否结束，都实时更新文本和展示结果卡片
             weakSelf.resultCard.hidden = NO;
             weakSelf.resultTextView.text = response;
             
-            // 根据类型动态显示或隐藏“在电视运行”按钮
-            weakSelf.runOnTvBtn.hidden = (type != 2);
-            
-            // 结果滚动到顶部
-            [weakSelf.resultTextView scrollRangeToVisible:NSMakeRange(0, 0)];
-            
-            // 触觉反馈
-            UINotificationFeedbackGenerator *hap = [[UINotificationFeedbackGenerator alloc] init];
-            [hap notificationOccurred:UINotificationFeedbackTypeSuccess];
+            if (isFinished) {
+                [weakSelf.spinner stopAnimating];
+                weakSelf.testBtn.enabled = YES;
+                weakSelf.testBtn.alpha = 1.0;
+                [weakSelf.testBtn setTitle:L(@"Start AI Inference", @"开始端侧 AI 推理") forState:UIControlStateNormal];
+                
+                // 结果滚动到顶部
+                [weakSelf.resultTextView scrollRangeToVisible:NSMakeRange(0, 0)];
+                
+                // 👑 触觉反馈：只有大模型生成完全结束时触发单次震动，流式生成时不震动
+                UINotificationFeedbackGenerator *hap = [[UINotificationFeedbackGenerator alloc] init];
+                [hap notificationOccurred:UINotificationFeedbackTypeSuccess];
+            }
         });
     }];
 }

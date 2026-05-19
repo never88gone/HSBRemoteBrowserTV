@@ -433,8 +433,26 @@ static NSString * L(NSString *en, NSString *zh) {
     
     self.trackpadStatusLabel.text = L(@"AI Thinking...", @"AI 思考中...");
     
-    [[HSBLocalLLMManager shared] processMessage:text type:type completion:^(NSString * _Nonnull response) {
+    NSString *systemPrompt = @"";
+    NSString *enhancedUserPrompt = @"";
+    
+    if (type == 1) { // 翻译
+        systemPrompt = @"你是一个精准的翻译助手。只输出最终的翻译结果，不要任何多余的解释、Markdown 或标注。";
+        enhancedUserPrompt = [NSString stringWithFormat:@"请将下面这句话自动识别并翻译成英文：\n%@", text];
+    } else { // JS
+        systemPrompt = @"你是一个前端开发助手。只输出纯 JavaScript 代码，不要任何 Markdown 格式(如 ```javascript) 或解释。";
+        enhancedUserPrompt = [NSString stringWithFormat:@"请写一段 JavaScript 代码来实现这个需求：%@", text];
+    }
+    
+    [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt completion:^(NSString * _Nonnull response, BOOL isFinished) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (!isFinished) {
+                // 流式生成中，仅更新状态标签显示，不进行任何震动、弹窗或 TV 推送
+                self.trackpadStatusLabel.text = [NSString stringWithFormat:@"%@ (%lu)", L(@"AI Thinking...", @"AI 思考中..."), (unsigned long)response.length];
+                return;
+            }
+            
+            // 物理生成完全结束
             self.trackpadStatusLabel.text = L(@"AI Done", @"AI 处理完成");
             
             NSDictionary *payload = @{
@@ -445,7 +463,7 @@ static NSString * L(NSString *en, NSString *zh) {
             };
             
             if (type == 1) { // 翻译结果
-                // 1. 手机弹窗
+                // 1. 手机弹窗（仅在生成结束时弹一次）
                 UIAlertController *res = [UIAlertController alertControllerWithTitle:L(@"Translation Result", @"翻译结果")
                                                                              message:response
                                                                       preferredStyle:UIAlertControllerStyleAlert];
@@ -454,13 +472,17 @@ static NSString * L(NSString *en, NSString *zh) {
                 
                 // 2. 同步到 TV (可选功能：在大屏显示翻译结果)
                 [self sendDirectPayload:payload];
+                
+                // 结束触觉反馈
+                UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+                [hap impactOccurred];
             } else { // JS 脚本
-                // 直接下发执行
+                // 1. 直接下发执行到 TV（仅在生成结束时下发最终版完整脚本）
                 NSMutableDictionary *jsPayload = [payload mutableCopy];
                 [jsPayload setObject:response forKey:@"script"]; // 保持兼容性
                 [self sendDirectPayload:jsPayload];
                 
-                // 触觉反馈
+                // 2. 结束触觉反馈：只有生成结束时才震动，流式不震动
                 UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
                 [hap impactOccurred];
             }

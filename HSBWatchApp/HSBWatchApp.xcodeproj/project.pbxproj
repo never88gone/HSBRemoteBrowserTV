@@ -7,7 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0A99188A9774AB4BA1DF7E24 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = A5B1CAF958E861CC5BFB5DE3 /* MLXLMCommon */; };
 		382CD70D2F7CDE8E0015A355 /* HSBWatchApp Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 3803AE422F0D10490047BF4A /* HSBWatchApp Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		89EBB536C6156798136CD15D /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = D7FF7F261299DCA0B78130BE /* Tokenizers */; };
+		961214DDCBD6877D41E08AC6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 236701DB30053D1055359898 /* MLXLLM */; };
+		C68B7B919852504422D0B461 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 52DCD2C0FEC2078986ACE36F /* MLXHuggingFace */; };
+		DEE690F0D8E6C4078EFF1C13 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A0FC6324C5888A8DAD3893C1 /* HuggingFace */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +93,11 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				961214DDCBD6877D41E08AC6 /* MLXLLM in Frameworks */,
+				C68B7B919852504422D0B461 /* MLXHuggingFace in Frameworks */,
+				0A99188A9774AB4BA1DF7E24 /* MLXLMCommon in Frameworks */,
+				DEE690F0D8E6C4078EFF1C13 /* HuggingFace in Frameworks */,
+				89EBB536C6156798136CD15D /* Tokenizers in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -140,8 +150,6 @@
 				3803AE462F0D10490047BF4A /* HSBWatchApp Watch App */,
 			);
 			name = "HSBWatchApp Watch App";
-			packageProductDependencies = (
-			);
 			productName = "HSBWatchApp Watch App";
 			productReference = 3803AE422F0D10490047BF4A /* HSBWatchApp Watch App.app */;
 			productType = "com.apple.product-type.application";
@@ -165,8 +173,6 @@
 				382CD6F02F7CDE640015A355 /* HSBWatchCompanion */,
 			);
 			name = HSBWatchCompanion;
-			packageProductDependencies = (
-			);
 			productName = HSBWatchCompanion;
 			productReference = 382CD6EF2F7CDE640015A355 /* HSBWatchCompanion.app */;
 			productType = "com.apple.product-type.application";
@@ -206,6 +212,9 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				38CA938F2FB9CA3C00E29C61 /* XCRemoteSwiftPackageReference "mlx-swift" */,
+				D2C761D4AC706CEEDE107FD3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				A4B39D918C618472E292352B /* XCRemoteSwiftPackageReference "swift-huggingface" */,
+				EF4429EB4C32542046FF1505 /* XCRemoteSwiftPackageReference "swift-transformers" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3803AE3D2F0D10490047BF4A /* Products */;
@@ -321,7 +330,7 @@
 				DEVELOPMENT_TEAM = 876385K952;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -384,7 +393,7 @@
 				DEVELOPMENT_TEAM = 876385K952;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -600,7 +609,59 @@
 				minimumVersion = 0.31.3;
 			};
 		};
+		A4B39D918C618472E292352B /* XCRemoteSwiftPackageReference "swift-huggingface" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-huggingface";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		D2C761D4AC706CEEDE107FD3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		EF4429EB4C32542046FF1505 /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		236701DB30053D1055359898 /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D2C761D4AC706CEEDE107FD3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		52DCD2C0FEC2078986ACE36F /* MLXHuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D2C761D4AC706CEEDE107FD3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXHuggingFace;
+		};
+		A0FC6324C5888A8DAD3893C1 /* HuggingFace */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A4B39D918C618472E292352B /* XCRemoteSwiftPackageReference "swift-huggingface" */;
+			productName = HuggingFace;
+		};
+		A5B1CAF958E861CC5BFB5DE3 /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D2C761D4AC706CEEDE107FD3 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		D7FF7F261299DCA0B78130BE /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EF4429EB4C32542046FF1505 /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3803AE362F0D10490047BF4A /* Project object */;
 }

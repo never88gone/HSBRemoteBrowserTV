@@ -3,6 +3,8 @@
 #import "HSBLLMTestViewController.h"
 #import "HSBThemeManager.h"
 #import "HSBBaseViewController.h"
+#import "HSBContactUsViewController.h"
+#import "HSBLocalLLMManager.h"
 
 
 static inline NSString * L(NSString *en, NSString *zh) {
@@ -68,7 +70,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return 5;
+    return 8;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -97,13 +99,50 @@ static inline NSString * L(NSString *en, NSString *zh) {
         cell.imageView.image = [UIImage systemImageNamed:@"sparkles"];
         cell.imageView.tintColor = palette.primaryColor;
     } else if (indexPath.row == 2) {
+        cell.textLabel.text = L(@"Source Language", @"翻译源语言");
+        cell.imageView.image = [UIImage systemImageNamed:@"character.bubble.fill"];
+        cell.imageView.tintColor = palette.primaryColor;
+        NSString *source = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
+        NSDictionary *map = @{
+            @"Auto": L(@"Auto Detect", @"自动检测"),
+            @"Chinese": L(@"Chinese", @"中文"),
+            @"English": L(@"English", @"英文"),
+            @"Japanese": L(@"Japanese", @"日文"),
+            @"Korean": L(@"Korean", @"韩文"),
+            @"French": L(@"French", @"法文"),
+            @"German": L(@"German", @"德文"),
+            @"Spanish": L(@"Spanish", @"西班牙文"),
+            @"Russian": L(@"Russian", @"俄文")
+        };
+        cell.detailTextLabel.text = map[source] ?: source;
+    } else if (indexPath.row == 3) {
+        cell.textLabel.text = L(@"Target Language", @"翻译目标语言");
+        cell.imageView.image = [UIImage systemImageNamed:@"arrow.right.circle.fill"];
+        cell.imageView.tintColor = palette.primaryColor;
+        NSString *target = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
+        NSDictionary *map = @{
+            @"Chinese": L(@"Chinese", @"中文"),
+            @"English": L(@"English", @"英文"),
+            @"Japanese": L(@"Japanese", @"日文"),
+            @"Korean": L(@"Korean", @"韩文"),
+            @"French": L(@"French", @"法文"),
+            @"German": L(@"German", @"德文"),
+            @"Spanish": L(@"Spanish", @"西班牙文"),
+            @"Russian": L(@"Russian", @"俄文")
+        };
+        cell.detailTextLabel.text = map[target] ?: target;
+    } else if (indexPath.row == 4) {
         cell.textLabel.text = L(@"App Theme", @"应用主题色");
         cell.imageView.image = [UIImage systemImageNamed:@"paintpalette.fill"];
         cell.imageView.tintColor = palette.primaryColor;
         cell.detailTextLabel.text = [HSBThemeManager shared].themeName;
-    } else if (indexPath.row == 3) {
+    } else if (indexPath.row == 5) {
         cell.textLabel.text = L(@"Privacy Policy", @"隐私政策");
         cell.imageView.image = [UIImage systemImageNamed:@"hand.raised.fill"];
+        cell.imageView.tintColor = palette.primaryColor;
+    } else if (indexPath.row == 6) {
+        cell.textLabel.text = L(@"Contact Us", @"联系我们");
+        cell.imageView.image = [UIImage systemImageNamed:@"envelope.fill"];
         cell.imageView.tintColor = palette.primaryColor;
     } else {
         cell.textLabel.text = L(@"About", @"关于");
@@ -123,13 +162,22 @@ static inline NSString * L(NSString *en, NSString *zh) {
         vc.sendPayloadBlock = self.sendPayloadBlock;
         [self.navigationController pushViewController:vc animated:YES];
     } else if (indexPath.row == 2) {
-        [self showThemeSelection];
+        [self showSourceLanguageSelection];
     } else if (indexPath.row == 3) {
+        [self showTargetLanguageSelection];
+    } else if (indexPath.row == 4) {
+        [self showThemeSelection];
+    } else if (indexPath.row == 5) {
         [self showPrivacyPolicy];
+    } else if (indexPath.row == 6) {
+        HSBContactUsViewController *vc = [[HSBContactUsViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
     } else {
         [self showAbout];
     }
 }
+
+// copyContactEmail 已移除，改用独立 VC 跳转
 
 - (void)showThemeSelection {
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:L(@"Select App Theme", @"设置应用主题色") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
@@ -229,6 +277,87 @@ static inline NSString * L(NSString *en, NSString *zh) {
     ]];
     
     [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)showSourceLanguageSelection {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:L(@"Select Source Language", @"设置翻译源语言") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    
+    NSArray *keys = @[@"Auto", @"Chinese", @"English", @"Japanese", @"Korean", @"French", @"German", @"Spanish", @"Russian"];
+    NSArray *names = @[
+        L(@"Auto Detect", @"自动检测"),
+        L(@"Chinese", @"中文"),
+        L(@"English", @"英文"),
+        L(@"Japanese", @"日文"),
+        L(@"Korean", @"韩文"),
+        L(@"French", @"法文"),
+        L(@"German", @"德文"),
+        L(@"Spanish", @"西班牙文"),
+        L(@"Russian", @"俄文")
+    ];
+    
+    NSString *current = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
+    
+    for (NSInteger i = 0; i < keys.count; i++) {
+        NSString *key = keys[i];
+        NSString *name = names[i];
+        NSString *title = name;
+        if ([key isEqualToString:current]) {
+            title = [NSString stringWithFormat:@"%@ ✓", name];
+        }
+        
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [[NSUserDefaults standardUserDefaults] setObject:key forKey:@"HSBTranslationSourceLanguage"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            [self.tableView reloadData];
+        }]];
+    }
+    
+    [sheet addAction:[UIAlertAction actionWithTitle:L(@"Cancel", @"取消") style:UIAlertActionStyleCancel handler:nil]];
+    
+    sheet.popoverPresentationController.sourceView = self.tableView;
+    sheet.popoverPresentationController.sourceRect = [self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]];
+    
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)showTargetLanguageSelection {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:L(@"Select Target Language", @"设置翻译目标语言") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
+    
+    NSArray *keys = @[@"Chinese", @"English", @"Japanese", @"Korean", @"French", @"German", @"Spanish", @"Russian"];
+    NSArray *names = @[
+        L(@"Chinese", @"中文"),
+        L(@"English", @"英文"),
+        L(@"Japanese", @"日文"),
+        L(@"Korean", @"韩文"),
+        L(@"French", @"法文"),
+        L(@"German", @"德文"),
+        L(@"Spanish", @"西班牙文"),
+        L(@"Russian", @"俄文")
+    ];
+    
+    NSString *current = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
+    
+    for (NSInteger i = 0; i < keys.count; i++) {
+        NSString *key = keys[i];
+        NSString *name = names[i];
+        NSString *title = name;
+        if ([key isEqualToString:current]) {
+            title = [NSString stringWithFormat:@"%@ ✓", name];
+        }
+        
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [[NSUserDefaults standardUserDefaults] setObject:key forKey:@"HSBTranslationTargetLanguage"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            [self.tableView reloadData];
+        }]];
+    }
+    
+    [sheet addAction:[UIAlertAction actionWithTitle:L(@"Cancel", @"取消") style:UIAlertActionStyleCancel handler:nil]];
+    
+    sheet.popoverPresentationController.sourceView = self.tableView;
+    sheet.popoverPresentationController.sourceRect = [self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:3 inSection:0]];
+    
+    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)tapVersion:(UITapGestureRecognizer *)sender {

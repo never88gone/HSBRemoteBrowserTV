@@ -42,6 +42,39 @@
     return sharedInstance;
 }
 
++ (NSString *)translationSystemPrompt {
+    NSString *source = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
+    NSString *target = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
+    
+    NSDictionary *langMap = @{
+        @"Auto": @"Auto Detect",
+        @"Chinese": @"Chinese",
+        @"English": @"English",
+        @"Japanese": @"Japanese",
+        @"Korean": @"Korean",
+        @"French": @"French",
+        @"German": @"German",
+        @"Spanish": @"Spanish",
+        @"Russian": @"Russian"
+    };
+    
+    NSString *sourceEng = langMap[source] ?: @"Auto Detect";
+    NSString *targetEng = langMap[target] ?: @"Chinese";
+    
+    if ([source isEqualToString:@"Auto"]) {
+        if ([target isEqualToString:@"Chinese"]) {
+            return @"You are a professional translator. Translate the following text. If it is English, translate it into Chinese. If it is Chinese, translate it into English. Output ONLY the translation without any introduction or notes.";
+        } else {
+            return [NSString stringWithFormat:@"You are a professional translator. Translate the following text into %@. If it is already in %@, translate it into Chinese. Output ONLY the translation without any introduction or notes.", targetEng, targetEng];
+        }
+    } else {
+        if ([source isEqualToString:target]) {
+            return [NSString stringWithFormat:@"You are a professional translator. Output the input text as is in %@. Output ONLY the text without any introduction or notes.", targetEng];
+        }
+        return [NSString stringWithFormat:@"You are a professional translator. Translate the following text from %@ into %@. Output ONLY the translation without any introduction or notes.", sourceEng, targetEng];
+    }
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
@@ -61,21 +94,45 @@
 
 - (void)setupDefaultModels {
     self.models = @[
-        [[HSBLocalLLMModel alloc] initWithId:@"qwen1.5-0.5b" name:@"Qwen1.5-0.5B-Chat (CoreML)" description:@"阿里通义千问超轻量 0.5B 端侧旗舰大语言模型，已转换为物理大模型格式，完美支持 Apple Silicon GPU 与 Metal 硬件加速，具有卓越的本地中英文自回归机器翻译与智能 JS 脚本指令生成能力。" url:[NSURL URLWithString:@"https://huggingface.co/mlx-community/Qwen1.5-0.5B-Chat-4bit/resolve/main/tokenizer.json"]],
-        [[HSBLocalLLMModel alloc] initWithId:@"gemma-2b-it" name:@"Gemma-2B-IT (CoreML)" description:@"谷歌官方 Gemma 2B 专为端侧设备优化的指令微调大语言模型，已转换为物理大模型格式，完美支持 Apple Silicon GPU 与 Unified Memory 统一内存加速，支持自由的离线对话与精准的中英互译。" url:[NSURL URLWithString:@"https://huggingface.co/mlx-community/gemma-2b-it-4bit/resolve/main/tokenizer.json"]]
+        [[HSBLocalLLMModel alloc] initWithId:@"qwen1.5-0.5b" name:@"Qwen1.5-0.5B-Chat (CoreML)" description:@"阿里通义千问超轻量 0.5B 端侧旗舰大语言模型，已转换为物理大模型格式，完美支持 Apple Silicon GPU 与 Metal 硬件加速，具有卓越的本地中英文自回归机器翻译与智能 JS 脚本指令生成能力。" url:[NSURL URLWithString:@"https://hf-mirror.com/mlx-community/Qwen1.5-0.5B-Chat-4bit/resolve/main/tokenizer.json"]],
+        [[HSBLocalLLMModel alloc] initWithId:@"gemma-2b-it" name:@"Gemma-2B-IT (CoreML)" description:@"谷歌官方 Gemma 2B 专为端侧设备优化的指令微调大语言模型，已转换为物理大模型格式，完美支持 Apple Silicon GPU 与 Unified Memory 统一内存加速，支持自由的离线对话与精准的中英互译。" url:[NSURL URLWithString:@"https://hf-mirror.com/mlx-community/gemma-2b-it-4bit/resolve/main/tokenizer.json"]]
     ];
     
-    // 初始化检查本地是否已有下载好的 .mlmodel 模型文件（或已编译的 .mlmodelc 目录）
-    NSString *docDir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    // 由于 MLX 模型是下载到底层的 ~/.cache/huggingface 中，我们通过 NSUserDefaults 进行下载状态持久化记录
+    // 由于 MLX 模型是下载到底层的 ~/.cache/huggingface 中，我们通过 NSUserDefaults 以及物理文件探测进行状态双重校验
+    NSString *activeModelId = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBLocalLLM_ActiveModelId"];
+    __block HSBLocalLLMModel *modelToActivate = nil;
+    
     for (HSBLocalLLMModel *model in self.models) {
-        NSString *mlmodelPath = [docDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodel", model.modelId]];
-        NSString *mlmodelcPath = [docDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodelc", model.modelId]];
-        BOOL isDir = NO;
-        if ([[NSFileManager defaultManager] fileExistsAtPath:mlmodelPath] ||
-            ([[NSFileManager defaultManager] fileExistsAtPath:mlmodelcPath isDirectory:&isDir] && isDir)) {
+        NSString *cacheKey = [NSString stringWithFormat:@"HSBLocalLLM_Downloaded_%@", model.modelId];
+        
+        // 🥇 物理+持久化双保险校验：如果 UserDefaults 标记已下载，或者沙盒中物理存在完整 Safetensors，都判定为已就绪
+        BOOL isPhysicallyDownloaded = [[HSBMLXLLMEngine shared] isModelDownloaded:model.modelId];
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:cacheKey] || isPhysicallyDownloaded) {
             model.status = HSBLocalLLMDownloadStatusFinished;
             model.downloadProgress = 1.0;
+            
+            // 缓存状态补齐同步，防止因 UserDefaults 丢失导致 UI 显示未下载
+            if (![[NSUserDefaults standardUserDefaults] boolForKey:cacheKey]) {
+                [[NSUserDefaults standardUserDefaults] setBool:YES forKey:cacheKey];
+                [[NSUserDefaults standardUserDefaults] synchronize];
+            }
+            
+            if (activeModelId) {
+                if ([model.modelId isEqualToString:activeModelId]) {
+                    modelToActivate = model;
+                }
+            } else if (!modelToActivate) {
+                // 🥈 智能恢复：若用户从未手动点击过“激活”按钮，但大模型早已完全下载，则默认自动激活首个就绪的模型，避免提示“模型未激活”
+                modelToActivate = model;
+            }
         }
+    }
+    
+    if (modelToActivate) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self activateModel:modelToActivate];
+        });
     }
 }
 
@@ -88,24 +145,26 @@
 - (void)downloadModel:(HSBLocalLLMModel *)model progress:(HSBLocalLLMProgressBlock)progress completion:(HSBLocalLLMCompletionBlock)completion {
     if (model.status == HSBLocalLLMDownloadStatusDownloading) return;
     
-    // 1. 检查磁盘空间 (假设模型 1.5GB，需要预留 3GB 以供解压)
-    long long freeSpace = [self getFreeDiskSpace];
-    if (freeSpace < 3000 * 1024 * 1024LL) {
-        if (completion) completion(NO, [NSError errorWithDomain:@"com.hsb.llm" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"磁盘空间不足，请清理后再试"}]);
-        return;
-    }
-    
-    NSURLSessionDownloadTask *task;
-    if (model.resumeData) {
-        task = [self.downloadSession downloadTaskWithResumeData:model.resumeData];
-    } else {
-        task = [self.downloadSession downloadTaskWithURL:model.url];
-    }
-    
     model.status = HSBLocalLLMDownloadStatusDownloading;
-    self.activeTasks[model.modelId] = task;
-    self.taskMap[@(task.taskIdentifier)] = model;
-    [task resume];
+    
+    [[HSBMLXLLMEngine shared] loadAndActivateModelWithModelId:model.modelId callback:^(NSString * _Nonnull logText, double fractionCompleted) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            model.downloadProgress = fractionCompleted;
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadProgressNotification" object:model];
+            
+            if (fractionCompleted >= 1.0) {
+                model.status = HSBLocalLLMDownloadStatusFinished;
+                
+                // 持久化保存下载成功状态
+                NSString *cacheKey = [NSString stringWithFormat:@"HSBLocalLLM_Downloaded_%@", model.modelId];
+                [[NSUserDefaults standardUserDefaults] setBool:YES forKey:cacheKey];
+                [[NSUserDefaults standardUserDefaults] synchronize];
+                
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
+                if (completion) completion(YES, nil);
+            }
+        });
+    }];
 }
 
 - (long long)getFreeDiskSpace {
@@ -114,52 +173,16 @@
 }
 
 - (void)pauseDownloadModel:(HSBLocalLLMModel *)model {
-    NSURLSessionDownloadTask *task = self.activeTasks[model.modelId];
-    if (task) {
-        [task cancelByProducingResumeData:^(NSData * _Nullable resumeData) {
-            model.resumeData = resumeData;
-            model.status = HSBLocalLLMDownloadStatusPaused;
-            [self.activeTasks removeObjectForKey:model.modelId];
-        }];
-    }
+    // HubDownloader 由底层系统管理，标记状态
+    model.status = HSBLocalLLMDownloadStatusPaused;
 }
 
-#pragma mark - NSURLSessionDownloadDelegate
+#pragma mark - NSURLSessionDownloadDelegate (弃用)
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
-    HSBLocalLLMModel *model = self.taskMap[@(downloadTask.taskIdentifier)];
-    if (model) {
-        model.downloadProgress = (double)totalBytesWritten / (double)totalBytesExpectedToWrite;
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadProgressNotification" object:model];
-    }
 }
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location {
-    HSBLocalLLMModel *model = self.taskMap[@(downloadTask.taskIdentifier)];
-    if (model) {
-        // 1. HTTP 状态码健全性校验，防止网络错误网页（例如404等）被误认为大模型文件
-        if ([downloadTask.response isKindOfClass:[NSHTTPURLResponse class]]) {
-            NSInteger statusCode = ((NSHTTPURLResponse *)downloadTask.response).statusCode;
-            if (statusCode < 200 || statusCode >= 300) {
-                model.status = HSBLocalLLMDownloadStatusFailed;
-                NSError *error = [NSError errorWithDomain:@"com.hsb.llm" code:statusCode userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"大模型下载失败，服务器返回 HTTP %ld", (long)statusCode]}];
-                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFailedNotification" object:model userInfo:@{@"error": error}];
-                [self.activeTasks removeObjectForKey:model.modelId];
-                return;
-            }
-        }
-        NSString *docDir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-        NSString *destPath = [docDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodel", model.modelId]];
-        
-        // 覆盖已存在的目标文件
-        [[NSFileManager defaultManager] removeItemAtPath:destPath error:nil];
-        [[NSFileManager defaultManager] moveItemAtURL:location toURL:[NSURL fileURLWithPath:destPath] error:nil];
-        
-        model.status = HSBLocalLLMDownloadStatusFinished;
-        model.downloadProgress = 1.0;
-        [self.activeTasks removeObjectForKey:model.modelId];
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
-    }
 }
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
@@ -177,24 +200,35 @@
 - (void)activateModel:(HSBLocalLLMModel *)model {
     if (model.status != HSBLocalLLMDownloadStatusFinished) return;
     
-    NSString *docDir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-    NSString *mlmodelPath = [docDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodel", model.modelId]];
+    // 🚀 原生统一通道激活
+    // 直接通知 HSBMLXLLMEngine 接管物理自回归推理，所有任务均委派给 Swift MLX 算子。
+    NSLog(@"[HSBLocalLLM] Physical LLM Engine Activated Successfully: %@", model.name);
+    for (HSBLocalLLMModel *m in self.models) {
+        m.isActive = (m == model);
+    }
+    self.activeModel = model;
     
-    // 🚀 方案 C (MLX-Swift) 物理统一通道激活
-    // 一旦物理检测到大模型核心配置已成功下载，100% 物理宣布激活成功，将自回归推理全面委派给 Swift 大语言模型物理引擎。
-    // 这完美绕过了本地系统对 CoreML 格式的严格校验限制，彻底根除了 Failed to parse the model specification 报错！
-    if ([[NSFileManager defaultManager] fileExistsAtPath:mlmodelPath]) {
-        NSLog(@"[HSBLocalLLM] Scheme C Physical LLM Engine Activated Successfully: %@", model.name);
-        for (HSBLocalLLMModel *m in self.models) {
-            m.isActive = (m == model);
-        }
-        self.activeModel = model;
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
-        return;
+    // 🏆 持久化保存激活成功的模型 ID
+    [[NSUserDefaults standardUserDefaults] setObject:model.modelId forKey:@"HSBLocalLLM_ActiveModelId"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
+}
+
+- (void)deactivateModel:(HSBLocalLLMModel *)model {
+    if (!model.isActive) return;
+    
+    NSLog(@"[HSBLocalLLM] Physical LLM Engine Deactivated: %@", model.name);
+    model.isActive = NO;
+    if (self.activeModel == model) {
+        self.activeModel = nil;
     }
     
-    // 备用兜底逻辑
-    [self enterMockActivationModeForModel:model];
+    // 🏆 取消激活，清除持久化值
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"HSBLocalLLM_ActiveModelId"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
 }
 
 // 提取公共 Mock 激活降级方法
@@ -208,19 +242,30 @@
     [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
 }
 
-- (void)processMessage:(NSString *)message type:(NSInteger)type completion:(HSBLocalLLMMessageCompletion)completion {
+- (void)processMessage:(NSString *)message systemPrompt:(NSString *)systemPrompt completion:(HSBLocalLLMMessageCompletion)completion {
     if (!self.activeModel) {
-        if (completion) completion(@"端侧模型未激活，请先下载并激活大模型！");
+        if (completion) completion(@"端侧模型未激活，请先下载并激活大模型！", YES);
         return;
     }
     
     NSLog(@"[HSBLocalLLM] Dispatching to MLX-Swift GPU Tensor Engine for model: %@", self.activeModel.name);
     
+    // 判断是否为 JS 代码生成任务
+    BOOL isJSTask = [systemPrompt containsString:@"JavaScript"] || 
+                    [systemPrompt containsString:@"JS"] || 
+                    [systemPrompt containsString:@"前端"] || 
+                    [systemPrompt containsString:@"code"] || 
+                    [systemPrompt containsString:@"代码"];
+    
     // 🏆 方案 C：物理调用 Swift 本地 MLX 大模型引擎进行 ANE/GPU 自回归流式推理
-    [[HSBMLXLLMEngine shared] generateWithMLXWithPrompt:message modelId:self.activeModel.modelId callback:^(NSString * _Nonnull partialResponse) {
+    [[HSBMLXLLMEngine shared] generateWithMLXWithSystemPrompt:systemPrompt userPrompt:message modelId:self.activeModel.modelId callback:^(NSString * _Nonnull partialResponse, BOOL isFinished) {
         if (completion) {
+            NSString *finalResponse = partialResponse;
+            if (isJSTask) {
+                finalResponse = [self cleanJSCode:partialResponse];
+            }
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(partialResponse);
+                completion(finalResponse, isFinished);
             });
         }
     }];
@@ -262,15 +307,39 @@
     return pxbuffer;
 }
 
-// 辅助方法：清洗生成的 JS 代码，去除 Markdown 符号
+// 辅助方法：清洗生成的 JS 代码，去除 Markdown 符号与解释，完美兼容流式生成
 - (NSString *)cleanJSCode:(NSString *)code {
     NSString *clean = [code stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if ([clean hasPrefix:@"```javascript"]) {
-        clean = [clean stringByReplacingOccurrencesOfString:@"```javascript" withString:@""];
-    } else if ([clean hasPrefix:@"```js"]) {
-        clean = [clean stringByReplacingOccurrencesOfString:@"```js" withString:@""];
+    
+    // 1. 尝试匹配首要的 ```javascript 或 ```js 代码块
+    NSRange jsStart = [clean rangeOfString:@"```javascript" options:NSCaseInsensitiveSearch];
+    if (jsStart.location == NSNotFound) {
+        jsStart = [clean rangeOfString:@"```js" options:NSCaseInsensitiveSearch];
     }
-    clean = [clean stringByReplacingOccurrencesOfString:@"```" withString:@""];
+    
+    if (jsStart.location != NSNotFound) {
+        NSUInteger blockStart = jsStart.location + jsStart.length;
+        NSRange nextFence = [clean rangeOfString:@"```" options:0 range:NSMakeRange(blockStart, clean.length - blockStart)];
+        if (nextFence.location != NSNotFound) {
+            clean = [clean substringWithRange:NSMakeRange(blockStart, nextFence.location - blockStart)];
+        } else {
+            // 流式输出中，还没闭合 ```，但我们直接提取并渲染已输出的代码体
+            clean = [clean substringFromIndex:blockStart];
+        }
+    } else {
+        // 2. 降级匹配普通代码块 ```
+        NSRange codeStart = [clean rangeOfString:@"```"];
+        if (codeStart.location != NSNotFound) {
+            NSUInteger blockStart = codeStart.location + codeStart.length;
+            NSRange nextFence = [clean rangeOfString:@"```" options:0 range:NSMakeRange(blockStart, clean.length - blockStart)];
+            if (nextFence.location != NSNotFound) {
+                clean = [clean substringWithRange:NSMakeRange(blockStart, nextFence.location - blockStart)];
+            } else {
+                clean = [clean substringFromIndex:blockStart];
+            }
+        }
+    }
+    
     return [clean stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 

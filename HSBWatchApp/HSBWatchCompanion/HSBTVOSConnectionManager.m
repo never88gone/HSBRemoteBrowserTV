@@ -4,6 +4,7 @@
 //
 
 #import "HSBTVOSConnectionManager.h"
+#import "HSBLocalLLMManager.h"
 
 NSString * const HSBTVOSConnectionStateNotification = @"HSBTVOSConnectionStateNotification";
 NSString * const HSBTVOSStateUpdatedNotification = @"HSBTVOSStateUpdatedNotification";
@@ -183,6 +184,55 @@ NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdated
                                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVFavoritesUpdatedNotification 
                                                                                     object:weakSelf 
                                                                                   userInfo:@{@"channels": favorites}];
+                            });
+                        }
+                    } else if ([action isEqualToString:@"translate"]) {
+                        NSString *requestId = json[@"requestId"];
+                        NSString *text = json[@"text"];
+                        if (requestId && text.length > 0) {
+                            NSString *systemPrompt = [HSBLocalLLMManager translationSystemPrompt];
+                            [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt completion:^(NSString * _Nullable response, BOOL isFinished) {
+                                if (isFinished) {
+                                    [weakSelf sendPayload:@{
+                                        @"action": @"translation_result",
+                                        @"requestId": requestId,
+                                        @"result": response ?: @""
+                                    }];
+                                }
+                            }];
+                        }
+                    } else if ([action isEqualToString:@"translate_blocks"]) {
+                        NSString *requestId = json[@"requestId"];
+                        NSArray *blocks = json[@"blocks"];
+                        if (requestId && blocks.count > 0) {
+                            NSMutableDictionary *translationMap = [NSMutableDictionary dictionary];
+                            dispatch_group_t group = dispatch_group_create();
+                            
+                            for (NSDictionary *block in blocks) {
+                                id rawBlockId = block[@"id"];
+                                NSString *blockId = rawBlockId ? [NSString stringWithFormat:@"%@", rawBlockId] : nil;
+                                NSString *text = block[@"text"];
+                                if (blockId && text.length > 0) {
+                                    dispatch_group_enter(group);
+                                    
+                                    NSString *systemPrompt = [HSBLocalLLMManager translationSystemPrompt];
+                                    [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt completion:^(NSString * _Nullable response, BOOL isFinished) {
+                                        if (isFinished) {
+                                            if (response) {
+                                                translationMap[blockId] = response;
+                                            }
+                                            dispatch_group_leave(group);
+                                        }
+                                    }];
+                                }
+                            }
+                            
+                            dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+                                [weakSelf sendPayload:@{
+                                    @"action": @"translation_blocks_result",
+                                    @"requestId": requestId,
+                                    @"translationMap": translationMap
+                                }];
                             });
                         }
                     }

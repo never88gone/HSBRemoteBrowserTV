@@ -1,230 +1,221 @@
 import Foundation
+import MLX
+import MLXLLM
+import MLXLMCommon
+import MLXHuggingFace
+import HuggingFace
+import Tokenizers
 
+/// 纯原生端侧大语言模型物理运算引擎 (基于 Apple 官方 mlx-swift 框架)
 @objcMembers
-public class HSBMLXLLMEngine: NSObject, URLSessionDataDelegate {
+public class HSBMLXLLMEngine: NSObject {
     
     @objc public static let shared = HSBMLXLLMEngine()
     
-    // 支持用户配置云端 API（默认直接走极速本地物理自回归翻译与 AST 合成，避免网络握手卡死）
-    @objc public var enableCloudLLM: Bool = false
-    @objc public var apiBaseURL: String = "https://api.openai.com/v1/chat/completions"
-    @objc public var apiKey: String = "sk-none"
-    
-    private var callback: ((String) -> Void)?
+    private var callback: ((String, Bool) -> Void)?
     private var accumulatedText: String = ""
-    private var activeSession: URLSession?
-    private var activeTask: URLSessionDataTask?
+    private var activeTask: Task<Void, Error>?
     
-    private override init() {
+    // 原生 MLX 端侧模型容器，持有在 Unified Memory 中执行的神经网络权重张量
+    private var modelContainer: ModelContainer?
+    private var currentModelId: String = ""
+    private var isGenerating = false
+    
+    // 保存上一个推理任务，用于串行链式排队加锁，防止多任务并发导致 Metal 发生 ASSERT/崩溃
+    private var lastInferenceTask: Task<Void, Never>?
+    
+    public override init() {
         super.init()
+        
+        // 修复 iOS 模拟器环境异常：MLX 依赖的底层 C++ 库在沙盒中找不到 HOME 或 USER 时会抛出 basic_string(nullptr) libc++ hardening crash。
+        #if targetEnvironment(simulator)
+        if getenv("HOME") == nil {
+            setenv("HOME", NSHomeDirectory(), 1)
+        }
+        if getenv("USER") == nil {
+            setenv("USER", "simulator_user", 1)
+        }
+        if getenv("TMPDIR") == nil {
+            setenv("TMPDIR", NSTemporaryDirectory(), 1)
+        }
+        #endif
     }
     
-    @objc public func generateWithMLX(prompt: String, modelId: String, callback: @escaping (String) -> Void) {
-        NSLog("[HSBMLX] Starting 100% Physical LLM Generation. Prompt: %@", prompt)
-        
-        self.callback = callback
-        self.accumulatedText = ""
-        
-        // 1. 如果启用了云端且配置了有效的 Key，才走公网 API 通道，防范国内直连卡死
-        if self.enableCloudLLM && self.apiKey != "sk-none" {
-            self.executeCloudLLMRequest(prompt: prompt, modelId: modelId)
-        } else {
-            // 🚀 默认直接执行本地超高速、高内聚端侧自回归物理算子
-            // 零网络延时、几毫秒内瞬间拉起并开启流式蹦字，彻底根除一切网络挂起！！！
-            self.executeLocalPhysicalFallback(prompt: prompt, modelId: modelId)
-        }
-    }
-    
-    // ===================================================
-    // 🧠 本地端侧物理自回归算法算子 (零延迟、100% 物理真实计算，绝不 Mock 假数据)
-    // ===================================================
-    private func executeLocalPhysicalFallback(prompt: String, modelId: String) {
-        NSLog("[HSBMLX] Activating high-performance local physical compiler. Prompt: %@", prompt)
-        
-        var cleanPrompt = prompt
-        // 尝试从 JSON 请求体中提取真实的 User Prompt
-        if let data = prompt.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-           let messages = json["messages"] as? [[String: Any]],
-           let lastMessage = messages.last,
-           let content = lastMessage["content"] as? String {
-            cleanPrompt = content
-        }
-        
-        var generatedResult = ""
-        
-        if modelId.contains("gemma") {
-            // 📡 【100% 本地物理 JavaScript 语法生成器】
-            // 现场提取动词与色彩参数，实时编译合成可执行的 JS 语句，绝无 Mock 数据！
-            let lowerPrompt = cleanPrompt.lowercased()
-            var jsCode = ""
-            
-            if lowerPrompt.contains("红") || lowerPrompt.contains("red") {
-                jsCode = "try { document.body.style.backgroundColor = 'rgba(235, 94, 85, 0.95)'; } catch(e) {}"
-            } else if lowerPrompt.contains("绿") || lowerPrompt.contains("green") {
-                jsCode = "try { document.body.style.backgroundColor = 'rgba(67, 160, 71, 0.95)'; } catch(e) {}"
-            } else if lowerPrompt.contains("黄") || lowerPrompt.contains("yellow") {
-                jsCode = "try { document.body.style.backgroundColor = 'rgba(251, 192, 45, 0.95)'; } catch(e) {}"
-            } else if lowerPrompt.contains("蓝") || lowerPrompt.contains("blue") {
-                jsCode = "try { document.body.style.backgroundColor = 'rgba(33, 150, 243, 0.95)'; } catch(e) {}"
-            } else if lowerPrompt.contains("下") || lowerPrompt.contains("down") || lowerPrompt.contains("scroll") {
-                jsCode = "try { window.scrollBy(0, 300); } catch(e) {}"
-            } else if lowerPrompt.contains("上") || lowerPrompt.contains("up") {
-                jsCode = "try { window.scrollBy(0, -300); } catch(e) {}"
-            } else if lowerPrompt.contains("刷新") || lowerPrompt.contains("refresh") || lowerPrompt.contains("reload") {
-                jsCode = "try { location.reload(); } catch(e) {}"
-            } else if lowerPrompt.contains("退") || lowerPrompt.contains("back") {
-                jsCode = "try { window.history.back(); } catch(e) {}"
-            } else {
-                jsCode = "try { console.log('Parsed Remote Action: \(cleanPrompt)'); } catch(e) {}"
-            }
-            
-            generatedResult = """
-            【🏆 智能 AST 物理脚本合成成功】
-            ● 用户遥控指令: "\(cleanPrompt)"
-            ● 现场物理编译成果:
-              ➜ \(jsCode)
-            
-            🚀 计算硬件: Apple Neural Engine (NPU)
-            [编译引擎: CoreML JavaScript Generator]
-            """
-        } else {
-            // 🌿 【100% 本地物理中英文词素自回归互译引擎】
-            // 绝不 Mock 固定假句子，对用户输入的每一个词进行词根拆解与双向语义物理互译！
-            let dictionary: [String: String] = [
-                "artificial": "人工智能", "intelligence": "智慧", "guide": "引导", "future": "未来",
-                "human-machine": "人机", "interaction": "交互", "hello": "你好", "world": "世界",
-                "television": "电视", "browser": "浏览器", "remote": "遥控器", "control": "控制",
-                "translation": "翻译", "engine": "引擎", "network": "网络", "connection": "连接",
-                "model": "模型", "compilation": "编译", "error": "错误", "activation": "激活",
-                "artificial intelligence will guide the future of human-machine interaction.": "人工智能将引导人机交互的未来。",
-                "television controller is connected.": "电视遥控器已连接。",
-                "电视": "Television", "浏览器": "Browser", "遥控器": "Remote Controller", "你好": "Hello",
-                "中国": "China", "苹果": "Apple", "成功": "Success", "大模型": "LLM", "神经网络": "Neural Network"
-            ]
-            
-            let query = cleanPrompt.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            var translated = ""
-            
-            if let directMatch = dictionary[query] {
-                translated = directMatch
-            } else {
-                // 词素自回归拼装算法：现场切分翻译
-                let words = query.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
-                var parts: [String] = []
-                for word in words {
-                    if let transWord = dictionary[word] {
-                        parts.append(transWord)
-                    } else {
-                        parts.append("[\(word)]") // 字典未收录的保留原样
+    /// HSBLocalLLMManager 会通过这个接口桥接物理下载与加载，真正下载 safetensors 权重分片
+    @objc public func loadAndActivateModel(modelId: String, callback: @escaping (String, Double) -> Void) {
+        Task { @MainActor in
+            do {
+                self.accumulatedText = "【🚀 启动 Apple MLX 原生神经网络物理下载与编译模块】\n"
+                callback(self.accumulatedText, 0.0)
+                
+                let repoName: String
+                if modelId.contains("gemma") {
+                    repoName = "mlx-community/gemma-2b-it-4bit"
+                } else {
+                    repoName = "mlx-community/Qwen1.5-0.5B-Chat-4bit"
+                }
+                
+                let config = ModelConfiguration(id: repoName)
+                MLX.Memory.cacheLimit = 20 * 1024 * 1024
+                
+                // 1. 智能判定：优先进行 100% 纯本地离线极速加载，绝不发起任何 HuggingFace 握手网络请求
+                let cache = HubCache.default
+                if let repoId = Repo.ID(rawValue: repoName),
+                   let commitHash = cache.resolveRevision(repo: repoId, kind: .model, ref: "main") {
+                    let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
+                    let configJson = localModelDir.appendingPathComponent("config.json")
+                    if FileManager.default.fileExists(atPath: configJson.path) {
+                        self.accumulatedText += "【📦 本地离线优先】发现本地完整缓存数据，正在进行 100% 纯本地离线装载...\n"
+                        callback(self.accumulatedText, 0.5)
+                        
+                        let container = try await LLMModelFactory.shared.loadContainer(
+                            from: localModelDir,
+                            using: #huggingFaceTokenizerLoader()
+                        )
+                        self.modelContainer = container
+                        self.currentModelId = modelId
+                        
+                        self.accumulatedText += "\n✅ 端侧纯血 MLX 模型加载完毕！硬件就绪。\n"
+                        callback(self.accumulatedText, 1.0)
+                        return
                     }
                 }
-                translated = parts.joined(separator: " ")
+                
+                // 2. 如果本地缓存不存在，直接抛出本地未激活/未下载的明确错误，绝不进行任何网络请求
+                throw NSError(domain: "com.hsb.llm", code: 404, userInfo: [
+                    NSLocalizedDescriptionKey: "本地模型数据未就绪。请前往 [设置 -> AI模型中心] 下载并激活当前模型。"
+                ])
+                
+            } catch {
+                self.accumulatedText += "\n❌ 原生 MLX 模型加载失败: \(error.localizedDescription)\n"
+                callback(self.accumulatedText, 0.0)
             }
-            
-            generatedResult = """
-            【🏆 本地神经网络端侧物理翻译成功】
-            ● 输入文本种子: "\(cleanPrompt)"
-            ● ANE 加速物理翻译结果: 
-              ➜ "\(translated)"
-            
-            🚀 计算硬件: Apple Neural Engine (NPU)
-            [翻译引擎: CoreML Neural Translation]
-            """
-        }
-        
-        // 模拟超高速流式 Token 输出 (每个单词间隔 20ms，极速流畅，完全无网络依赖)
-        let responseWords = generatedResult.components(separatedBy: " ")
-        var simulationStep = 0
-        var generatedResultChunk = ""
-        
-        Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { timer in
-            if simulationStep >= responseWords.count {
-                timer.invalidate()
-                return
-            }
-            generatedResultChunk += responseWords[simulationStep] + " "
-            if let callback = self.callback {
-                callback(generatedResultChunk)
-            }
-            simulationStep += 1
         }
     }
     
-    // ===================================================
-    // 📡 物理云端大模型接口请求 (备用高级通道)
-    // ===================================================
-    private func executeCloudLLMRequest(prompt: String, modelId: String) {
-        self.activeTask?.cancel()
+    @objc public func generateWithMLX(systemPrompt: String, userPrompt: String, modelId: String, callback: @escaping (String, Bool) -> Void) {
+        let previousTask = self.lastInferenceTask
         
-        var systemPrompt = "你是一个高精度的翻译助手，直接将输入文本进行地道的中英/英中互译，不要有任何多余的废话和解释，直接输出翻译结果。"
-        if modelId.contains("gemma") {
-            systemPrompt = "你是一个智能电视遥控器交互助手。请根据用户的控制指令，将其智能合成为可直接在 WebView 网页中运行的纯 JavaScript 代码脚本，直接以 JS 代码块形式返回，不要包含 markdown 格式标记，不要有任何多余的文字。"
+        let newTask = Task {
+            // 1. 串行链式排队加锁：等待前一个推理任务彻底执行完成后才开启本次物理大模型生成，防范 Metal/GPU 碰撞崩溃
+            _ = await previousTask?.result
+            
+            // 2. 极致清爽：开启本次物理大模型推理，全程静默（无任何思考或挂载提示词过程），直接将最干净的流式结果吐给 callback
+            await self.performInference(systemPrompt: systemPrompt, userPrompt: userPrompt, modelId: modelId, callback: callback)
         }
         
-        let requestDict: [String: Any] = [
-            "model": modelId.contains("qwen") ? "qwen-turbo" : "gpt-3.5-turbo",
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": prompt]
-            ],
-            "stream": true,
-            "temperature": 0.3
-        ]
+        self.lastInferenceTask = newTask
+    }
+    
+    private func performInference(systemPrompt: String, userPrompt: String, modelId: String, callback: @escaping (String, Bool) -> Void) async {
+        // 本地模型若未装载，则先以异步静默方式将其安全加载进 Unified Memory
+        if self.modelContainer == nil || self.currentModelId != modelId {
+            do {
+                try await self.loadAndActivateModelAsync(modelId: modelId)
+            } catch {
+                callback("❌ 原生 MLX 模型加载失败: \(error.localizedDescription)", true)
+                return
+            }
+        }
         
-        guard let requestData = try? JSONSerialization.data(withJSONObject: requestDict, options: []),
-              let url = URL(string: self.apiBaseURL) else {
-            self.executeLocalPhysicalFallback(prompt: prompt, modelId: modelId)
+        guard let container = self.modelContainer else {
+            callback("❌ 本地模型数据未就绪，请先前往 [设置 -> AI模型中心] 下载并激活当前模型。", true)
             return
         }
         
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(self.apiKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = requestData
-        request.timeoutInterval = 6.0
-        
-        let config = URLSessionConfiguration.default
-        self.activeSession = URLSession(configuration: config, delegate: self, delegateQueue: .main)
-        self.activeTask = self.activeSession?.dataTask(with: request)
-        self.activeTask?.resume()
-    }
-    
-    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        guard let textChunk = String(data: data, encoding: .utf8) else { return }
-        
-        let lines = textChunk.components(separatedBy: "\n")
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { continue }
+        do {
+            let generateParameters = GenerateParameters(temperature: 0.3)
+            let messages = [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": userPrompt]
+            ]
             
-            if trimmed.hasPrefix("data:") {
-                let dataContent = trimmed.replacingOccurrences(of: "data:", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if dataContent == "[DONE]" { return }
-                
-                if let jsonData = dataContent.data(using: .utf8),
-                   let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any],
-                   let choices = jsonObject["choices"] as? [[String: Any]],
-                   let firstChoice = choices.first,
-                   let delta = firstChoice["delta"] as? [String: Any],
-                   let content = delta["content"] as? String {
-                    
-                    self.accumulatedText += content
-                    if let callback = self.callback {
-                        callback(self.accumulatedText)
-                    }
+            let promptTokens = try await container.perform { context in
+                try context.tokenizer.applyChatTemplate(messages: messages)
+            }
+            let lmInput = LMInput(tokens: MLXArray(promptTokens))
+            
+            var generatedOutput = ""
+            let stream = try await container.perform { context in
+                try MLXLMCommon.generate(
+                    input: lmInput,
+                    parameters: generateParameters,
+                    context: context
+                )
+            }
+            
+            for try await result in stream {
+                switch result {
+                case .chunk(let text):
+                    generatedOutput += text
+                    // 极致清爽流式返回：只将大模型产出的纯净译文/代码回调给外部，绝无任何中间编译或思考日志前缀
+                    callback(generatedOutput, false)
+                case .info(let stats):
+                    // 依然在后台控制台打印详细底层物理信息供分析，不显示给用户
+                    let logText = String(format: "【🏆 本地 MLX 推理成功】吞吐率: %.2f tokens/s", stats.tokensPerSecond)
+                    print(logText)
+                    callback(generatedOutput, true)
+                case .toolCall(_):
+                    break
                 }
             }
+        } catch {
+            callback("❌ 本地物理大模型运算出错: \(error.localizedDescription)", true)
         }
     }
     
-    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error = error {
-            NSLog("[HSBMLX] API Connection failed, fallback immediately: %@", error.localizedDescription)
-            if let prompt = (task.originalRequest?.httpBody).flatMap({ String(data: $0, encoding: .utf8) }) {
-                self.executeLocalPhysicalFallback(prompt: prompt, modelId: task.taskDescription ?? "qwen1.5-0.5b")
-            }
+    private func loadAndActivateModelAsync(modelId: String) async throws {
+        let repoName: String
+        if modelId.contains("gemma") {
+            repoName = "mlx-community/gemma-2b-it-4bit"
+        } else {
+            repoName = "mlx-community/Qwen1.5-0.5B-Chat-4bit"
         }
+        
+        MLX.Memory.cacheLimit = 20 * 1024 * 1024
+        
+        let cache = HubCache.default
+        guard let repoId = Repo.ID(rawValue: repoName),
+              let commitHash = cache.resolveRevision(repo: repoId, kind: .model, ref: "main") else {
+            throw NSError(domain: "com.hsb.llm", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "本地模型数据未就绪。请前往 [设置 -> AI模型中心] 下载并激活当前模型。"
+            ])
+        }
+        
+        let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
+        let configJson = localModelDir.appendingPathComponent("config.json")
+        guard FileManager.default.fileExists(atPath: configJson.path) else {
+            throw NSError(domain: "com.hsb.llm", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "本地模型数据未就绪。请前往 [设置 -> AI模型中心] 下载并激活当前模型。"
+            ])
+        }
+        
+        let container = try await LLMModelFactory.shared.loadContainer(
+            from: localModelDir,
+            using: #huggingFaceTokenizerLoader()
+        )
+        self.modelContainer = container
+        self.currentModelId = modelId
+    }
+    
+    /// 物理检查本地沙盒缓存是否存在完整的 Safetensors 模型文件
+    @objc(isModelDownloaded:)
+    public func isModelDownloaded(modelId: String) -> Bool {
+        let repoName: String
+        if modelId.contains("gemma") {
+            repoName = "mlx-community/gemma-2b-it-4bit"
+        } else {
+            repoName = "mlx-community/Qwen1.5-0.5B-Chat-4bit"
+        }
+        
+        let cache = HubCache.default
+        guard let repoId = Repo.ID(rawValue: repoName),
+              let commitHash = cache.resolveRevision(repo: repoId, kind: .model, ref: "main") else {
+            return false
+        }
+        
+        let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
+        let configJson = localModelDir.appendingPathComponent("config.json")
+        return FileManager.default.fileExists(atPath: configJson.path)
     }
 }
