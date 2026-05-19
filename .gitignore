@@ -2,3 +2,7 @@ HSBWatchApp/HSBWatchApp.xcodeproj/project.xcworkspace/xcuserdata
 .agent
 HSBWatchApp/HSBWatchApp.xcodeproj/xcuserdata
 HSBWatchApp/build
+HSBWatchApp/fastlane/.env
+HSBWatchApp/archive_log.txt
+HSBWatchApp/fastlane_log.txt
+HSBWatchApp/fastlane/report.xml

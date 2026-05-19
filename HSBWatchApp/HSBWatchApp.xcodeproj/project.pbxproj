@@ -261,7 +261,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n#!/bin/bash\nif [ $CONFIGURATION == Release ]; then\necho \"Bumping build number...\"\nbuildNumber=$(date +%Y%m%d%H%M%S)\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $buildNumber\" \"${PROJECT_DIR}/${INFOPLIST_FILE}\"\nelse\necho $CONFIGURATION \" build - Not bumping build number.\"\nfi\n";
+			shellScript = "echo \"Build number managed by Fastlane CI.\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

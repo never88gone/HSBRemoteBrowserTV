@@ -71,6 +71,7 @@ jobs:
           MAIN_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/main_pp.plist)
           echo "Main App Provisioning Profile UUID: $MAIN_UUID"
           cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$MAIN_UUID.mobileprovision"
+          echo "MAIN_PP_UUID=$MAIN_UUID" >> $GITHUB_ENV
           
           # 解析 Watch App Profile UUID 并重命名拷贝
           if [ -f "$WATCH_PP_PATH" ]; then
@@ -78,6 +79,7 @@ jobs:
             WATCH_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" $RUNNER_TEMP/watch_pp.plist)
             echo "Watch App Provisioning Profile UUID: $WATCH_UUID"
             cp "$WATCH_PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$WATCH_UUID.mobileprovision"
+            echo "WATCH_PP_UUID=$WATCH_UUID" >> $GITHUB_ENV
           fi
 
       - name: Set up Ruby and Bundler

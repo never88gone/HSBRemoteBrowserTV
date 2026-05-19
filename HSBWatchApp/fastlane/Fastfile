@@ -44,7 +44,7 @@ platform :ios do
     end
 
     # 4. 执行 IPA 编译打包
-    build_app(
+    build_options = {
       scheme: "HSBWatchCompanion",
       project: "./HSBWatchApp.xcodeproj",
       output_directory: "./build",
@@ -52,9 +52,15 @@ platform :ios do
       export_method: "app-store",
       export_options: {
         method: "app-store",
-        compileBitcode: false
+        compileBitcode: false,
+        provisioningProfiles: {
+          "com.never88gone.thlbrowserios" => (ENV["MAIN_PP_UUID"] && !ENV["MAIN_PP_UUID"].empty?) ? ENV["MAIN_PP_UUID"] : "thlbrowserios_dis",
+          "com.never88gone.thlbrowserios.watch" => (ENV["WATCH_PP_UUID"] && !ENV["WATCH_PP_UUID"].empty?) ? ENV["WATCH_PP_UUID"] : "thlbrowseriosWatch_dis"
+        }
       }
-    )
+    }
+
+    build_app(build_options)
 
     UI.message("🚀 Uploading IPA to TestFlight...")
 
