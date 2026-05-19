@@ -1,66 +1,116 @@
+# 自动读取并注入本地私有 .env 环境变量（如果存在，仅用于本地调试；在云端 CI 时安全跳过）
+['../../.env', '../.env', '.env'].each do |relative_path|
+  env_path = File.expand_path(relative_path, __FILE__)
+  if File.exist?(env_path)
+    begin
+      content = File.read(env_path)
+      # 使用正则 scan 状态机匹配，可完美处理跨多行的双引号私钥（如 Apple PEM 私钥）
+      content.scan(/^\s*([A-Za-z0-9_]+)\s*=\s*(?:"([\s\S]*?)"|'([\s\S]*?)'|([^\n#]+))/).each do |match|
+        key = match[0]
+        val = match[1] || match[2] || match[3]
+        if key && val
+          ENV[key.strip] = val
+        end
+      end
+    rescue => e
+      # 静默跳过读取错误
+    end
+  end
+end
+
 default_platform(:ios)
 
 platform :ios do
   desc "Build and upload iOS Companion app to TestFlight"
-  lane :beta do
-    # 1. 从环境变量获取 App Store Connect API Key (解决 2FA 问题)
+  lane :beta do |options|
+    # 1. 从环境变量获取 App Store Connect API Key (解决 2FA 并在本地与云端两端对齐)
+    key_id = ENV["APP_STORE_CONNECT_KEY_ID"] || ""
+    issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"] || ""
+    key_content = ENV["APP_STORE_CONNECT_KEY_CONTENT"] || ""
+
+    if key_id.empty?
+      UI.error("⚠️  APP_STORE_CONNECT_KEY_ID is missing! Please make sure your .env file exists and is filled.")
+    else
+      UI.message("🔑 Loaded App Store Connect Key ID: #{key_id[0..2]}...#{key_id[-3..-1] || ''} (Length: #{key_id.length})")
+    end
+
+    # 自动对私钥进行健壮的 PEM 格式修复清洗，防止由于粘贴、多行换行丢失或字面量转义导致的 API 校验失败
+    if !key_content.empty?
+      # 替换字面量 \n 字符为真实换行
+      key_content = key_content.gsub("\\n", "\n")
+      # 清洗多余空格和首尾回车
+      key_content = key_content.strip
+      # 确保 PEM 的头尾声明与 Base64 内容之间有换行符
+      if !key_content.include?("\n")
+        raw_base64 = key_content.gsub("-----BEGIN PRIVATE KEY-----", "").gsub("-----END PRIVATE KEY-----", "").gsub(/\s+/, "")
+        formatted_content = "-----BEGIN PRIVATE KEY-----\n"
+        raw_base64.scan(/.{1,64}/) { |chunk| formatted_content << chunk << "\n" }
+        formatted_content << "-----END PRIVATE KEY-----"
+        key_content = formatted_content
+      end
+    end
+
     api_key = app_store_connect_api_key(
-      key_id: ENV["APP_STORE_CONNECT_KEY_ID"] || "",
-      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"] || "",
-      key_content: ENV["APP_STORE_CONNECT_KEY_CONTENT"] || "",
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_content: key_content,
       in_house: false
     )
 
-    # 2. 从 AppVersion.xcconfig 动态获取版本与构建号
-    version = ""
-    build_num = ""
-    begin
-      # 路径解析：相对于 Fastfile 所在目录的上级目录中的配置文件
-      xcconfig_path = File.expand_path("../HSBWatchCompanion/AppVersion.xcconfig", __FILE__)
-      if File.exist?(xcconfig_path)
-        File.foreach(xcconfig_path) do |line|
-          if line =~ /MARKETING_VERSION\s*=\s*(.+)/
-            version = $1.strip
-          end
-          if line =~ /GITHUB_VERSION\s*=\s*(.+)/
-            build_num = $1.strip
+    if options[:skip_build]
+      UI.important("⏭️ Skipping build as requested (skip_build:true)")
+    else
+      # 2. 从 AppVersion.xcconfig 动态获取版本与构建号
+      version = ""
+      build_num = ""
+      begin
+        # 路径解析：相对于 Fastfile 所在目录的上级目录中的配置文件
+        xcconfig_path = File.expand_path("../HSBWatchCompanion/AppVersion.xcconfig", __FILE__)
+        if File.exist?(xcconfig_path)
+          File.foreach(xcconfig_path) do |line|
+            if line =~ /MARKETING_VERSION\s*=\s*(.+)/
+              version = $1.strip
+            end
+            if line =~ /GITHUB_VERSION\s*=\s*(.+)/
+              build_num = $1.strip
+            end
           end
         end
+      rescue => e
+        UI.important("Failed to read AppVersion.xcconfig: #{e.message}")
       end
-    rescue => e
-      UI.important("Failed to read AppVersion.xcconfig: #{e.message}")
-    end
 
-    UI.message("📦 Starting Build for HSBWatchCompanion...")
-    UI.message("💡 Marketing Version: #{version}")
-    UI.message("💡 Build Number (GITHUB_VERSION): #{build_num}")
+      UI.message("📦 Starting Build for HSBWatchCompanion...")
+      UI.message("💡 Marketing Version: #{version}")
+      UI.message("💡 Build Number (GITHUB_VERSION): #{build_num}")
 
-    # 3. 将 GITHUB_VERSION 同步设置到 Xcode 工程中的 Build Version
-    if !build_num.empty?
-      increment_build_number(
-        build_number: build_num,
-        xcodeproj: "./HSBWatchApp.xcodeproj"
-      )
-    end
+      # 3. 将 GITHUB_VERSION 同步设置到 Xcode 工程中的 Build Version
+      if !build_num.empty?
+        increment_build_number(
+          build_number: build_num,
+          xcodeproj: "./HSBWatchApp.xcodeproj"
+        )
+      end
 
-    # 4. 执行 IPA 编译打包
-    build_options = {
-      scheme: "HSBWatchCompanion",
-      project: "./HSBWatchApp.xcodeproj",
-      output_directory: "./build",
-      output_name: "HSBWatchCompanion.ipa",
-      export_method: "app-store",
-      export_options: {
-        method: "app-store",
-        compileBitcode: false,
-        provisioningProfiles: {
-          "com.never88gone.thlbrowserios" => (ENV["MAIN_PP_UUID"] && !ENV["MAIN_PP_UUID"].empty?) ? ENV["MAIN_PP_UUID"] : "thlbrowserios_dis",
-          "com.never88gone.thlbrowserios.watch" => (ENV["WATCH_PP_UUID"] && !ENV["WATCH_PP_UUID"].empty?) ? ENV["WATCH_PP_UUID"] : "thlbrowseriosWatch_dis"
+      # 4. 执行 IPA 编译打包
+      build_options = {
+        scheme: "HSBWatchCompanion",
+        project: "./HSBWatchApp.xcodeproj",
+        output_directory: "./build",
+        output_name: "HSBWatchCompanion.ipa",
+        export_method: "app-store",
+        export_options: {
+          method: "app-store",
+          compileBitcode: false,
+          provisioningProfiles: {
+            "com.never88gone.thlbrowserios" => (ENV["MAIN_PP_UUID"] && !ENV["MAIN_PP_UUID"].empty?) ? ENV["MAIN_PP_UUID"] : "thlbrowserios_dis",
+            "com.never88gone.thlbrowserios.watch" => (ENV["WATCH_PP_UUID"] && !ENV["WATCH_PP_UUID"].empty?) ? ENV["WATCH_PP_UUID"] : "thlbrowseriosWatch_dis"
+          }
         }
       }
-    }
 
-    build_app(build_options)
+      build_app(build_options)
+    end
 
     UI.message("🚀 Uploading IPA to TestFlight...")
 
