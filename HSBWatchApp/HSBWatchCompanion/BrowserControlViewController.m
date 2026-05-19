@@ -109,6 +109,9 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) UIButton *aiCancelBtn;
 @property (nonatomic, strong) NSTimer *aiTimeoutTimer;
 
+@property (nonatomic, strong) UIScrollView *scriptsScrollView;
+@property (nonatomic, strong) UIStackView *scriptsStackView;
+
 @end
 
 @implementation BrowserControlViewController
@@ -135,6 +138,44 @@ static NSString * L(NSString *en, NSString *zh) {
     handleIndicator.layer.cornerRadius = 3;
     handleIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     [headerView addSubview:handleIndicator];
+
+    // JS Scripts Horizontal Scroll View
+    self.scriptsScrollView = [[UIScrollView alloc] init];
+    self.scriptsScrollView.showsHorizontalScrollIndicator = NO;
+    self.scriptsScrollView.alwaysBounceHorizontal = YES;
+    self.scriptsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:self.scriptsScrollView];
+    
+    self.scriptsStackView = [[UIStackView alloc] init];
+    self.scriptsStackView.axis = UILayoutConstraintAxisHorizontal;
+    self.scriptsStackView.spacing = 8;
+    self.scriptsStackView.alignment = UIStackViewAlignmentCenter;
+    self.scriptsStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.scriptsScrollView addSubview:self.scriptsStackView];
+    
+    NSArray *scriptNames = @[
+        @"抖音_全屏",
+        @"抖音_启动跳转",
+        @"抖音_自动登录",
+        @"抖音_连播点击",
+        @"抖音_高分辨率",
+        @"腾讯视频_全屏"
+    ];
+    
+    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
+    for (NSInteger i = 0; i < scriptNames.count; i++) {
+        NSString *scriptName = scriptNames[i];
+        UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+        [btn setTitle:scriptName forState:UIControlStateNormal];
+        btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+        btn.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.12];
+        [btn setTitleColor:palette.primaryColor forState:UIControlStateNormal];
+        btn.layer.cornerRadius = 14;
+        btn.contentEdgeInsets = UIEdgeInsetsMake(6, 12, 6, 12);
+        btn.tag = i;
+        [btn addTarget:self action:@selector(handleScriptButtonTap:) forControlEvents:UIControlEventTouchUpInside];
+        [self.scriptsStackView addArrangedSubview:btn];
+    }
 
     
 
@@ -390,8 +431,20 @@ static NSString * L(NSString *en, NSString *zh) {
         [self.aiBtn.heightAnchor constraintEqualToConstant:56],
 
         
+        // Scripts Scroll View
+        [self.scriptsScrollView.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:8],
+        [self.scriptsScrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.scriptsScrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.scriptsScrollView.heightAnchor constraintEqualToConstant:36],
+        
+        [self.scriptsStackView.topAnchor constraintEqualToAnchor:self.scriptsScrollView.contentLayoutGuide.topAnchor],
+        [self.scriptsStackView.bottomAnchor constraintEqualToAnchor:self.scriptsScrollView.contentLayoutGuide.bottomAnchor],
+        [self.scriptsStackView.leadingAnchor constraintEqualToAnchor:self.scriptsScrollView.contentLayoutGuide.leadingAnchor constant:20],
+        [self.scriptsStackView.trailingAnchor constraintEqualToAnchor:self.scriptsScrollView.contentLayoutGuide.trailingAnchor constant:-20],
+        [self.scriptsStackView.heightAnchor constraintEqualToAnchor:self.scriptsScrollView.frameLayoutGuide.heightAnchor],
+
         // Trackpad
-        [self.trackpadView.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:10],
+        [self.trackpadView.topAnchor constraintEqualToAnchor:self.scriptsScrollView.bottomAnchor constant:12],
         [self.trackpadView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
         [self.trackpadView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         [self.trackpadView.bottomAnchor constraintEqualToAnchor:urlBarContainer.topAnchor constant:-12],
@@ -989,6 +1042,69 @@ static NSString * L(NSString *en, NSString *zh) {
     if (self.videoSlider) {
         self.videoSlider.minimumTrackTintColor = palette.primaryColor;
     }
+    if (self.scriptsStackView) {
+        for (UIView *subview in self.scriptsStackView.arrangedSubviews) {
+            if ([subview isKindOfClass:[UIButton class]]) {
+                UIButton *btn = (UIButton *)subview;
+                btn.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.12];
+                [btn setTitleColor:palette.primaryColor forState:UIControlStateNormal];
+            }
+        }
+    }
+}
+
+- (void)handleScriptButtonTap:(UIButton *)sender {
+    NSArray *scriptNames = @[
+        @"抖音_全屏",
+        @"抖音_启动跳转",
+        @"抖音_自动登录",
+        @"抖音_连播点击",
+        @"抖音_高分辨率",
+        @"腾讯视频_全屏"
+    ];
+    
+    if (sender.tag >= scriptNames.count) return;
+    
+    NSString *scriptName = scriptNames[sender.tag];
+    NSString *path = [[NSBundle mainBundle] pathForResource:scriptName ofType:@"js"];
+    if (!path) {
+        NSLog(@"[JS Script] Script not found in bundle: %@", scriptName);
+        return;
+    }
+    
+    NSError *error = nil;
+    NSString *jsContent = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:&error];
+    if (error || jsContent.length == 0) {
+        NSLog(@"[JS Script] Failed to read script: %@, error: %@", scriptName, error.localizedDescription);
+        return;
+    }
+    
+    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [fb impactOccurred];
+    
+    // 执行缩放微动画
+    [UIView animateWithDuration:0.1 animations:^{
+        sender.transform = CGAffineTransformMakeScale(0.92, 0.92);
+    } completion:^(BOOL finished) {
+        [UIView animateWithDuration:0.1 animations:^{
+            sender.transform = CGAffineTransformIdentity;
+        }];
+    }];
+    
+    self.trackpadStatusLabel.text = [NSString stringWithFormat:@"🚀 Running %@...", scriptName];
+    
+    NSDictionary *payload = @{
+        @"action": @"run_js",
+        @"content": jsContent,
+        @"script": jsContent,
+        @"timestamp": @([[NSDate date] timeIntervalSince1970]),
+        @"requestId": [[NSUUID UUID] UUIDString]
+    };
+    [self sendDirectPayload:payload];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
+    });
 }
 
 #pragma mark - Gestures
