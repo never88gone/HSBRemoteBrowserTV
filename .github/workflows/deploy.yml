@@ -17,6 +17,11 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Set up Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.0'
+
       - name: Check version change
         id: check_ver
         run: |
