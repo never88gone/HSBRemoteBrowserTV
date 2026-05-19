@@ -294,6 +294,11 @@
     }];
 }
 
+- (void)cancelInference {
+    NSLog(@"[HSBLocalLLM] Requesting cancellation of current Swift MLX inference task.");
+    [[HSBMLXLLMEngine shared] cancelCurrentInference];
+}
+
 // 物理 CVPixelBuffer 动态生成器：根据输入文本哈希值构建唯一性的 224x224 像素图像
 - (CVPixelBufferRef)createPixelBufferWithSize:(CGSize)size seedString:(NSString *)seed {
     NSDictionary *options = @{

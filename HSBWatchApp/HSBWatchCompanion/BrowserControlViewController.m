@@ -106,6 +106,9 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) UIButton *aiBtn;
 @property (nonatomic, assign) BOOL isAIButtonPressed;
 
+@property (nonatomic, strong) UIButton *aiCancelBtn;
+@property (nonatomic, strong) NSTimer *aiTimeoutTimer;
+
 @end
 
 @implementation BrowserControlViewController
@@ -189,6 +192,20 @@ static NSString * L(NSString *en, NSString *zh) {
     [self.view addSubview:self.trackpadView];
     [self.trackpadView addSubview:trackpadHint];
     [self.trackpadView addSubview:self.trackpadStatusLabel];
+    
+    // 取消推理控制按钮，仅在 AI 推理中可见
+    self.aiCancelBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.aiCancelBtn setTitle:L(@"Cancel Inference", @"取消 AI 推理") forState:UIControlStateNormal];
+    [self.aiCancelBtn setTitleColor:[UIColor systemRedColor] forState:UIControlStateNormal];
+    self.aiCancelBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+    self.aiCancelBtn.backgroundColor = [[UIColor systemRedColor] colorWithAlphaComponent:0.12];
+    self.aiCancelBtn.layer.cornerRadius = 14;
+    self.aiCancelBtn.layer.borderWidth = 1.0;
+    self.aiCancelBtn.layer.borderColor = [[UIColor systemRedColor] colorWithAlphaComponent:0.3].CGColor;
+    self.aiCancelBtn.hidden = YES; // 默认隐藏
+    [self.aiCancelBtn addTarget:self action:@selector(cancelCurrentAIInference) forControlEvents:UIControlEventTouchUpInside];
+    self.aiCancelBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.trackpadView addSubview:self.aiCancelBtn];
     
     // Gestures Setup
     UITapGestureRecognizer *tripleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTrackpadTripleTap:)];
@@ -386,6 +403,11 @@ static NSString * L(NSString *en, NSString *zh) {
         
         [self.trackpadStatusLabel.centerXAnchor constraintEqualToAnchor:self.trackpadView.centerXAnchor],
         [self.trackpadStatusLabel.centerYAnchor constraintEqualToAnchor:self.trackpadView.centerYAnchor],
+        
+        [self.aiCancelBtn.centerXAnchor constraintEqualToAnchor:self.trackpadView.centerXAnchor],
+        [self.aiCancelBtn.topAnchor constraintEqualToAnchor:self.trackpadStatusLabel.bottomAnchor constant:12],
+        [self.aiCancelBtn.widthAnchor constraintEqualToConstant:120],
+        [self.aiCancelBtn.heightAnchor constraintEqualToConstant:28],
         
         // URL Bar
         [urlBarContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
@@ -669,6 +691,15 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)processAIRequest:(NSString *)text type:(NSInteger)type {
     if (text.length == 0) return;
     
+    // 1. 清理并开启 30 秒超时器
+    if (self.aiTimeoutTimer) {
+        [self.aiTimeoutTimer invalidate];
+        self.aiTimeoutTimer = nil;
+    }
+    self.aiTimeoutTimer = [NSTimer scheduledTimerWithTimeInterval:30.0 target:self selector:@selector(handleAIInferenceTimeout) userInfo:nil repeats:NO];
+    
+    // 2. 显示取消按钮，更新状态标签
+    self.aiCancelBtn.hidden = NO;
     self.trackpadStatusLabel.text = L(@"AI Thinking...", @"AI 思考中...");
     
     NSString *systemPrompt = @"";
@@ -698,11 +729,24 @@ static NSString * L(NSString *en, NSString *zh) {
     
     [[HSBLocalLLMManager shared] processMessage:enhancedUserPrompt systemPrompt:systemPrompt completion:^(NSString * _Nonnull response, BOOL isFinished) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            // 🥇 防御式安全判断：如果用户在此期间已手动取消或推理超时，直接静默中断处理
+            if ([self.trackpadStatusLabel.text isEqualToString:L(@"AI Cancelled", @"AI 已取消")] ||
+                [self.trackpadStatusLabel.text isEqualToString:L(@"AI Timeout", @"AI 推理超时 (30s)")]) {
+                return;
+            }
+            
             if (!isFinished) {
                 // 流式生成中，仅更新状态标签显示，不进行 any 震动、弹窗或 TV 推送
                 self.trackpadStatusLabel.text = [NSString stringWithFormat:@"%@ (%lu)", L(@"AI Thinking...", @"AI 思考中..."), (unsigned long)response.length];
                 return;
             }
+            
+            // 3. 推理完全结束，清除超时器并隐藏取消按钮
+            if (self.aiTimeoutTimer) {
+                [self.aiTimeoutTimer invalidate];
+                self.aiTimeoutTimer = nil;
+            }
+            self.aiCancelBtn.hidden = YES;
             
             // 物理生成完全结束
             self.trackpadStatusLabel.text = L(@"AI Done", @"AI 处理完成");
@@ -1098,6 +1142,64 @@ static NSString * L(NSString *en, NSString *zh) {
 // 确保多个手势不冲突，仅单指可以与其他并存，但代码里已经通过 touches 数量做了隔离
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
     return NO;
+}
+
+#pragma mark - AI Inference Cancellation & Timeout
+
+- (void)cancelCurrentAIInference {
+    // 1. 销毁定时器
+    if (self.aiTimeoutTimer) {
+        [self.aiTimeoutTimer invalidate];
+        self.aiTimeoutTimer = nil;
+    }
+    
+    // 2. 隐藏取消按钮
+    self.aiCancelBtn.hidden = YES;
+    
+    // 3. 中止底层 MLX-Swift 物理引擎的生成
+    [[HSBLocalLLMManager shared] cancelInference];
+    
+    // 4. 更新 UI 状态
+    self.trackpadStatusLabel.text = L(@"AI Cancelled", @"AI 已取消");
+    
+    // 5. 触觉震动反馈
+    UINotificationFeedbackGenerator *hap = [[UINotificationFeedbackGenerator alloc] init];
+    [hap notificationOccurred:UINotificationFeedbackTypeWarning];
+    
+    // 6. 1.5 秒后恢复 Ready 就绪状态
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if ([self.trackpadStatusLabel.text isEqualToString:L(@"AI Cancelled", @"AI 已取消")]) {
+            self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
+        }
+    });
+}
+
+- (void)handleAIInferenceTimeout {
+    // 1. 销毁并置空定时器
+    self.aiTimeoutTimer = nil;
+    
+    // 2. 隐藏取消按钮
+    self.aiCancelBtn.hidden = YES;
+    
+    // 3. 中止底层大模型生成
+    [[HSBLocalLLMManager shared] cancelInference];
+    
+    // 4. 更新 UI 状态
+    self.trackpadStatusLabel.text = L(@"AI Timeout", @"AI 推理超时 (30s)");
+    
+    // 5. 弹出轻巧提示
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"Inference Timeout", @"AI 推理超时")
+                                                                   message:L(@"AI inference has been cancelled because it took longer than 30 seconds.", @"端侧大模型推理超时（已超过 30 秒），已自动为您中止以保护电池寿命。")
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"OK", @"好的") style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+    
+    // 6. 1.5 秒后恢复就绪状态
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if ([self.trackpadStatusLabel.text isEqualToString:L(@"AI Timeout", @"AI 推理超时 (30s)")]) {
+            self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
+        }
+    });
 }
 
 @end

@@ -172,8 +172,16 @@ public class HSBMLXLLMEngine: NSObject {
             }
             
             for try await result in stream {
+                if Task.isCancelled {
+                    callback("❌ 推理任务已手动取消或超时中断", true)
+                    return
+                }
                 switch result {
                 case .chunk(let text):
+                    if Task.isCancelled {
+                        callback("❌ 推理任务已手动取消或超时中断", true)
+                        return
+                    }
                     generatedOutput += text
                     // 极致清爽流式返回：只将大模型产出的纯净译文/代码回调给外部，绝无任何中间编译或思考日志前缀
                     callback(generatedOutput, false)
@@ -249,5 +257,11 @@ public class HSBMLXLLMEngine: NSObject {
     /// 检查大模型是否已经被成功载入内存中
     @objc public func isModelLoadedInMemory() -> Bool {
         return self.modelContainer != nil
+    }
+    
+    /// 主动终止/取消当前的流式文本生成任务，切断 Metal / GPU 运算
+    @objc public func cancelCurrentInference() {
+        self.lastInferenceTask?.cancel()
+        self.lastInferenceTask = nil
     }
 }

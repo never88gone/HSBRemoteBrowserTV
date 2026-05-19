@@ -42,6 +42,7 @@ typedef void (^HSBLocalLLMMessageCompletion)(NSString *response, BOOL isFinished
 - (void)activateModel:(HSBLocalLLMModel *)model;
 - (void)deactivateModel:(HSBLocalLLMModel *)model;
 - (void)processMessage:(NSString *)message systemPrompt:(NSString *)systemPrompt completion:(HSBLocalLLMMessageCompletion)completion;
+- (void)cancelInference;
 
 @end
 
