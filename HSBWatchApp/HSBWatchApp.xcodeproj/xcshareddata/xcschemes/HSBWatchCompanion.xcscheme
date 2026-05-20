@@ -74,5 +74,23 @@
    <ArchiveAction
       buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Update Build Number"
+               scriptText = "DATE_STR=$(date &quot;+%y%m%d%H%M&quot;)&#10;CONFIG_FILE=&quot;${SRCROOT}/HSBWatchCompanion/AppVersion.xcconfig&quot;&#10;if [ -f &quot;$CONFIG_FILE&quot; ]; then&#10;    sed -i &apos;&apos; &quot;s/^GITHUB_VERSION.*/GITHUB_VERSION = $DATE_STR/&quot; &quot;$CONFIG_FILE&quot;&#10;fi&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "382CD6EE2F7CDE640015A355"
+                     BuildableName = "HSBWatchCompanion.app"
+                     BlueprintName = "HSBWatchCompanion"
+                     ReferencedContainer = "container:HSBWatchApp.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
    </ArchiveAction>
 </Scheme>

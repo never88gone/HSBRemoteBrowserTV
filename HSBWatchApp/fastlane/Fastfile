@@ -50,6 +50,11 @@ platform :ios do
       end
     end
 
+    # 自动同步注入给 fastlane 官方推荐的全局 SPACESHIP_ 变量，以在 pilot/deliver/spaceship 中实现多重鉴权兜底保障
+    ENV["SPACESHIP_CONNECT_API_KEY_ID"] = key_id
+    ENV["SPACESHIP_CONNECT_API_ISSUER_ID"] = issuer_id
+    ENV["SPACESHIP_CONNECT_API_KEY_CONTENT"] = key_content
+
     api_key = app_store_connect_api_key(
       key_id: key_id,
       issuer_id: issuer_id,
@@ -60,9 +65,8 @@ platform :ios do
     if options[:skip_build]
       UI.important("⏭️ Skipping build as requested (skip_build:true)")
     else
-      # 2. 从 AppVersion.xcconfig 动态获取版本与构建号
+      # 2. 从 AppVersion.xcconfig 动态获取版本号
       version = ""
-      build_num = ""
       begin
         # 路径解析：相对于 Fastfile 所在目录的上级目录中的配置文件
         xcconfig_path = File.expand_path("../HSBWatchCompanion/AppVersion.xcconfig", __FILE__)
@@ -71,18 +75,19 @@ platform :ios do
             if line =~ /MARKETING_VERSION\s*=\s*(.+)/
               version = $1.strip
             end
-            if line =~ /GITHUB_VERSION\s*=\s*(.+)/
-              build_num = $1.strip
-            end
           end
         end
       rescue => e
         UI.important("Failed to read AppVersion.xcconfig: #{e.message}")
       end
 
+      # 动态生成基于时间戳的 Build Number (格式: YYMMDDHHMM，如 2605202105)
+      build_num = Time.now.strftime("%y%m%d%H%M")
+
       UI.message("📦 Starting Build for HSBWatchCompanion...")
       UI.message("💡 Marketing Version: #{version}")
-      UI.message("💡 Build Number (GITHUB_VERSION): #{build_num}")
+      UI.message("💡 Auto-Generated Build Number: #{build_num}")
+
 
       # 3. 将 GITHUB_VERSION 同步设置到 Xcode 工程中的 Build Version
       if !build_num.empty?
