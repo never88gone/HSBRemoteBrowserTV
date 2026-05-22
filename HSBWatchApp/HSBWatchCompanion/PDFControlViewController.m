@@ -4,6 +4,7 @@
 //
 
 #import "PDFControlViewController.h"
+#import "HSBTVOSConnectionManager.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
     NSString *language = [[NSLocale preferredLanguages] firstObject];
@@ -76,7 +77,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 - (void)clearCanvas {
     self.canvasView.image = nil;
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"pdf_draw", @"type": @"clear"});
+        self.sendPayloadBlock(@{@"action": HSBRemoteSimulateActionPdfDraw, @"type": @"clear"});
     }
 }
 
@@ -136,7 +137,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     CGFloat relY = point.y / self.canvasView.bounds.size.height;
     
     NSDictionary *payload = @{
-        @"action": @"pdf_draw",
+        @"action": (id)HSBRemoteSimulateActionPdfDraw,
         @"type": type,
         @"x": @(relX),
         @"y": @(relY),

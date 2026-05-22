@@ -22,6 +22,36 @@ NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdated
 
 @implementation HSBTVOSConnectionManager
 
+HSBRemoteSimulateAction const HSBRemoteSimulateActionUnknown = @"unknown";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionUp = @"up";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionDown = @"down";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionLeft = @"left";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionRight = @"right";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSelect = @"select";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionMenu = @"menu";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionPlay = @"play";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionPause = @"pause";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionStop = @"stop";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionOpenPlayer = @"open_player";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionClosePlayer = @"close_player";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSeekRelative = @"seek_relative";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSeekPercent = @"seek_percent";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSetRate = @"set_rate";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSeekForward = @"seek_forward";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSeekBackward = @"seek_backward";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSeekAbsolute = @"player_seek";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionToggleSubtitle = @"player_toggle_subtitle";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionVolumeUp = @"volume_up";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionVolumeDown = @"volume_down";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionOpenUrl = @"open_url";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionPageBack = @"page_back";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionPageForward = @"page_forward";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionPageReload = @"page_reload";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionPageHome = @"page_home";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionUpdateHomeJson = @"update_home_json";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionExecuteJS = @"execute_js";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
+
 + (instancetype)sharedManager {
     static HSBTVOSConnectionManager *instance = nil;
     static dispatch_once_t onceToken;
@@ -116,11 +146,24 @@ NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdated
     [self sendAction:action withValue:nil];
 }
 
-- (void)sendAction:(NSString *)action withValue:(nullable NSString *)value {
+- (void)sendAction:(NSString *)action withValue:(nullable id)value {
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
     payload[@"action"] = action;
     if (value) {
         payload[@"value"] = value;
+    }
+    [self sendPayload:payload];
+}
+
+- (void)sendSimulateAction:(HSBRemoteSimulateAction)action {
+    [self sendSimulateAction:action withParams:nil];
+}
+
+- (void)sendSimulateAction:(HSBRemoteSimulateAction)action withParams:(nullable NSDictionary *)params {
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"action"] = action ?: HSBRemoteSimulateActionUnknown;
+    if (params) {
+        [payload addEntriesFromDictionary:params];
     }
     [self sendPayload:payload];
 }

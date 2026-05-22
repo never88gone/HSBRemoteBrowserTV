@@ -265,15 +265,33 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     if (self.sendPayloadBlock) {
         self.sendPayloadBlock(@{@"action": action});
+    } else {
+        [[HSBTVOSConnectionManager sharedManager] sendAction:action];
     }
 }
 
-- (void)sendUp { [self triggerAction:@"iptv_up"]; }
-- (void)sendDown { [self triggerAction:@"iptv_down"]; }
-- (void)sendLeft { [self triggerAction:@"iptv_left"]; }
-- (void)sendRight { [self triggerAction:@"iptv_right"]; }
-- (void)sendSelect { [self triggerAction:@"iptv_select"]; }
-- (void)sendMenu { [self triggerAction:@"iptv_menu"]; }
+- (void)triggerSimulateAction:(HSBRemoteSimulateAction)action {
+    if (self.checkConnectionBlock && !self.checkConnectionBlock()) {
+        NSLog(@"[IPTVRemote] TV not connected.");
+        return;
+    }
+    
+    UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [feedback impactOccurred];
+    
+    if (self.sendPayloadBlock) {
+        self.sendPayloadBlock(@{@"action": action});
+    } else {
+        [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:action];
+    }
+}
+
+- (void)sendUp { [self triggerSimulateAction:HSBRemoteSimulateActionUp]; }
+- (void)sendDown { [self triggerSimulateAction:HSBRemoteSimulateActionDown]; }
+- (void)sendLeft { [self triggerSimulateAction:HSBRemoteSimulateActionLeft]; }
+- (void)sendRight { [self triggerSimulateAction:HSBRemoteSimulateActionRight]; }
+- (void)sendSelect { [self triggerSimulateAction:HSBRemoteSimulateActionSelect]; }
+- (void)sendMenu { [self triggerSimulateAction:HSBRemoteSimulateActionMenu]; }
 - (void)sendEPG { [self triggerAction:@"iptv_epg"]; }
 - (void)sendChannels { [self triggerAction:@"iptv_channels"]; }
 - (void)sendRefresh { [self triggerAction:@"iptv_refresh"]; }

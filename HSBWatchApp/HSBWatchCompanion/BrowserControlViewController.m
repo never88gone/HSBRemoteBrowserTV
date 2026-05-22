@@ -10,6 +10,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import "HSBLocalLLMManager.h"
 #import "HSBWatchCompanion-Swift.h"
+#import "HSBTVOSConnectionManager.h"
 
 
 // 自定义四指拖动手势识别器
@@ -620,12 +621,80 @@ static NSString * L(NSString *en, NSString *zh) {
         UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [hap impactOccurred];
         
-        // 如果识别到了指令文本，直接丢给大模型处理并生成 JS 并下发
+        // 1. 去除标点符号与两端空格，用于精确匹配本地硬编码指令
         NSString *trimmedText = [self.recognizedSpeechText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (trimmedText.length > 0) {
+        NSString *cleanText = [[trimmedText stringByReplacingOccurrencesOfString:@"。" withString:@""] stringByReplacingOccurrencesOfString:@"，" withString:@""];
+        cleanText = [[cleanText stringByReplacingOccurrencesOfString:@"！" withString:@""] stringByReplacingOccurrencesOfString:@"？" withString:@""];
+        
+        if (cleanText.length > 0) {
+            // 2. 本地指令拦截字典映射
+            NSDictionary<NSString *, NSString *> *voiceCommands = @{
+                @"往上": HSBRemoteSimulateActionUp,
+                @"往下": HSBRemoteSimulateActionDown,
+                @"往左": HSBRemoteSimulateActionLeft,
+                @"往右": HSBRemoteSimulateActionRight,
+                @"返回": HSBRemoteSimulateActionMenu,
+                @"暂停": HSBRemoteSimulateActionPause,
+                @"播放": HSBRemoteSimulateActionPlay,
+                @"打开播放器": HSBRemoteSimulateActionOpenPlayer
+            };
+            
+            NSString *matchedAction = nil;
+            // 模糊包含匹配，例如用户说"往上"或"请往上"都能触发
+            for (NSString *key in voiceCommands) {
+                if ([cleanText containsString:key]) {
+                    matchedAction = voiceCommands[key];
+                    break;
+                }
+            }
+            
+            if (matchedAction) {
+                NSLog(@"[Speech] Intercepted local voice command: %@ -> %@", cleanText, matchedAction);
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:matchedAction];
+                
+                // 给用户弹出一个短提示反馈
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self showToast:[NSString stringWithFormat:L(@"已发送指令: %@", @"Sent command: %@"), cleanText]];
+                });
+                return; // 拦截成功，终止后续的大模型请求
+            }
+            
+            // 3. 如果不是内置遥控指令，则丢给大模型处理并生成 JS 并下发
             [self processAIRequest:trimmedText type:2];
         }
     }
+}
+
+// 快速 Toast 提示框，复用现有架构风格
+- (void)showToast:(NSString *)msg {
+    UILabel *toast = [[UILabel alloc] init];
+    toast.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.75];
+    toast.textColor = [UIColor whiteColor];
+    toast.textAlignment = NSTextAlignmentCenter;
+    toast.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    toast.text = msg;
+    toast.layer.cornerRadius = 20;
+    toast.clipsToBounds = YES;
+    toast.alpha = 0;
+    toast.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [self.view addSubview:toast];
+    [NSLayoutConstraint activateConstraints:@[
+        [toast.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [toast.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-160],
+        [toast.widthAnchor constraintGreaterThanOrEqualToConstant:200],
+        [toast.heightAnchor constraintEqualToConstant:40]
+    ]];
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        toast.alpha = 1;
+    } completion:^(BOOL finished) {
+        [UIView animateWithDuration:0.3 delay:1.5 options:0 animations:^{
+            toast.alpha = 0;
+        } completion:^(BOOL finished) {
+            [toast removeFromSuperview];
+        }];
+    }];
 }
 
 - (void)setupSpeechPanel {
@@ -950,7 +1019,7 @@ static NSString * L(NSString *en, NSString *zh) {
     [hap impactOccurred];
     
     [self.urlTextField resignFirstResponder];
-    [self sendDirectPayload:@{@"action": @"open_url", @"url": urlString}];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionOpenUrl, @"url": urlString}];
     
     self.trackpadStatusLabel.text = [NSString stringWithFormat:L(@"🌐 Navigating...", @"🌐 正在跳转...")];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -970,22 +1039,22 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)browserActionBack {
     UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [hap impactOccurred];
-    [self sendActionToTV:@"page_back"];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionPageBack}];
 }
 - (void)browserActionForward {
     UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [hap impactOccurred];
-    [self sendActionToTV:@"page_forward"];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionPageForward}];
 }
 - (void)browserActionRefresh {
     UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [hap impactOccurred];
-    [self sendActionToTV:@"page_reload"];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionPageReload}];
 }
 - (void)browserActionHome {
     UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [hap impactOccurred];
-    [self sendActionToTV:@"page_home"];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionPageHome}];
 }
 
 - (void)openPlayerAction {
@@ -994,7 +1063,7 @@ static NSString * L(NSString *en, NSString *zh) {
     
     self.trackpadStatusLabel.text = L(@"▶️ Opening Player...", @"▶️ 正在打开播放器...");
     
-    [self sendDirectPayload:@{@"action": @"open_player"}];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionOpenPlayer}];
     
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
@@ -1007,7 +1076,7 @@ static NSString * L(NSString *en, NSString *zh) {
     
     self.trackpadStatusLabel.text = L(@"⏹️ Closing Player...", @"⏹️ 正在关闭播放器...");
     
-    [self sendDirectPayload:@{@"action": @"close_player"}];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionClosePlayer}];
     
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
@@ -1022,7 +1091,7 @@ static NSString * L(NSString *en, NSString *zh) {
     UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [fb impactOccurred];
     
-    [self sendDirectPayload:@{@"action": @"seek_percent", @"value": @(slider.value)}];
+    [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionSeekPercent, @"value": @(slider.value)}];
 }
 
 - (void)applyThemeStyle {

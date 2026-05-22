@@ -4,6 +4,7 @@
 //
 
 #import "CastViewController.h"
+#import "HSBTVOSConnectionManager.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
     NSString *language = [[NSLocale preferredLanguages] firstObject];
@@ -108,7 +109,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.urlTextField resignFirstResponder];
     
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"open_url", @"url": url});
+        self.sendPayloadBlock(@{@"action": HSBRemoteSimulateActionOpenUrl, @"url": url});
     }
 }
 

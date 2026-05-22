@@ -4,6 +4,8 @@
 //
 
 #import "VideoControlViewController.h"
+#import "HSBThemeManager.h"
+#import "HSBTVOSConnectionManager.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
     NSString *language = [[NSLocale preferredLanguages] firstObject];
@@ -151,7 +153,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.playPauseBtn setImage:[UIImage systemImageNamed:icon withConfiguration:bigConfig] forState:UIControlStateNormal];
     
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": self.isPlaying ? @"player_play" : @"player_pause"});
+        self.sendPayloadBlock(@{@"action": self.isPlaying ? (id)HSBRemoteSimulateActionPlay : (id)HSBRemoteSimulateActionPause});
     }
 }
 
@@ -159,7 +161,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [fb impactOccurred];
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"player_seek_relative", @"value": @(-10)});
+        self.sendPayloadBlock(@{@"action": (id)HSBRemoteSimulateActionSeekRelative, @"value": @(-10)});
     }
 }
 
@@ -167,7 +169,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [fb impactOccurred];
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"player_seek_relative", @"value": @(10)});
+        self.sendPayloadBlock(@{@"action": (id)HSBRemoteSimulateActionSeekRelative, @"value": @(10)});
     }
 }
 
@@ -177,7 +179,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)sliderEnded:(UISlider *)slider {
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"player_seek_percent", @"value": @(slider.value)});
+        self.sendPayloadBlock(@{@"action": (id)HSBRemoteSimulateActionSeekPercent, @"value": @(slider.value)});
     }
 }
 
@@ -189,7 +191,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [fb impactOccurred];
     
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": @"player_set_rate", @"value": rate});
+        self.sendPayloadBlock(@{@"action": (id)HSBRemoteSimulateActionSetRate, @"value": rate});
     }
 }
 

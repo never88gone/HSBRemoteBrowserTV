@@ -10,6 +10,7 @@
 #import "HomeConfigEditViewController.h"
 #import "BrowserControlViewController.h"
 #import "SettingsViewController.h"
+#import "HSBTVOSConnectionManager.h"
 #import "TVDetailViewController.h"
 #import "HSBThemeManager.h"
 #import "HSBTVOSConnectionManager.h"
@@ -623,7 +624,7 @@ static NSString * L(NSString *en, NSString *zh) {
     [hap impactOccurred];
     
     [self.mainUrlTextField resignFirstResponder];
-    [self sendDirectPayload:@{@"action": @"open_url", @"url": urlString} msg:[NSString stringWithFormat:L(@"🌐 Navigated to: %@", @"🌐 已跳转至: %@"), urlString]];
+    [self sendDirectPayload:@{@"action": (id)HSBRemoteSimulateActionOpenUrl, @"url": urlString} msg:[NSString stringWithFormat:L(@"🌐 Navigated to: %@", @"🌐 已跳转至: %@"), urlString]];
 }
 
 #pragma mark - UITextFieldDelegate

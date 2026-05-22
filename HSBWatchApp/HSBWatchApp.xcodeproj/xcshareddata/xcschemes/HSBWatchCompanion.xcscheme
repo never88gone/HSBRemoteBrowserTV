@@ -79,7 +79,7 @@
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
                title = "Update Build Number"
-               scriptText = "DATE_STR=$(date &quot;+%y%m%d%H%M&quot;)&#10;CONFIG_FILE=&quot;${SRCROOT}/HSBWatchCompanion/AppVersion.xcconfig&quot;&#10;if [ -f &quot;$CONFIG_FILE&quot; ]; then&#10;    sed -i &apos;&apos; &quot;s/^GITHUB_VERSION.*/GITHUB_VERSION = $DATE_STR/&quot; &quot;$CONFIG_FILE&quot;&#10;fi&#10;">
+               scriptText = "exec &gt; /tmp/xcode_archive_preaction.log 2&gt;&amp;1&#10;echo &quot;Pre-action started&quot;&#10;DATE_STR=$(date &quot;+%Y%m%d%H%M%S&quot;)&#10;CONFIG_FILE=&quot;${PROJECT_DIR}/HSBWatchCompanion/AppVersion.xcconfig&quot;&#10;echo &quot;Target file: $CONFIG_FILE&quot;&#10;if [ -f &quot;$CONFIG_FILE&quot; ]; then&#10;    sed -i &apos;&apos; &quot;s/^BUILD_VERSION.*/BUILD_VERSION = $DATE_STR/&quot; &quot;$CONFIG_FILE&quot;&#10;    echo &quot;Success! Updated BUILD_VERSION to $DATE_STR&quot;&#10;else&#10;    echo &quot;Error: File not found!&quot;&#10;fi&#10;">
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"
