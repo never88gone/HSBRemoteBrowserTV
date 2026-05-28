@@ -1,6 +1,7 @@
 #import "HSBLLMTestViewController.h"
 #import "HSBLocalLLMManager.h"
 #import "HSBLLMModelCenterViewController.h"
+#import "HSBTVOSConnectionManager.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
     NSString *language = [[NSLocale preferredLanguages] firstObject];
@@ -676,7 +677,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
         
         // 构造控制电视的 JSON payload，与 BrowserControlViewController 保持完全兼容
         NSDictionary *payload = @{
-            @"action": @"run_js",
+            @"action": HSBRemoteSimulateActionExecuteJS,
             @"script": jsCode,
             @"content": jsCode,
             @"timestamp": @([[NSDate date] timeIntervalSince1970]),

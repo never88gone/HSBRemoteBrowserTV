@@ -54,6 +54,31 @@ extern HSBRemoteSimulateAction const HSBRemoteSimulateActionUpdateHomeJson;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionExecuteJS;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw;
 
+// -- Category 5: Mouse / Trackpad Simulation ------------------------------
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionMacTap;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionMacPan;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionMacScroll;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionMacDrag;
+
+// -- Category 6: IPTV Control & Favorites ---------------------------------
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVGetFavorites;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVPlayChannel;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVAddFavorite;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteFavorite;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVEpg;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVChannels;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefresh;
+
+// -- Category 7: LLM & Translation ---------------------------------------
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslate;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslateBlocks;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslationResult;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslationBlocksResult;
+
+// -- Category 8: tvOS State Sync -----------------------------------------
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncProgress;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites;
+
 @interface HSBTVOSConnectionManager : NSObject
 
 @property (nonatomic, readonly) BOOL isConnected;

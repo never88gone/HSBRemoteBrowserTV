@@ -51,6 +51,23 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionPageHome = @"page_home";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionUpdateHomeJson = @"update_home_json";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionExecuteJS = @"execute_js";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionMacTap = @"mac_tap";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionMacPan = @"mac_pan";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionMacScroll = @"mac_scroll";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionMacDrag = @"mac_drag";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVGetFavorites = @"get_favorites";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVPlayChannel = @"play_channel";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVAddFavorite = @"add_favorite";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteFavorite = @"delete_favorite";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVEpg = @"iptv_epg";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVChannels = @"iptv_channels";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefresh = @"iptv_refresh";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslate = @"translate";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslateBlocks = @"translate_blocks";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslationResult = @"translation_result";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslationBlocksResult = @"translation_blocks_result";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncProgress = @"sync_progress";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favorites";
 
 + (instancetype)sharedManager {
     static HSBTVOSConnectionManager *instance = nil;
@@ -187,7 +204,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
 
 - (void)sendJSONConfig:(NSString *)jsonString {
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-    payload[@"action"] = @"update_home_json";
+    payload[@"action"] = HSBRemoteSimulateActionUpdateHomeJson;
     payload[@"payload"] = jsonString;
     [self sendPayload:payload];
 }
@@ -206,7 +223,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
                 NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
                 if (json && [json isKindOfClass:[NSDictionary class]]) {
                     NSString *action = json[@"action"];
-                    if ([action isEqualToString:@"sync_progress"]) {
+                    if ([action isEqualToString:HSBRemoteSimulateActionSyncProgress]) {
                         NSNumber *currentTime = json[@"currentTime"];
                         NSNumber *duration = json[@"duration"];
                         NSNumber *hiddenObj = json[@"hidden"];
@@ -218,7 +235,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
                                                                                          @"duration": duration ?: @(0), 
                                                                                          @"hidden": hiddenObj ?: @(NO)}];
                         });
-                    } else if ([action isEqualToString:@"sync_favorites"]) {
+                    } else if ([action isEqualToString:HSBRemoteSimulateActionSyncFavorites]) {
                         NSArray *favorites = json[@"channels"];
                         if (favorites && [favorites isKindOfClass:[NSArray class]]) {
                             [[NSUserDefaults standardUserDefaults] setObject:favorites forKey:@"HSBIPTVFavorites"];
@@ -229,7 +246,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
                                                                                   userInfo:@{@"channels": favorites}];
                             });
                         }
-                    } else if ([action isEqualToString:@"translate"]) {
+                    } else if ([action isEqualToString:HSBRemoteSimulateActionTranslate]) {
                         NSString *requestId = json[@"requestId"];
                         NSString *text = json[@"text"];
                         if (requestId && text.length > 0) {
@@ -237,14 +254,14 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
                             [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt type:1 completion:^(NSString * _Nullable response, BOOL isFinished) {
                                 if (isFinished) {
                                     [weakSelf sendPayload:@{
-                                        @"action": @"translation_result",
+                                        @"action": HSBRemoteSimulateActionTranslationResult,
                                         @"requestId": requestId,
                                         @"result": response ?: @""
                                     }];
                                 }
                             }];
                         }
-                    } else if ([action isEqualToString:@"translate_blocks"]) {
+                    } else if ([action isEqualToString:HSBRemoteSimulateActionTranslateBlocks]) {
                         NSString *requestId = json[@"requestId"];
                         NSArray *blocks = json[@"blocks"];
                         if (requestId && blocks.count > 0) {
@@ -272,7 +289,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionPdfDraw = @"pdf_draw";
                             
                             dispatch_group_notify(group, dispatch_get_main_queue(), ^{
                                 [weakSelf sendPayload:@{
-                                    @"action": @"translation_blocks_result",
+                                    @"action": HSBRemoteSimulateActionTranslationBlocksResult,
                                     @"requestId": requestId,
                                     @"translationMap": translationMap
                                 }];

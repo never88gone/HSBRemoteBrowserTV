@@ -41,7 +41,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [super viewDidLoad];
     
     // 监听电视端 IPTV 收藏更新通知
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleFavoritesUpdated:) name:@"HSBIPTVFavoritesUpdatedNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleFavoritesUpdated:) name:HSBIPTVFavoritesUpdatedNotification object:nil];
     
     // 1. Create Favorites Area
     self.favHeartIcon = [[UIImageView alloc] init];
@@ -292,15 +292,15 @@ static inline NSString * L(NSString *en, NSString *zh) {
 - (void)sendRight { [self triggerSimulateAction:HSBRemoteSimulateActionRight]; }
 - (void)sendSelect { [self triggerSimulateAction:HSBRemoteSimulateActionSelect]; }
 - (void)sendMenu { [self triggerSimulateAction:HSBRemoteSimulateActionMenu]; }
-- (void)sendEPG { [self triggerAction:@"iptv_epg"]; }
-- (void)sendChannels { [self triggerAction:@"iptv_channels"]; }
-- (void)sendRefresh { [self triggerAction:@"iptv_refresh"]; }
+- (void)sendEPG { [self triggerSimulateAction:HSBRemoteSimulateActionIPTVEpg]; }
+- (void)sendChannels { [self triggerSimulateAction:HSBRemoteSimulateActionIPTVChannels]; }
+- (void)sendRefresh { [self triggerSimulateAction:HSBRemoteSimulateActionIPTVRefresh]; }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     if (self.sendPayloadBlock) {
         self.sendPayloadBlock(@{
-            @"action": @"get_favorites",
+            @"action": HSBRemoteSimulateActionIPTVGetFavorites,
             @"timestamp": @([[NSDate date] timeIntervalSince1970])
         });
     }
@@ -415,7 +415,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [feedback impactOccurred];
         
         NSDictionary *payload = @{
-            @"action": @"play_channel",
+            @"action": HSBRemoteSimulateActionIPTVPlayChannel,
             @"channel": name,
             @"id": chanId ?: @"",
             @"timestamp": @([[NSDate date] timeIntervalSince1970])
@@ -469,7 +469,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     // 向电视端下发 add_favorite 命令，由电视端进行真正的收藏并回传新数组
     [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
-        @"action": @"add_favorite",
+        @"action": HSBRemoteSimulateActionIPTVAddFavorite,
         @"timestamp": @([[NSDate date] timeIntervalSince1970])
     }];
     
@@ -509,7 +509,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     // 向电视端下发 delete_favorite 消息，由电视端处理并同步回最新的收藏列表
     [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
-        @"action": @"delete_favorite",
+        @"action": HSBRemoteSimulateActionIPTVDeleteFavorite,
         @"index": @(index),
         @"id": chanId ?: @"",
         @"timestamp": @([[NSDate date] timeIntervalSince1970])

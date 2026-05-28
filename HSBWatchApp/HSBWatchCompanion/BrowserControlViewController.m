@@ -914,7 +914,7 @@ static NSString * L(NSString *en, NSString *zh) {
             }
             
             NSDictionary *payload = @{
-                @"action": (type == 1 ? @"show_translation" : @"run_js"),
+                @"action": (type == 1 ? HSBRemoteSimulateActionTranslationResult : HSBRemoteSimulateActionExecuteJS),
                 @"content": cleanResponse,
                 @"timestamp": @([[NSDate date] timeIntervalSince1970]),
                 @"requestId": [[NSUUID UUID] UUIDString]
@@ -1163,7 +1163,7 @@ static NSString * L(NSString *en, NSString *zh) {
     self.trackpadStatusLabel.text = [NSString stringWithFormat:@"🚀 Running %@...", scriptName];
     
     NSDictionary *payload = @{
-        @"action": @"run_js",
+        @"action": HSBRemoteSimulateActionExecuteJS,
         @"content": jsContent,
         @"script": jsContent,
         @"timestamp": @([[NSDate date] timeIntervalSince1970]),
@@ -1190,7 +1190,7 @@ static NSString * L(NSString *en, NSString *zh) {
                          completion:^(BOOL f) { [UIView animateWithDuration:0.15 animations:^{ self.trackpadView.alpha = 1.0; }]; }];
         
         self.trackpadStatusLabel.text = L(@"\U0001F5B1 Click", @"\U0001F5B1 点击");
-        [self sendDirectPayload:@{@"action": @"mac_tap", @"mode": @1}];
+        [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacTap, @"mode": @1}];
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
@@ -1209,7 +1209,7 @@ static NSString * L(NSString *en, NSString *zh) {
                          completion:^(BOOL f) { [UIView animateWithDuration:0.12 animations:^{ self.trackpadView.alpha = 1.0; }]; }];
         
         self.trackpadStatusLabel.text = L(@"\U0001F44C Touch Click", @"\U0001F44C 触控点击");
-        [self sendDirectPayload:@{@"action": @"mac_tap", @"mode": @3}]; // 3 = WebViewOpTypeTouch
+        [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacTap, @"mode": @3}]; // 3 = WebViewOpTypeTouch
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
@@ -1225,7 +1225,7 @@ static NSString * L(NSString *en, NSString *zh) {
         [hap impactOccurred];
         
         self.trackpadStatusLabel.text = L(@"Force Click", @"强力点击");
-        [self sendDirectPayload:@{@"action": @"mac_tap", @"mode": @5}]; // 5 = WebViewOpTypeForceClick
+        [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacTap, @"mode": @5}]; // 5 = WebViewOpTypeForceClick
         
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
@@ -1259,7 +1259,7 @@ static NSString * L(NSString *en, NSString *zh) {
         [pan setTranslation:CGPointZero inView:self.trackpadView];
         
         if (fabs(dx) > 0.1 || fabs(dy) > 0.1) {
-            [self sendDirectPayload:@{@"action": @"mac_pan", @"dx": @(dx), @"dy": @(dy)}];
+            [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacPan, @"dx": @(dx), @"dy": @(dy)}];
             self.trackpadStatusLabel.text = L(@"Moving", @"移动");
         }
     } else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
@@ -1290,7 +1290,7 @@ static NSString * L(NSString *en, NSString *zh) {
         CGFloat dy = translation.y * kScrollScale;
         [pan setTranslation:CGPointZero inView:self.trackpadView];
         
-        [self sendDirectPayload:@{@"action": @"mac_scroll", @"dx": @(dx), @"dy": @(dy)}];
+        [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacScroll, @"dx": @(dx), @"dy": @(dy)}];
     } else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
         if (!self.isDragging) self.trackpadStatusLabel.text = L(@"Ready", @"就绪");
     }
@@ -1309,7 +1309,7 @@ static NSString * L(NSString *en, NSString *zh) {
         UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
         [hap impactOccurred];
         
-        [self sendDirectPayload:@{@"action": @"mac_drag", @"state": @"began"}];
+        [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacDrag, @"state": @"began"}];
         
     } else if (pan.state == UIGestureRecognizerStateChanged) {
         CFTimeInterval now = CACurrentMediaTime();
@@ -1322,7 +1322,7 @@ static NSString * L(NSString *en, NSString *zh) {
         CGFloat dy = pan.currentDelta.y * kDragScale;
         
         if (fabs(dx) > 0.1 || fabs(dy) > 0.1) {
-            [self sendDirectPayload:@{@"action": @"mac_drag", @"state": @"changed", @"dx": @(dx), @"dy": @(dy)}];
+            [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacDrag, @"state": @"changed", @"dx": @(dx), @"dy": @(dy)}];
         }
         
     } else if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
@@ -1335,7 +1335,7 @@ static NSString * L(NSString *en, NSString *zh) {
         UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
         [hap impactOccurred];
         
-        [self sendDirectPayload:@{@"action": @"mac_drag", @"state": @"ended"}];
+        [self sendDirectPayload:@{@"action": HSBRemoteSimulateActionMacDrag, @"state": @"ended"}];
     }
 }
 

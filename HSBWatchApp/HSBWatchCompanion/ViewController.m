@@ -674,7 +674,7 @@ static NSString * L(NSString *en, NSString *zh) {
     }
     
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-    payload[@"action"] = @"update_home_json";
+    payload[@"action"] = HSBRemoteSimulateActionUpdateHomeJson;
     payload[@"payload"] = jsonString;
     
     [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
@@ -773,7 +773,7 @@ static NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)sendSeekToTV:(float)seekTime {
-    [self sendActionToTV:@"seek" withValue:@(seekTime)];
+    [self sendActionToTV:HSBRemoteSimulateActionSeekAbsolute withValue:@(seekTime)];
 }
 - (void)sendActionToTV:(NSString *)action {
     [self sendActionToTV:action withValue:nil];
