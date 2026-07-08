@@ -254,7 +254,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 #pragma mark - Actions
 
-- (void)triggerAction:(NSString *)action {
+- (void)triggerAction:(HSBRemoteSimulateAction)action {
     if (self.checkConnectionBlock && !self.checkConnectionBlock()) {
         NSLog(@"[IPTVRemote] TV not connected.");
         return;
@@ -266,7 +266,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     if (self.sendPayloadBlock) {
         self.sendPayloadBlock(@{@"action": action});
     } else {
-        [[HSBTVOSConnectionManager sharedManager] sendAction:action];
+        [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:action];
     }
 }
 

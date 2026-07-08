@@ -561,7 +561,7 @@ static NSString * L(NSString *en, NSString *zh) {
     vc.sendPayloadBlock = ^(NSDictionary *payload) {
         [weakSelf sendDirectPayload:payload msg:nil];
     };
-    vc.sendActionBlock = ^(NSString *action) {
+    vc.sendActionBlock = ^(HSBRemoteSimulateAction action) {
         // Here we intercept the action to send formatted dictionary over tcp
         NSMutableDictionary *p = [NSMutableDictionary dictionary];
         p[@"action"] = action;
@@ -872,8 +872,8 @@ static NSString * L(NSString *en, NSString *zh) {
     vc.sendPayloadBlock = ^(NSDictionary *payload) {
         [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
     };
-    vc.sendActionBlock = ^(NSString *action) {
-        [[HSBTVOSConnectionManager sharedManager] sendAction:action];
+    vc.sendActionBlock = ^(HSBRemoteSimulateAction action) {
+        [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:action];
     };
     vc.checkConnectionBlock = ^BOOL{
         return [HSBTVOSConnectionManager sharedManager].isConnected;

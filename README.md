@@ -11,6 +11,16 @@
 
 ---
 
+## 📸 应用展示 (Screenshots)
+
+| 设备发现 | 浏览器控制 |
+| :---: | :---: |
+| <img src="screenshot/设备发现.PNG" width="300" /> | <img src="screenshot/浏览器控制.PNG" width="300" /> |
+| **视频控制** | **设置** |
+| <img src="screenshot/视频控制.PNG" width="300" /> | <img src="screenshot/设置.PNG" width="300" /> |
+
+---
+
 ## 🔥 核心特性与技术巅峰 (Core Features)
 
 ### 🤖 1. 端侧大模型驱动 (On-Device Edge AI)

@@ -5,6 +5,7 @@
 
 #import "HSBBaseViewController.h"
 #import <Foundation/Foundation.h>
+#import "HSBTVOSConnectionManager.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -14,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) void (^sendPayloadBlock)(NSDictionary *payload);
 
 // Block to send simple string message actions
-@property (nonatomic, copy) void (^sendActionBlock)(NSString *actionString);
+@property (nonatomic, copy) void (^sendActionBlock)(HSBRemoteSimulateAction action);
 
 // Checks if TV is currently connected to warn the user
 @property (nonatomic, copy) BOOL (^checkConnectionBlock)(void);
