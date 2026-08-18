@@ -23,42 +23,17 @@ default_platform(:ios)
 platform :ios do
   desc "Build and upload iOS Companion app to TestFlight"
   lane :beta do |options|
-    # 1. 从环境变量获取 App Store Connect API Key (解决 2FA 并在本地与云端两端对齐)
-    key_id = ENV["APP_STORE_CONNECT_KEY_ID"] || ""
-    issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"] || ""
-    key_content = ENV["APP_STORE_CONNECT_KEY_CONTENT"] || ""
-
-    if key_id.empty?
-      UI.error("⚠️  APP_STORE_CONNECT_KEY_ID is missing! Please make sure your .env file exists and is filled.")
-    else
-      UI.message("🔑 Loaded App Store Connect Key ID: #{key_id[0..2]}...#{key_id[-3..-1] || ''} (Length: #{key_id.length})")
-    end
-
-    # 自动对私钥进行健壮的 PEM 格式修复清洗，防止由于粘贴、多行换行丢失或字面量转义导致的 API 校验失败
-    if !key_content.empty?
-      # 替换字面量 \n 字符为真实换行
-      key_content = key_content.gsub("\\n", "\n")
-      # 清洗多余空格和首尾回车
-      key_content = key_content.strip
-      # 确保 PEM 的头尾声明与 Base64 内容之间有换行符
-      if !key_content.include?("\n")
-        raw_base64 = key_content.gsub("-----BEGIN PRIVATE KEY-----", "").gsub("-----END PRIVATE KEY-----", "").gsub(/\s+/, "")
-        formatted_content = "-----BEGIN PRIVATE KEY-----\n"
-        raw_base64.scan(/.{1,64}/) { |chunk| formatted_content << chunk << "\n" }
-        formatted_content << "-----END PRIVATE KEY-----"
-        key_content = formatted_content
-      end
-    end
-
+    # 1. 从环境变量获取 App Store Connect API Key
     # 自动同步注入给 fastlane 官方推荐的全局 SPACESHIP_ 变量，以在 pilot/deliver/spaceship 中实现多重鉴权兜底保障
-    ENV["SPACESHIP_CONNECT_API_KEY_ID"] = key_id
-    ENV["SPACESHIP_CONNECT_API_ISSUER_ID"] = issuer_id
-    ENV["SPACESHIP_CONNECT_API_KEY_CONTENT"] = key_content
+    ENV["SPACESHIP_CONNECT_API_KEY_ID"] = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"]
+    ENV["SPACESHIP_CONNECT_API_ISSUER_ID"] = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
+    ENV["SPACESHIP_CONNECT_API_KEY_CONTENT"] = ENV["APP_STORE_CONNECT_API_KEY_KEY"]
 
     api_key = app_store_connect_api_key(
-      key_id: key_id,
-      issuer_id: issuer_id,
-      key_content: key_content,
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_API_KEY_KEY"],
+      is_key_content_base64: true, # 告诉 Fastlane 内容是 Base64 编码的
       in_house: false
     )
 
