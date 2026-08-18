@@ -50,6 +50,7 @@ typedef void (^HSBLocalLLMMessageCompletion)(NSString *response, BOOL isFinished
 
 + (instancetype)shared;
 + (NSString *)translationSystemPrompt;
++ (NSString *)translationSystemPromptWithSource:(nullable NSString *)source target:(nullable NSString *)target;
 
 /// 当前是否使用苹果原生 Translation 框架进行翻译
 + (BOOL)useAppleTranslation;

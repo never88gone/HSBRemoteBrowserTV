@@ -41,6 +41,9 @@ extern HSBRemoteSimulateAction const HSBRemoteSimulateActionSeekAbsolute;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionToggleSubtitle;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionVolumeUp;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionVolumeDown;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionSetVolume;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionToggleMute;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionSwitchAudioTrack;
 
 // -- Category 3: Page Navigation ------------------------------------------
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionOpenUrl;
@@ -68,6 +71,9 @@ extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteFavorite;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVEpg;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVChannels;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefresh;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelUp;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelDown;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionDigit;
 
 // -- Category 7: LLM & Translation ---------------------------------------
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslate;
@@ -78,6 +84,73 @@ extern HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslationBlocksRes
 // -- Category 8: tvOS State Sync -----------------------------------------
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncProgress;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites;
+
+// -- Payload Keys ---------------------------------------------------------
+extern NSString * const HSBRemotePayloadKeyAction;
+extern NSString * const HSBRemotePayloadKeyValue;
+extern NSString * const HSBRemotePayloadKeySeconds;
+extern NSString * const HSBRemotePayloadKeyVolume;
+extern NSString * const HSBRemotePayloadKeyMuted;
+extern NSString * const HSBRemotePayloadKeyDigit;
+extern NSString * const HSBRemotePayloadKeyTrackIndex;
+extern NSString * const HSBRemotePayloadKeyDx;
+extern NSString * const HSBRemotePayloadKeyDy;
+extern NSString * const HSBRemotePayloadKeyMode;
+extern NSString * const HSBRemotePayloadKeyState;
+extern NSString * const HSBRemotePayloadKeyUrl;
+extern NSString * const HSBRemotePayloadKeyScript;
+extern NSString * const HSBRemotePayloadKeyType;
+extern NSString * const HSBRemotePayloadKeyX;
+extern NSString * const HSBRemotePayloadKeyY;
+extern NSString * const HSBRemotePayloadKeyColor;
+extern NSString * const HSBRemotePayloadKeyWidth;
+extern NSString * const HSBRemotePayloadKeyPayload;
+extern NSString * const HSBRemotePayloadKeyChannel;
+extern NSString * const HSBRemotePayloadKeyId;
+extern NSString * const HSBRemotePayloadKeyIndex;
+extern NSString * const HSBRemotePayloadKeyTimestamp;
+extern NSString * const HSBRemotePayloadKeyRequestId;
+extern NSString * const HSBRemotePayloadKeyResult;
+extern NSString * const HSBRemotePayloadKeyBlocks;
+extern NSString * const HSBRemotePayloadKeyTranslationMap;
+extern NSString * const HSBRemotePayloadKeyChannels;
+extern NSString * const HSBRemotePayloadKeyCurrentTime;
+extern NSString * const HSBRemotePayloadKeyDuration;
+extern NSString * const HSBRemotePayloadKeyHidden;
+extern NSString * const HSBRemotePayloadKeyPlaybackState;
+extern NSString * const HSBRemotePayloadKeyTitle;
+extern NSString * const HSBRemotePayloadKeyContent;
+extern NSString * const HSBRemotePayloadKeyCode;
+extern NSString * const HSBRemotePayloadKeyMessage;
+extern NSString * const HSBRemotePayloadKeyError;
+extern NSString * const HSBRemotePayloadKeyText;
+extern NSString * const HSBRemotePayloadKeySourceLanguage;
+extern NSString * const HSBRemotePayloadKeyTargetLanguage;
+extern NSString * const HSBRemotePayloadKeyRemoteAction;
+extern NSString * const HSBRemotePayloadKeyPressType;
+extern NSString * const HSBRemotePayloadKeyName;
+extern NSString * const HSBRemotePayloadKeyStream;
+extern NSString * const HSBRemotePayloadKeyLogo;
+extern NSString * const HSBRemotePayloadKeyGroup;
+
+// -- PDF & Drawing Constants ---------------------------------------------
+extern NSString * const HSBRemoteDrawTypeClear;
+extern NSString * const HSBRemoteDrawTypeUndo;
+extern NSString * const HSBRemoteDrawTypeEraser;
+extern NSString * const HSBRemoteDrawTypeBegan;
+extern NSString * const HSBRemoteDrawTypeMoved;
+extern NSString * const HSBRemoteDrawTypeChanged;
+extern NSString * const HSBRemoteDrawTypeEnded;
+extern NSString * const HSBRemoteDrawColorRed;
+extern NSString * const HSBRemoteDrawColorBlue;
+extern NSString * const HSBRemoteDrawColorGreen;
+extern NSString * const HSBRemoteDrawColorYellow;
+extern NSString * const HSBRemoteDrawColorWhite;
+extern NSString * const HSBRemoteDrawColorBlack;
+
+// -- Notification UserInfo Keys ------------------------------------------
+extern NSString * const HSBConnectionStateKeyMessage;
+extern NSString * const HSBConnectionStateKeyState;
 
 @interface HSBTVOSConnectionManager : NSObject
 

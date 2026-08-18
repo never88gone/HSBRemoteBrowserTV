@@ -54,26 +54,45 @@
 }
 
 + (NSString *)translationSystemPrompt {
-    NSString *source = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
-    NSString *target = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
+    return [self translationSystemPromptWithSource:nil target:nil];
+}
+
++ (NSString *)translationSystemPromptWithSource:(nullable NSString *)source target:(nullable NSString *)target {
+    if (!source || source.length == 0) {
+        source = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
+    }
+    if (!target || target.length == 0) {
+        target = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
+    }
     
     NSDictionary *langMap = @{
         @"Auto": @"Auto Detect",
+        @"auto": @"Auto Detect",
         @"Chinese": @"Chinese",
+        @"zh": @"Chinese",
+        @"zh-CN": @"Chinese",
+        @"zh-TW": @"Chinese (Traditional)",
         @"English": @"English",
+        @"en": @"English",
         @"Japanese": @"Japanese",
+        @"ja": @"Japanese",
         @"Korean": @"Korean",
+        @"ko": @"Korean",
         @"French": @"French",
+        @"fr": @"French",
         @"German": @"German",
+        @"de": @"German",
         @"Spanish": @"Spanish",
-        @"Russian": @"Russian"
+        @"es": @"Spanish",
+        @"Russian": @"Russian",
+        @"ru": @"Russian"
     };
     
-    NSString *sourceEng = langMap[source] ?: @"Auto Detect";
-    NSString *targetEng = langMap[target] ?: @"Chinese";
+    NSString *sourceEng = langMap[source] ?: source;
+    NSString *targetEng = langMap[target] ?: target;
     
-    if ([source isEqualToString:@"Auto"]) {
-        if ([target isEqualToString:@"Chinese"]) {
+    if ([source isEqualToString:@"Auto"] || [source isEqualToString:@"auto"]) {
+        if ([target isEqualToString:@"Chinese"] || [target isEqualToString:@"zh"] || [target isEqualToString:@"zh-CN"]) {
             return @"You are a professional translator. Translate the following text. If it is English, translate it into Chinese. If it is Chinese, translate it into English. Output ONLY the translation without any introduction or notes.";
         } else {
             return [NSString stringWithFormat:@"You are a professional translator. Translate the following text into %@. If it is already in %@, translate it into Chinese. Output ONLY the translation without any introduction or notes.", targetEng, targetEng];

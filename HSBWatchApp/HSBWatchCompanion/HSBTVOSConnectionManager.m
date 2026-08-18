@@ -43,6 +43,9 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSeekAbsolute = @"player_see
 HSBRemoteSimulateAction const HSBRemoteSimulateActionToggleSubtitle = @"player_toggle_subtitle";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionVolumeUp = @"volume_up";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionVolumeDown = @"volume_down";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSetVolume = @"set_volume";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionToggleMute = @"toggle_mute";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionSwitchAudioTrack = @"switch_audio_track";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionOpenUrl = @"open_url";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionPageBack = @"page_back";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionPageForward = @"page_forward";
@@ -62,12 +65,81 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteFavorite = @"dele
 HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVEpg = @"iptv_epg";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVChannels = @"iptv_channels";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefresh = @"iptv_refresh";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelUp = @"channel_up";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelDown = @"channel_down";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionDigit = @"digit";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslate = @"translate";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslateBlocks = @"translate_blocks";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslationResult = @"translation_result";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionTranslationBlocksResult = @"translation_blocks_result";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncProgress = @"sync_progress";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favorites";
+
+NSString * const HSBRemotePayloadKeyAction = @"action";
+NSString * const HSBRemotePayloadKeyValue = @"value";
+NSString * const HSBRemotePayloadKeySeconds = @"seconds";
+NSString * const HSBRemotePayloadKeyVolume = @"volume";
+NSString * const HSBRemotePayloadKeyMuted = @"muted";
+NSString * const HSBRemotePayloadKeyDigit = @"digit";
+NSString * const HSBRemotePayloadKeyTrackIndex = @"trackIndex";
+NSString * const HSBRemotePayloadKeyDx = @"dx";
+NSString * const HSBRemotePayloadKeyDy = @"dy";
+NSString * const HSBRemotePayloadKeyMode = @"mode";
+NSString * const HSBRemotePayloadKeyState = @"state";
+NSString * const HSBRemotePayloadKeyUrl = @"url";
+NSString * const HSBRemotePayloadKeyScript = @"script";
+NSString * const HSBRemotePayloadKeyType = @"type";
+NSString * const HSBRemotePayloadKeyX = @"x";
+NSString * const HSBRemotePayloadKeyY = @"y";
+NSString * const HSBRemotePayloadKeyColor = @"color";
+NSString * const HSBRemotePayloadKeyWidth = @"width";
+NSString * const HSBRemotePayloadKeyPayload = @"payload";
+NSString * const HSBRemotePayloadKeyChannel = @"channel";
+NSString * const HSBRemotePayloadKeyId = @"id";
+NSString * const HSBRemotePayloadKeyIndex = @"index";
+NSString * const HSBRemotePayloadKeyTimestamp = @"timestamp";
+NSString * const HSBRemotePayloadKeyRequestId = @"requestId";
+NSString * const HSBRemotePayloadKeyResult = @"result";
+NSString * const HSBRemotePayloadKeyBlocks = @"blocks";
+NSString * const HSBRemotePayloadKeyTranslationMap = @"translationMap";
+NSString * const HSBRemotePayloadKeyChannels = @"channels";
+NSString * const HSBRemotePayloadKeyCurrentTime = @"currentTime";
+NSString * const HSBRemotePayloadKeyDuration = @"duration";
+NSString * const HSBRemotePayloadKeyHidden = @"hidden";
+NSString * const HSBRemotePayloadKeyPlaybackState = @"playbackState";
+NSString * const HSBRemotePayloadKeyTitle = @"title";
+NSString * const HSBRemotePayloadKeyContent = @"content";
+NSString * const HSBRemotePayloadKeyCode = @"code";
+NSString * const HSBRemotePayloadKeyMessage = @"message";
+NSString * const HSBRemotePayloadKeyError = @"error";
+NSString * const HSBRemotePayloadKeyText = @"text";
+NSString * const HSBRemotePayloadKeySourceLanguage = @"sourceLanguage";
+NSString * const HSBRemotePayloadKeyTargetLanguage = @"targetLanguage";
+NSString * const HSBRemotePayloadKeyRemoteAction = @"remoteAction";
+NSString * const HSBRemotePayloadKeyPressType = @"pressType";
+NSString * const HSBRemotePayloadKeyName = @"name";
+NSString * const HSBRemotePayloadKeyStream = @"stream";
+NSString * const HSBRemotePayloadKeyLogo = @"logo";
+NSString * const HSBRemotePayloadKeyGroup = @"group";
+
+// -- PDF & Drawing Constants ---------------------------------------------
+NSString * const HSBRemoteDrawTypeClear = @"clear";
+NSString * const HSBRemoteDrawTypeUndo = @"undo";
+NSString * const HSBRemoteDrawTypeEraser = @"eraser";
+NSString * const HSBRemoteDrawTypeBegan = @"began";
+NSString * const HSBRemoteDrawTypeMoved = @"moved";
+NSString * const HSBRemoteDrawTypeChanged = @"changed";
+NSString * const HSBRemoteDrawTypeEnded = @"ended";
+NSString * const HSBRemoteDrawColorRed = @"#FF0000";
+NSString * const HSBRemoteDrawColorBlue = @"blue";
+NSString * const HSBRemoteDrawColorGreen = @"green";
+NSString * const HSBRemoteDrawColorYellow = @"yellow";
+NSString * const HSBRemoteDrawColorWhite = @"white";
+NSString * const HSBRemoteDrawColorBlack = @"black";
+
+// -- Notification UserInfo Keys ------------------------------------------
+NSString * const HSBConnectionStateKeyMessage = @"message";
+NSString * const HSBConnectionStateKeyState = @"state";
 
 + (instancetype)sharedManager {
     static HSBTVOSConnectionManager *instance = nil;
@@ -113,7 +185,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
                 weakSelf.isConnected = YES;
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
-                                                                  userInfo:@{@"state": @(state), @"message": @"🟢 Connected to Display"}];
+                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🟢 Connected to Display"}];
                 [weakSelf startReceivingFromTV];
                 break;
             }
@@ -123,7 +195,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
                 weakSelf.connection = nil;
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
-                                                                  userInfo:@{@"state": @(state), @"message": @"🔴 Error. Reconnecting..."}];
+                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🔴 Error. Reconnecting..."}];
                 // Auto-reconnect after 2 seconds
                 if (weakSelf.currentEndpoint) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), weakSelf.queue, ^{
@@ -137,7 +209,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
                 weakSelf.isConnected = NO;
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
-                                                                  userInfo:@{@"state": @(state), @"message": @"⚪️ Disconnected"}];
+                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"⚪️ Disconnected"}];
                 break;
             }
             default:
@@ -165,9 +237,9 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
 
 - (void)sendAction:(NSString *)action withValue:(nullable id)value {
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-    payload[@"action"] = action;
+    payload[HSBRemotePayloadKeyAction] = action;
     if (value) {
-        payload[@"value"] = value;
+        payload[HSBRemotePayloadKeyValue] = value;
     }
     [self sendPayload:payload];
 }
@@ -178,7 +250,7 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
 
 - (void)sendSimulateAction:(HSBRemoteSimulateAction)action withParams:(nullable NSDictionary *)params {
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-    payload[@"action"] = action ?: HSBRemoteSimulateActionUnknown;
+    payload[HSBRemotePayloadKeyAction] = action ?: HSBRemoteSimulateActionUnknown;
     if (params) {
         [payload addEntriesFromDictionary:params];
     }
@@ -204,8 +276,8 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
 
 - (void)sendJSONConfig:(NSString *)jsonString {
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-    payload[@"action"] = HSBRemoteSimulateActionUpdateHomeJson;
-    payload[@"payload"] = jsonString;
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionUpdateHomeJson;
+    payload[HSBRemotePayloadKeyPayload] = jsonString;
     [self sendPayload:payload];
 }
 
@@ -222,60 +294,64 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
                 NSData *data = [NSData dataWithBytes:buffer length:size];
                 NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
                 if (json && [json isKindOfClass:[NSDictionary class]]) {
-                    NSString *action = json[@"action"];
+                    NSString *action = json[HSBRemotePayloadKeyAction];
                     if ([action isEqualToString:HSBRemoteSimulateActionSyncProgress]) {
-                        NSNumber *currentTime = json[@"currentTime"];
-                        NSNumber *duration = json[@"duration"];
-                        NSNumber *hiddenObj = json[@"hidden"];
+                        NSNumber *currentTime = json[HSBRemotePayloadKeyCurrentTime];
+                        NSNumber *duration = json[HSBRemotePayloadKeyDuration];
+                        NSNumber *hiddenObj = json[HSBRemotePayloadKeyHidden];
                         
                         dispatch_async(dispatch_get_main_queue(), ^{
                             [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSStateUpdatedNotification 
                                                                                 object:weakSelf 
-                                                                              userInfo:@{@"currentTime": currentTime ?: @(0), 
-                                                                                         @"duration": duration ?: @(0), 
-                                                                                         @"hidden": hiddenObj ?: @(NO)}];
+                                                                              userInfo:@{HSBRemotePayloadKeyCurrentTime: currentTime ?: @(0), 
+                                                                                         HSBRemotePayloadKeyDuration: duration ?: @(0), 
+                                                                                         HSBRemotePayloadKeyHidden: hiddenObj ?: @(NO)}];
                         });
                     } else if ([action isEqualToString:HSBRemoteSimulateActionSyncFavorites]) {
-                        NSArray *favorites = json[@"channels"];
+                        NSArray *favorites = json[HSBRemotePayloadKeyChannels];
                         if (favorites && [favorites isKindOfClass:[NSArray class]]) {
                             [[NSUserDefaults standardUserDefaults] setObject:favorites forKey:@"HSBIPTVFavorites"];
                             [[NSUserDefaults standardUserDefaults] synchronize];
                             dispatch_async(dispatch_get_main_queue(), ^{
                                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVFavoritesUpdatedNotification 
                                                                                     object:weakSelf 
-                                                                                  userInfo:@{@"channels": favorites}];
+                                                                                  userInfo:@{HSBRemotePayloadKeyChannels: favorites}];
                             });
                         }
                     } else if ([action isEqualToString:HSBRemoteSimulateActionTranslate]) {
-                        NSString *requestId = json[@"requestId"];
-                        NSString *text = json[@"text"];
+                        NSString *requestId = json[HSBRemotePayloadKeyRequestId];
+                        NSString *text = json[HSBRemotePayloadKeyText];
+                        NSString *sourceLanguage = json[HSBRemotePayloadKeySourceLanguage];
+                        NSString *targetLanguage = json[HSBRemotePayloadKeyTargetLanguage];
                         if (requestId && text.length > 0) {
-                            NSString *systemPrompt = [HSBLocalLLMManager translationSystemPrompt];
+                            NSString *systemPrompt = [HSBLocalLLMManager translationSystemPromptWithSource:sourceLanguage target:targetLanguage];
                             [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt type:1 completion:^(NSString * _Nullable response, BOOL isFinished) {
                                 if (isFinished) {
                                     [weakSelf sendPayload:@{
-                                        @"action": HSBRemoteSimulateActionTranslationResult,
-                                        @"requestId": requestId,
-                                        @"result": response ?: @""
+                                        HSBRemotePayloadKeyAction: HSBRemoteSimulateActionTranslationResult,
+                                        HSBRemotePayloadKeyRequestId: requestId,
+                                        HSBRemotePayloadKeyResult: response ?: @""
                                     }];
                                 }
                             }];
                         }
                     } else if ([action isEqualToString:HSBRemoteSimulateActionTranslateBlocks]) {
-                        NSString *requestId = json[@"requestId"];
-                        NSArray *blocks = json[@"blocks"];
+                        NSString *requestId = json[HSBRemotePayloadKeyRequestId];
+                        NSArray *blocks = json[HSBRemotePayloadKeyBlocks];
+                        NSString *sourceLanguage = json[HSBRemotePayloadKeySourceLanguage];
+                        NSString *targetLanguage = json[HSBRemotePayloadKeyTargetLanguage];
                         if (requestId && blocks.count > 0) {
                             NSMutableDictionary *translationMap = [NSMutableDictionary dictionary];
                             dispatch_group_t group = dispatch_group_create();
+                            NSString *systemPrompt = [HSBLocalLLMManager translationSystemPromptWithSource:sourceLanguage target:targetLanguage];
                             
                             for (NSDictionary *block in blocks) {
-                                id rawBlockId = block[@"id"];
+                                id rawBlockId = block[HSBRemotePayloadKeyId];
                                 NSString *blockId = rawBlockId ? [NSString stringWithFormat:@"%@", rawBlockId] : nil;
-                                NSString *text = block[@"text"];
+                                NSString *text = block[HSBRemotePayloadKeyText];
                                 if (blockId && text.length > 0) {
                                     dispatch_group_enter(group);
                                     
-                                    NSString *systemPrompt = [HSBLocalLLMManager translationSystemPrompt];
                                     [[HSBLocalLLMManager shared] processMessage:text systemPrompt:systemPrompt type:1 completion:^(NSString * _Nullable response, BOOL isFinished) {
                                         if (isFinished) {
                                             if (response) {
@@ -289,9 +365,9 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionSyncFavorites = @"sync_favo
                             
                             dispatch_group_notify(group, dispatch_get_main_queue(), ^{
                                 [weakSelf sendPayload:@{
-                                    @"action": HSBRemoteSimulateActionTranslationBlocksResult,
-                                    @"requestId": requestId,
-                                    @"translationMap": translationMap
+                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateActionTranslationBlocksResult,
+                                    HSBRemotePayloadKeyRequestId: requestId,
+                                    HSBRemotePayloadKeyTranslationMap: translationMap
                                 }];
                             });
                         }

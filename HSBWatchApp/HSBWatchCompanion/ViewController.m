@@ -564,7 +564,7 @@ static NSString * L(NSString *en, NSString *zh) {
     vc.sendActionBlock = ^(HSBRemoteSimulateAction action) {
         // Here we intercept the action to send formatted dictionary over tcp
         NSMutableDictionary *p = [NSMutableDictionary dictionary];
-        p[@"action"] = action;
+        p[HSBRemotePayloadKeyAction] = action;
         [weakSelf sendDirectPayload:p msg:nil];
     };
     vc.checkConnectionBlock = ^BOOL {
@@ -624,7 +624,7 @@ static NSString * L(NSString *en, NSString *zh) {
     [hap impactOccurred];
     
     [self.mainUrlTextField resignFirstResponder];
-    [self sendDirectPayload:@{@"action": (id)HSBRemoteSimulateActionOpenUrl, @"url": urlString} msg:[NSString stringWithFormat:L(@"🌐 Navigated to: %@", @"🌐 已跳转至: %@"), urlString]];
+    [self sendDirectPayload:@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionOpenUrl, HSBRemotePayloadKeyUrl: urlString} msg:[NSString stringWithFormat:L(@"🌐 Navigated to: %@", @"🌐 已跳转至: %@"), urlString]];
 }
 
 #pragma mark - UITextFieldDelegate
@@ -674,8 +674,8 @@ static NSString * L(NSString *en, NSString *zh) {
     }
     
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-    payload[@"action"] = HSBRemoteSimulateActionUpdateHomeJson;
-    payload[@"payload"] = jsonString;
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionUpdateHomeJson;
+    payload[HSBRemotePayloadKeyPayload] = jsonString;
     
     [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
     
@@ -793,9 +793,9 @@ static NSString * L(NSString *en, NSString *zh) {
     }
     
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-    payload[@"action"] = action;
+    payload[HSBRemotePayloadKeyAction] = action;
     if (value) {
-        payload[@"value"] = value;
+        payload[HSBRemotePayloadKeyValue] = value;
     }
     
     [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
@@ -941,8 +941,8 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)handleTVOSConnectionStateChanged:(NSNotification *)note {
     NSDictionary *userInfo = note.userInfo;
-    NSString *message = userInfo[@"message"];
-    nw_connection_state_t state = [userInfo[@"state"] intValue];
+    NSString *message = userInfo[HSBConnectionStateKeyMessage] ?: userInfo[@"message"];
+    nw_connection_state_t state = (nw_connection_state_t)[userInfo[HSBConnectionStateKeyState] ?: userInfo[@"state"] intValue];
     
     __weak typeof(self) weakSelf = self;
     [self updateUI:^{
@@ -957,9 +957,9 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)handleTVOSStateUpdated:(NSNotification *)note {
     NSDictionary *userInfo = note.userInfo;
-    NSNumber *currentTime = userInfo[@"currentTime"];
-    NSNumber *duration = userInfo[@"duration"];
-    NSNumber *hiddenObj = userInfo[@"hidden"];
+    NSNumber *currentTime = userInfo[HSBRemotePayloadKeyCurrentTime];
+    NSNumber *duration = userInfo[HSBRemotePayloadKeyDuration];
+    NSNumber *hiddenObj = userInfo[HSBRemotePayloadKeyHidden];
     BOOL isHidden = hiddenObj ? [hiddenObj boolValue] : NO;
     
     __weak typeof(self) weakSelf = self;

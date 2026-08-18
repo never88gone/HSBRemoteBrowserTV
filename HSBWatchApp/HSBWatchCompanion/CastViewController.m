@@ -109,7 +109,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.urlTextField resignFirstResponder];
     
     if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{@"action": HSBRemoteSimulateActionOpenUrl, @"url": url});
+        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: HSBRemoteSimulateActionOpenUrl, HSBRemotePayloadKeyUrl: url});
     }
 }
 

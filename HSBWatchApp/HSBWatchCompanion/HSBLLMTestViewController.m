@@ -677,11 +677,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
         
         // 构造控制电视的 JSON payload，与 BrowserControlViewController 保持完全兼容
         NSDictionary *payload = @{
-            @"action": HSBRemoteSimulateActionExecuteJS,
-            @"script": jsCode,
-            @"content": jsCode,
-            @"timestamp": @([[NSDate date] timeIntervalSince1970]),
-            @"requestId": [[NSUUID UUID] UUIDString]
+            HSBRemotePayloadKeyAction: HSBRemoteSimulateActionExecuteJS,
+            HSBRemotePayloadKeyScript: jsCode,
+            HSBRemotePayloadKeyContent: jsCode,
+            HSBRemotePayloadKeyTimestamp: @([[NSDate date] timeIntervalSince1970]),
+            HSBRemotePayloadKeyRequestId: [[NSUUID UUID] UUIDString]
         };
         
         self.sendPayloadBlock(payload);
