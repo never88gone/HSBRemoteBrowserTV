@@ -50,6 +50,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) UITextView *resultTextView;
 @property (nonatomic, strong) UIButton *clipboardBtn;
 @property (nonatomic, strong) UIButton *runOnTvBtn;
+@property (nonatomic, strong) UILabel *disclaimerLabel;
 
 @end
 
@@ -57,7 +58,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = L(@"AI Model Testing", @"AI 模型测试");
+    self.title = L(@"AI Assistant", @"AI 智能助手");
     
     NSDictionary *reverseMap = @{
         @"Auto": @"自动识别",
@@ -274,10 +275,10 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.inputContainer addSubview:self.placeholderLabel];
     
-    // 6. 测试按钮与 Spinner
+    // 6. 交互生成按钮与 Spinner
     self.testBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     self.testBtn.backgroundColor = [UIColor systemPurpleColor];
-    [self.testBtn setTitle:L(@"Start AI Inference", @"开始端侧 AI 推理") forState:UIControlStateNormal];
+    [self.testBtn setTitle:L(@"Start AI Generation", @"开始 AI 生成") forState:UIControlStateNormal];
     self.testBtn.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightBold];
     [self.testBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     self.testBtn.layer.cornerRadius = 14;
@@ -316,6 +317,16 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.clipboardBtn addTarget:self action:@selector(copyResultAction) forControlEvents:UIControlEventTouchUpInside];
     self.clipboardBtn.translatesAutoresizingMaskIntoConstraints = NO;
     [self.resultCard addSubview:self.clipboardBtn];
+    
+    // 7.5 AI 免责声明标签 (Apple Review Guideline 1.2 & 5.1.2)
+    self.disclaimerLabel = [[UILabel alloc] init];
+    self.disclaimerLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+    self.disclaimerLabel.textColor = [UIColor secondaryLabelColor];
+    self.disclaimerLabel.textAlignment = NSTextAlignmentCenter;
+    self.disclaimerLabel.text = L(@"Note: AI-generated responses are for reference only.", @"注：AI 生成内容由端侧模型输出，仅供参考。");
+    self.disclaimerLabel.numberOfLines = 0;
+    self.disclaimerLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.contentContainer addSubview:self.disclaimerLabel];
     
     // runOnTvBtn 已移除
     
@@ -416,7 +427,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [self.resultCard.topAnchor constraintEqualToAnchor:self.testBtn.bottomAnchor constant:16],
         [self.resultCard.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor constant:16],
         [self.resultCard.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor constant:-16],
-        [self.resultCard.bottomAnchor constraintEqualToAnchor:self.contentContainer.bottomAnchor constant:-24],
         
         [self.resultTextView.topAnchor constraintEqualToAnchor:self.resultCard.topAnchor constant:12],
         [self.resultTextView.leadingAnchor constraintEqualToAnchor:self.resultCard.leadingAnchor constant:12],
@@ -425,7 +435,13 @@ static inline NSString * L(NSString *en, NSString *zh) {
         
         [self.clipboardBtn.topAnchor constraintEqualToAnchor:self.resultTextView.bottomAnchor constant:10],
         [self.clipboardBtn.leadingAnchor constraintEqualToAnchor:self.resultCard.leadingAnchor constant:12],
-        [self.clipboardBtn.bottomAnchor constraintEqualToAnchor:self.resultCard.bottomAnchor constant:-12]
+        [self.clipboardBtn.bottomAnchor constraintEqualToAnchor:self.resultCard.bottomAnchor constant:-12],
+        
+        // AI Disclaimer Label
+        [self.disclaimerLabel.topAnchor constraintEqualToAnchor:self.resultCard.bottomAnchor constant:16],
+        [self.disclaimerLabel.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor constant:16],
+        [self.disclaimerLabel.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor constant:-16],
+        [self.disclaimerLabel.bottomAnchor constraintEqualToAnchor:self.contentContainer.bottomAnchor constant:-24]
     ]];
 }
 

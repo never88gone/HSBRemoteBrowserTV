@@ -95,7 +95,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
         cell.imageView.image = [UIImage systemImageNamed:@"cpu.fill"];
         cell.imageView.tintColor = palette.primaryColor;
     } else if (indexPath.row == 1) {
-        cell.textLabel.text = L(@"AI Model Testing", @"AI 模型测试");
+        cell.textLabel.text = L(@"AI Assistant", @"AI 智能助手");
         cell.imageView.image = [UIImage systemImageNamed:@"sparkles"];
         cell.imageView.tintColor = palette.primaryColor;
     } else if (indexPath.row == 2) {
@@ -211,7 +211,8 @@ static inline NSString * L(NSString *en, NSString *zh) {
     tv.textColor = [UIColor whiteColor];
     tv.font = [UIFont systemFontOfSize:15];
     tv.textContainerInset = UIEdgeInsetsMake(20, 20, 20, 20);
-    tv.text = @"糖葫芦遥控器（Tanghulu Remote）隐私政策\n\n1. 数据收集与使用\n本应用主要作为外围设备的遥控和体感数据采集工具。我们郑重承诺，本应用不会收集、存储或上传您的任何个人身份信息与隐私。\n所有的控制通信（如控制指令）仅在您的本地局域网内进行设备间的直接传输。\n\n2. 权限说明\n- 本地网络权限：仅用于发现并连接局域网内的智能电视或大屏设备。\n- 传感器权限（如果适用）：仅用于体感交互的数据计算。\n\n3. 信息共享\n我们不会与任何第三方分享您的数据，所有数据均只在本地实时处理。\n\n4. 联系我们\n如有任何问题，可联系官方开发者支持。";
+    tv.text = L(@"Tanghulu Remote Privacy Policy\n\n1. Data Collection & Usage\nThis app operates as a remote control and motion tracker companion. We solemnly promise that this app does NOT collect, store, or upload any of your personal identifiable information.\nAll control communications are transmitted directly between your devices over your local area network.\n\n2. Permissions Description\n- Local Network: Used strictly to discover and connect to smart TV or large display devices within your local network.\n- Motion & Fitness: Used for calculating motion gestures and local step counting.\n\n3. Information Sharing\nWe do not share any data with third parties. All processing is handled locally on-device.\n\n4. Contact Us\nIf you have any questions, please contact developer support.",
+                @"糖葫芦遥控器（Tanghulu Remote）隐私政策\n\n1. 数据收集与使用\n本应用主要作为外围设备的遥控和体感数据采集工具。我们郑重承诺，本应用不会收集、存储或上传您的任何个人身份信息与隐私。\n所有的控制通信（如控制指令）仅在您的本地局域网内进行设备间的直接传输。\n\n2. 权限说明\n- 本地网络权限：仅用于发现并连接局域网内的智能电视或大屏设备。\n- 运动与健身权限：仅用于体感手势判定与本地步数统计。\n\n3. 信息共享\n我们不会与任何第三方分享您的数据，所有数据均只在本地实时处理。\n\n4. 联系我们\n如有任何问题，可联系官方开发者支持。");
     
     [vc.view addSubview:tv];
     [self.navigationController pushViewController:vc animated:YES];
