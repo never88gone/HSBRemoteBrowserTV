@@ -29,10 +29,10 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     self.dataSource = @[
         @{
-            @"title": @"GitHub",
-            @"value": @"https://github.com/never88gone/HSBRemoteBrowserTV",
-            @"icon": @"link.circle.fill",
-            @"action": @"github"
+            @"title": L(@"Official Website", @"官方网站"),
+            @"value": @"https://www.thltv.com/",
+            @"icon": @"safari.fill",
+            @"action": @"website"
         },
         @{
             @"title": L(@"Telegram Channel", @"Telegram 频道"),
@@ -41,10 +41,16 @@ static inline NSString * L(NSString *en, NSString *zh) {
             @"action": @"telegram"
         },
         @{
-            @"title": L(@"Email", @"官方邮箱"),
-            @"value": @"hsb@myit2017.cn",
+            @"title": L(@"Support Email", @"客服邮箱"),
+            @"value": @"support@thltv.com",
             @"icon": @"envelope.fill",
             @"action": @"email"
+        },
+        @{
+            @"title": @"GitHub",
+            @"value": @"https://github.com/never88gone/HSBRemoteBrowserTV",
+            @"icon": @"link.circle.fill",
+            @"action": @"github"
         }
     ];
     
@@ -114,7 +120,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     NSString *action = item[@"action"];
     NSString *value = item[@"value"];
     
-    if ([action isEqualToString:@"github"] || [action isEqualToString:@"telegram"]) {
+    if ([action isEqualToString:@"github"] || [action isEqualToString:@"telegram"] || [action isEqualToString:@"website"]) {
         [self handleUrlAction:value title:item[@"title"]];
     } else if ([action isEqualToString:@"email"]) {
         [self handleEmailAction:value];
@@ -142,7 +148,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     // iPad popover 适配
     sheet.popoverPresentationController.sourceView = self.tableView;
-    sheet.popoverPresentationController.sourceRect = [self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:[self.dataSource indexOfObjectPassingTest:^BOOL(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) { return [obj[@"value"] isEqualToString:urlString]; }] inSection:0]];
+    NSUInteger idx = [self.dataSource indexOfObjectPassingTest:^BOOL(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) { return [obj[@"value"] isEqualToString:urlString]; }];
+    if (idx == NSNotFound) idx = 0;
+    sheet.popoverPresentationController.sourceRect = [self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:idx inSection:0]];
     
     [self presentViewController:sheet animated:YES completion:nil];
 }
@@ -171,7 +179,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     // iPad popover 适配
     sheet.popoverPresentationController.sourceView = self.tableView;
-    sheet.popoverPresentationController.sourceRect = [self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]];
+    NSUInteger idx = [self.dataSource indexOfObjectPassingTest:^BOOL(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) { return [obj[@"action"] isEqualToString:@"email"]; }];
+    if (idx == NSNotFound) idx = 0;
+    sheet.popoverPresentationController.sourceRect = [self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:idx inSection:0]];
     
     [self presentViewController:sheet animated:YES completion:nil];
 }

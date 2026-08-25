@@ -32,7 +32,10 @@
 
 ## 5. 联系我们
 
-如果您对本隐私政策有任何疑问或希望了解更多运作机制，请联络开发者以获得支持。
+如果您对本隐私政策有任何疑问或希望了解更多运作机制，请通过以下方式联系我们：
+- 官方网站：[https://www.thltv.com/](https://www.thltv.com/)
+- 电子邮箱：support@thltv.com
+- Telegram 频道：[https://t.me/tanghulutvos](https://t.me/tanghulutvos)
 
 ---
 *“您的数据，仅属于您。”*
