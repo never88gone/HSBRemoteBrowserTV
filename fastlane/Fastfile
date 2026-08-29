@@ -1,0 +1,174 @@
+# 自动读取并注入本地私有 .env 环境变量（如果存在，仅用于本地调试；在 CI 时由 GitLab 变量注入）
+['../.env', '.env'].each do |relative_path|
+  env_path = File.expand_path(relative_path, __FILE__)
+  if File.exist?(env_path)
+    begin
+      content = File.read(env_path)
+      content.scan(/^\s*([A-Za-z0-9_]+)\s*=\s*(?:"([\s\S]*?)"|'([\s\S]*?)'|([^\n#]+))/).each do |match|
+        key = match[0]
+        val = match[1] || match[2] || match[3]
+        if key && val
+          ENV[key.strip] = val
+        end
+      end
+    rescue => e
+      # 静默跳过读取错误
+    end
+  end
+end
+
+default_platform(:ios)
+
+platform :ios do
+
+  # ---------------------------------------------------------
+  # 自动安装本地描述文件
+  # ---------------------------------------------------------
+  before_all do
+    provisioning_dir = File.expand_path("~/Library/MobileDevice/Provisioning Profiles")
+    FileUtils.mkdir_p(provisioning_dir)
+
+    # 扫描 fastlane 目录下的所有 .mobileprovision 文件
+    profiles = Dir.glob(File.expand_path("../*.mobileprovision", __FILE__)) +
+               Dir.glob(File.expand_path("../../*.mobileprovision", __FILE__))
+    profiles.uniq.each do |profile|
+      # 通过 security 命令解包并提取描述文件 UUID
+      uuid = `security cms -D -i "#{profile}" 2>/dev/null | plutil -extract UUID raw - 2>/dev/null`.strip
+      if !uuid.empty?
+        dest_path = File.join(provisioning_dir, "#{uuid}.mobileprovision")
+        FileUtils.cp(profile, dest_path)
+        UI.message("✅ 已安装描述文件: #{File.basename(profile)} -> #{uuid}.mobileprovision")
+      else
+        FileUtils.cp(profile, File.join(provisioning_dir, File.basename(profile)))
+        UI.message("⚠️ 无法解析 UUID，直接拷贝: #{File.basename(profile)}")
+      end
+    end
+  end
+
+  # ---------------------------------------------------------
+  # Private Helper Lane
+  # ---------------------------------------------------------
+  private_lane :do_build_and_upload do |options|
+    scheme = options[:scheme] || "HSBWatchCompanion"
+    upload_type = options[:upload_type] || "testflight" # "testflight" or "appstore"
+    
+    # 1. API Key 获取与配置
+    key_id = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"]
+    issuer_id = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
+    key_content = ENV["APP_STORE_CONNECT_API_KEY_KEY"]
+
+    api_key = nil
+    if key_id && !key_id.empty? && issuer_id && !issuer_id.empty? && key_content && !key_content.empty?
+      # 同步注入给全局 SPACESHIP_ 变量
+      ENV["SPACESHIP_CONNECT_API_KEY_ID"] = key_id
+      ENV["SPACESHIP_CONNECT_API_ISSUER_ID"] = issuer_id
+      ENV["SPACESHIP_CONNECT_API_KEY_CONTENT"] = key_content
+
+      api_key = app_store_connect_api_key(
+        key_id: key_id,
+        issuer_id: issuer_id,
+        key_content: key_content,
+        is_key_content_base64: true,
+        duration: 1200,
+        in_house: false
+      )
+    else
+      UI.important("⚠️ 未检测到完整的 App Store Connect API Key 环境变量 (APP_STORE_CONNECT_API_KEY_KEY_ID / ISSUER_ID / KEY)")
+    end
+
+    # 2. 导出与签名配置
+    export_options = {
+      method: "app-store",
+      signingStyle: "manual",
+      teamID: "876385K952",
+      stripSwiftSymbols: true,
+      compileBitcode: false,
+      provisioningProfiles: {
+        "com.never88gone.thlbrowserios" => (ENV["MAIN_PP_NAME"] && !ENV["MAIN_PP_NAME"].empty?) ? ENV["MAIN_PP_NAME"] : "thlbrowserios_dis",
+        "com.never88gone.thlbrowserios.watch" => (ENV["WATCH_PP_NAME"] && !ENV["WATCH_PP_NAME"].empty?) ? ENV["WATCH_PP_NAME"] : "thlbrowseriosWatch_dis"
+      }
+    }
+
+    bundle_id = "com.never88gone.thlbrowserios"
+
+    # 3. 编译打包 IPA
+    gym(
+      skip_archive: false,
+      skip_build_archive: false,
+      export_method: "app-store",
+      project: "HSBWatchApp/HSBWatchApp.xcodeproj",
+      scheme: scheme,
+      configuration: "Release",
+      export_options: export_options,
+      output_directory: "build",
+      output_name: "#{scheme}.ipa",
+      skip_profile_detection: true
+    )
+
+    # 4. 上传构建产物
+    if upload_type == "testflight"
+      if api_key
+        pilot(
+          api_key: api_key,
+          app_identifier: bundle_id
+        )
+        upload_to_testflight(
+          api_key: api_key,
+          app_identifier: bundle_id,
+          skip_waiting_for_build_processing: false,
+          skip_submission: true,
+          distribute_only: true,
+          beta_app_description: "更新测试",
+          distribute_external: false,
+          notify_external_testers: false,
+          changelog: "更新测试",
+          beta_app_feedback_email: "support@thltv.com",
+          ipa: "build/#{scheme}.ipa"
+        )
+      else
+        UI.user_error!("无法上传到 TestFlight: 缺少 App Store Connect API Key 配置")
+      end
+    elsif upload_type == "appstore"
+      if ENV["UPLOAD_TO_APP_STORE"].to_s.downcase == "true"
+        if api_key
+          deliver(
+            api_key: api_key,
+            app_identifier: bundle_id,
+            skip_screenshots: true,
+            skip_metadata: true,
+            force: true,
+            run_precheck_before_submit: false,
+            ipa: "build/#{scheme}.ipa"
+          )
+        else
+          UI.user_error!("无法上传到 App Store: 缺少 App Store Connect API Key 配置")
+        end
+      else
+        UI.success("IPA generated. App Store upload is disabled; set UPLOAD_TO_APP_STORE=true to enable it.")
+      end
+    end
+  end
+
+  # ---------------------------------------------------------
+  # Public Lanes
+  # ---------------------------------------------------------
+  
+  desc "Push HSBWatchCompanion (iOS & Watch) to TestFlight"
+  lane :build_companion do
+    do_build_and_upload(
+      scheme: "HSBWatchCompanion",
+      upload_type: "testflight"
+    )
+  end
+
+  desc "Alias for build_companion"
+  lane :beta do
+    build_companion
+  end
+
+  desc "Check environment and provisioning profiles setup"
+  lane :check_env do
+    UI.message("🎉 描述文件与环境检查完毕！")
+  end
+
+end

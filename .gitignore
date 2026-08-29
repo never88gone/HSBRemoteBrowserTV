@@ -1,9 +1,31 @@
-HSBWatchApp/HSBWatchApp.xcodeproj/project.xcworkspace/xcuserdata
-.agent
-HSBWatchApp/HSBWatchApp.xcodeproj/xcuserdata
-HSBWatchApp/build
+# Xcode
+xcuserdata/
+**/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+build/
+**/build/
+DerivedData/
+
+# Fastlane & Environment
+.env
+.env.*
+fastlane/.env
+fastlane/.env.*
 HSBWatchApp/fastlane/.env
-HSBWatchApp/archive_log.txt
-HSBWatchApp/fastlane_log.txt
-HSBWatchApp/fastlane/report.xml
+fastlane/report.xml
+report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+archive_log.txt
+fastlane_log.txt
+
+# Bundler
+.bundle/
+vendor/bundle
+
+# AI & Agent artifacts
+.agent
 session_progress.json
