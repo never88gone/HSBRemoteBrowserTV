@@ -336,6 +336,8 @@ static inline NSString * L(NSString *en, NSString *zh) {
     NSNumber *currentTime = userInfo[HSBRemotePayloadKeyCurrentTime];
     NSNumber *duration = userInfo[HSBRemotePayloadKeyDuration];
     NSNumber *playbackState = userInfo[HSBRemotePayloadKeyPlaybackState];
+    NSNumber *volume = userInfo[HSBRemotePayloadKeyVolume];
+    NSNumber *muted = userInfo[HSBRemotePayloadKeyMuted];
     
     dispatch_async(dispatch_get_main_queue(), ^{
         if (duration && [duration doubleValue] > 0) {
@@ -354,6 +356,18 @@ static inline NSString * L(NSString *en, NSString *zh) {
             UIImageSymbolConfiguration *bigConfig = [UIImageSymbolConfiguration configurationWithPointSize:48 weight:UIImageSymbolWeightBold];
             NSString *icon = self.isPlaying ? @"pause.circle.fill" : @"play.circle.fill";
             [self.playPauseBtn setImage:[UIImage systemImageNamed:icon withConfiguration:bigConfig] forState:UIControlStateNormal];
+        }
+
+        if (volume != nil && !self.isDraggingVolume) {
+            self.volumeSlider.value = MAX(0.0f, MIN(1.0f, volume.floatValue));
+        }
+
+        if (muted != nil) {
+            self.isMuted = muted.boolValue;
+            UIImageSymbolConfiguration *muteConfig = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
+            NSString *icon = self.isMuted ? @"speaker.slash.fill" : @"speaker.wave.2.fill";
+            [self.muteBtn setImage:[UIImage systemImageNamed:icon withConfiguration:muteConfig] forState:UIControlStateNormal];
+            self.muteBtn.tintColor = self.isMuted ? [UIColor systemRedColor] : [UIColor whiteColor];
         }
     });
 }

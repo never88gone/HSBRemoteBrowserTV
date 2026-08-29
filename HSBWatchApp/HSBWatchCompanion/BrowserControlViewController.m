@@ -1286,8 +1286,9 @@ static NSString * L(NSString *en, NSString *zh) {
         // 倍率 3.0 ≈ 适合大屏幕滚动幅度
         static const CGFloat kScrollScale = 3.0;
         CGPoint translation = [pan translationInView:self.trackpadView];
-        CGFloat dx = translation.x * kScrollScale;
-        CGFloat dy = translation.y * kScrollScale;
+        // 自然滚动：手指向上移动时 scrollTop 应增加，反之亦然。
+        CGFloat dx = -translation.x * kScrollScale;
+        CGFloat dy = -translation.y * kScrollScale;
         [pan setTranslation:CGPointZero inView:self.trackpadView];
         
         [self sendDirectPayload:@{HSBRemotePayloadKeyAction: HSBRemoteSimulateActionMacScroll, HSBRemotePayloadKeyDx: @(dx), HSBRemotePayloadKeyDy: @(dy)}];

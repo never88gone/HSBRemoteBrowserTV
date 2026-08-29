@@ -10,6 +10,64 @@ NSString * const HSBTVOSConnectionStateNotification = @"HSBTVOSConnectionStateNo
 NSString * const HSBTVOSStateUpdatedNotification = @"HSBTVOSStateUpdatedNotification";
 NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdatedNotification";
 
+// Network.framework 的 TCP receive 返回任意字节块，不对应 send 边界。
+// 从持久缓冲区中提取一个或多个完整 JSON，兼容拆包和粘包。
+static NSArray<NSData *> *HSBExtractJSONMessages(NSMutableData *buffer) {
+    if (buffer.length == 0) return @[];
+
+    const uint8_t *bytes = buffer.bytes;
+    NSMutableArray<NSData *> *messages = [NSMutableArray array];
+    NSUInteger start = NSNotFound;
+    NSUInteger consumed = 0;
+    NSInteger depth = 0;
+    BOOL inString = NO;
+    BOOL escaped = NO;
+
+    for (NSUInteger i = 0; i < buffer.length; i++) {
+        uint8_t byte = bytes[i];
+        if (start == NSNotFound) {
+            if (byte == '{' || byte == '[') {
+                start = i;
+                depth = 1;
+                inString = NO;
+                escaped = NO;
+            } else {
+                consumed = i + 1;
+            }
+            continue;
+        }
+
+        if (inString) {
+            if (escaped) {
+                escaped = NO;
+            } else if (byte == '\\') {
+                escaped = YES;
+            } else if (byte == '"') {
+                inString = NO;
+            }
+            continue;
+        }
+
+        if (byte == '"') {
+            inString = YES;
+        } else if (byte == '{' || byte == '[') {
+            depth++;
+        } else if (byte == '}' || byte == ']') {
+            depth--;
+            if (depth == 0) {
+                [messages addObject:[buffer subdataWithRange:NSMakeRange(start, i - start + 1)]];
+                consumed = i + 1;
+                start = NSNotFound;
+            }
+        }
+    }
+
+    if (consumed > 0) {
+        [buffer replaceBytesInRange:NSMakeRange(0, consumed) withBytes:NULL length:0];
+    }
+    return messages;
+}
+
 @interface HSBTVOSConnectionManager ()
 
 @property (nonatomic, assign) BOOL isConnected;
@@ -17,6 +75,8 @@ NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdated
 @property (nonatomic, copy, nullable) NSString *deviceName;
 @property (nonatomic, strong, nullable) nw_endpoint_t currentEndpoint;
 @property (nonatomic, strong) dispatch_queue_t queue;
+
+- (void)startReceivingFromConnection:(nw_connection_t)connection buffer:(NSMutableData *)receiveBuffer;
 
 @end
 
@@ -175,10 +235,15 @@ NSString * const HSBConnectionStateKeyState = @"state";
     }
     
     nw_parameters_t parameters = [self createTCPParameters];
-    self.connection = nw_connection_create(endpoint, parameters);
+    nw_connection_t connection = nw_connection_create(endpoint, parameters);
+    self.connection = connection;
     
     __weak typeof(self) weakSelf = self;
-    nw_connection_set_state_changed_handler(self.connection, ^(nw_connection_state_t state, nw_error_t error) {
+    nw_connection_set_state_changed_handler(connection, ^(nw_connection_state_t state, nw_error_t error) {
+        // 被替换或主动断开的旧连接仍可能回调 cancelled/failed，不能让它
+        // 覆盖当前新连接的在线状态，也不能触发额外重连。
+        if (weakSelf.connection != connection) return;
+
         switch (state) {
             case nw_connection_state_ready: {
                 NSLog(@"[BonjourBridge] Connected to TVOS Display!");
@@ -186,7 +251,7 @@ NSString * const HSBConnectionStateKeyState = @"state";
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
                                                                   userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🟢 Connected to Display"}];
-                [weakSelf startReceivingFromTV];
+                [weakSelf startReceivingFromConnection:connection buffer:[NSMutableData data]];
                 break;
             }
             case nw_connection_state_failed: {
@@ -217,8 +282,8 @@ NSString * const HSBConnectionStateKeyState = @"state";
         }
     });
     
-    nw_connection_set_queue(self.connection, self.queue);
-    nw_connection_start(self.connection);
+    nw_connection_set_queue(connection, self.queue);
+    nw_connection_start(connection);
 }
 
 - (void)disconnect {
@@ -229,6 +294,10 @@ NSString * const HSBConnectionStateKeyState = @"state";
         self.connection = nil;
     }
     self.isConnected = NO;
+    [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
+                                                        object:self
+                                                      userInfo:@{HSBConnectionStateKeyState: @(nw_connection_state_cancelled),
+                                                                 HSBConnectionStateKeyMessage: @"⚪️ Disconnected"}];
 }
 
 - (void)sendAction:(NSString *)action {
@@ -281,31 +350,39 @@ NSString * const HSBConnectionStateKeyState = @"state";
     [self sendPayload:payload];
 }
 
-- (void)startReceivingFromTV {
-    if (!self.connection) return;
+- (void)startReceivingFromConnection:(nw_connection_t)connection buffer:(NSMutableData *)receiveBuffer {
+    if (!connection || self.connection != connection) return;
     
     __weak typeof(self) weakSelf = self;
-    nw_connection_receive(self.connection, 1, 65536, ^(dispatch_data_t content, nw_content_context_t context, bool is_complete, nw_error_t error) {
+    nw_connection_receive(connection, 1, 65536, ^(dispatch_data_t content, nw_content_context_t context, bool is_complete, nw_error_t error) {
         if (content) {
             const void *buffer = NULL;
             size_t size = 0;
             dispatch_data_t contiguousContent = dispatch_data_create_map(content, &buffer, &size);
-            if (buffer && size > 0) {
-                NSData *data = [NSData dataWithBytes:buffer length:size];
-                NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-                if (json && [json isKindOfClass:[NSDictionary class]]) {
+            if (contiguousContent && buffer && size > 0) {
+                NSData *chunk = [NSData dataWithBytes:buffer length:size];
+                [receiveBuffer appendData:chunk];
+                for (NSData *messageData in HSBExtractJSONMessages(receiveBuffer)) {
+                    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:messageData options:0 error:nil];
+                    if (json && [json isKindOfClass:[NSDictionary class]]) {
                     NSString *action = json[HSBRemotePayloadKeyAction];
                     if ([action isEqualToString:HSBRemoteSimulateActionSyncProgress]) {
                         NSNumber *currentTime = json[HSBRemotePayloadKeyCurrentTime];
                         NSNumber *duration = json[HSBRemotePayloadKeyDuration];
                         NSNumber *hiddenObj = json[HSBRemotePayloadKeyHidden];
+                        NSNumber *playbackState = json[HSBRemotePayloadKeyPlaybackState];
+                        NSNumber *volume = json[HSBRemotePayloadKeyVolume];
+                        NSNumber *muted = json[HSBRemotePayloadKeyMuted];
                         
                         dispatch_async(dispatch_get_main_queue(), ^{
                             [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSStateUpdatedNotification 
                                                                                 object:weakSelf 
                                                                               userInfo:@{HSBRemotePayloadKeyCurrentTime: currentTime ?: @(0), 
                                                                                          HSBRemotePayloadKeyDuration: duration ?: @(0), 
-                                                                                         HSBRemotePayloadKeyHidden: hiddenObj ?: @(NO)}];
+                                                                                         HSBRemotePayloadKeyHidden: hiddenObj ?: @(NO),
+                                                                                         HSBRemotePayloadKeyPlaybackState: playbackState ?: @(NO),
+                                                                                         HSBRemotePayloadKeyVolume: volume ?: @(1.0),
+                                                                                         HSBRemotePayloadKeyMuted: muted ?: @(NO)}];
                         });
                     } else if ([action isEqualToString:HSBRemoteSimulateActionSyncFavorites]) {
                         NSArray *favorites = json[HSBRemotePayloadKeyChannels];
@@ -372,12 +449,13 @@ NSString * const HSBConnectionStateKeyState = @"state";
                             });
                         }
                     }
+                    }
                 }
             }
         }
         
-        if (!is_complete && !error) {
-            [weakSelf startReceivingFromTV];
+        if (!is_complete && !error && weakSelf.connection == connection) {
+            [weakSelf startReceivingFromConnection:connection buffer:receiveBuffer];
         }
     });
 }
