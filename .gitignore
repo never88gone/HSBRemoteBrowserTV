@@ -29,3 +29,4 @@ vendor/bundle
 # AI & Agent artifacts
 .agent
 session_progress.json
+.agents
