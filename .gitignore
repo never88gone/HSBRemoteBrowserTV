@@ -30,3 +30,5 @@ vendor/bundle
 .agent
 session_progress.json
 .agents
+Tests/.build
+Tests

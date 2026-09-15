@@ -5,6 +5,7 @@
 #import "HSBBaseViewController.h"
 #import "HSBContactUsViewController.h"
 #import "HSBLocalLLMManager.h"
+#import "HSBOpenSourceLibrariesViewController.h"
 
 
 static inline NSString * L(NSString *en, NSString *zh) {
@@ -132,10 +133,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
         };
         cell.detailTextLabel.text = map[target] ?: target;
     } else if (indexPath.row == 4) {
-        cell.textLabel.text = L(@"App Theme", @"应用主题色");
-        cell.imageView.image = [UIImage systemImageNamed:@"paintpalette.fill"];
+        cell.textLabel.text = L(@"Open Source Libraries", @"第三方库与开源许可");
+        cell.imageView.image = [UIImage systemImageNamed:@"shippingbox.fill"];
         cell.imageView.tintColor = palette.primaryColor;
-        cell.detailTextLabel.text = [HSBThemeManager shared].themeName;
     } else if (indexPath.row == 5) {
         cell.textLabel.text = L(@"Privacy Policy", @"隐私政策");
         cell.imageView.image = [UIImage systemImageNamed:@"hand.raised.fill"];
@@ -166,7 +166,8 @@ static inline NSString * L(NSString *en, NSString *zh) {
     } else if (indexPath.row == 3) {
         [self showTargetLanguageSelection];
     } else if (indexPath.row == 4) {
-        [self showThemeSelection];
+        HSBOpenSourceLibrariesViewController *vc = [[HSBOpenSourceLibrariesViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
     } else if (indexPath.row == 5) {
         [self showPrivacyPolicy];
     } else if (indexPath.row == 6) {
@@ -175,29 +176,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
     } else {
         [self showAbout];
     }
-}
-
-// copyContactEmail 已移除，改用独立 VC 跳转
-
-- (void)showThemeSelection {
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:L(@"Select App Theme", @"设置应用主题色") message:nil preferredStyle:UIAlertControllerStyleActionSheet];
-    
-    NSArray<NSString *> *names = [[HSBThemeManager shared] allThemeNames];
-    for (NSInteger i = 0; i < names.count; i++) {
-        NSString *name = names[i];
-        UIAlertAction *action = [UIAlertAction actionWithTitle:name style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            [[HSBThemeManager shared] updateTheme:i];
-        }];
-        [sheet addAction:action];
-    }
-    
-    [sheet addAction:[UIAlertAction actionWithTitle:L(@"Cancel", @"取消") style:UIAlertActionStyleCancel handler:nil]];
-    
-    // iPad Popover 适配，保障高可用不崩溃
-    sheet.popoverPresentationController.sourceView = self.tableView;
-    sheet.popoverPresentationController.sourceRect = [self.tableView rectForRowAtIndexPath:[NSIndexPath indexPathForRow:2 inSection:0]];
-    
-    [self presentViewController:sheet animated:YES completion:nil];
 }
 
 - (void)showPrivacyPolicy {

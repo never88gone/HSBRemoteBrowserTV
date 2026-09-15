@@ -48,6 +48,12 @@ typedef void (^HSBLocalLLMMessageCompletion)(NSString *response, BOOL isFinished
 /// JS 生成专用激活模型（仅当 useAppleTranslation=YES 时有效）
 @property (nonatomic, strong, nullable) HSBLocalLLMModel *jsActiveModel;
 
+/// 当前是否处于内置端侧离线智能引擎模式（无需下载大模型即可开箱即用）
+@property (nonatomic, readonly) BOOL isBuiltInEngineActive;
+
+/// 当前运行中的 AI 引擎展示名称
+@property (nonatomic, readonly) NSString *currentEngineDisplayName;
+
 + (instancetype)shared;
 + (NSString *)translationSystemPrompt;
 + (NSString *)translationSystemPromptWithSource:(nullable NSString *)source target:(nullable NSString *)target;

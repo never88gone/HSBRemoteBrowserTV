@@ -84,6 +84,19 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleModelStatusChange:) name:@"HSBLocalLLMDownloadFinishedNotification" object:nil];
 }
 
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestRunAIGeneration"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            self.typeSegment.selectedSegmentIndex = 1; // 电视控制
+            [self segmentChanged:self.typeSegment];
+            self.inputTextView.text = @"让电视网页的背景变成粉红色";
+            self.placeholderLabel.hidden = YES;
+            [self runAIInference];
+        });
+    }
+}
+
 - (void)applyThemeStyle {
     [super applyThemeStyle];
     HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
@@ -200,9 +213,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.statusCard addSubview:self.goToActivateBtn];
     
     // 3. Segmented Control
-    self.typeSegment = [[UISegmentedControl alloc] initWithItems:@[L(@"Translation", @"同声传译"), L(@"Web Control", @"电视控制")]];
+    self.typeSegment = [[UISegmentedControl alloc] initWithItems:@[L(@"Translation", @"同声传译"), L(@"Web Control", @"电视控制"), L(@"Smart Butler", @"智能管家")]];
     self.typeSegment.selectedSegmentIndex = 0;
-    self.typeSegment.tintColor = [UIColor systemPurpleColor];
+    self.typeSegment.tintColor = [UIColor systemBlueColor];
     [self.typeSegment addTarget:self action:@selector(segmentChanged:) forControlEvents:UIControlEventValueChanged];
     self.typeSegment.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentContainer addSubview:self.typeSegment];
@@ -449,30 +462,24 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)updateStatusCard {
     HSBLocalLLMModel *activeModel = [HSBLocalLLMManager shared].activeModel;
+    self.statusDot.backgroundColor = [UIColor systemGreenColor];
+    self.testBtn.enabled = YES;
+    self.testBtn.alpha = 1.0;
+    
     if (activeModel && activeModel.isActive) {
-        // 激活状态
-        self.statusDot.backgroundColor = [UIColor systemGreenColor];
-        self.statusLabel.text = [NSString stringWithFormat:L(@"Active: %@", @"当前已激活大模型：%@"), activeModel.name];
+        self.statusLabel.text = [NSString stringWithFormat:L(@"Active Model: %@ (MLX Engine)", @"已挂载物理大模型：%@ (MLX 神经网络推理)"), activeModel.name];
         self.goToActivateBtn.hidden = YES;
-        self.testBtn.enabled = YES;
-        self.testBtn.alpha = 1.0;
-        
-        // 呼吸灯动效
-        [self.statusDot.layer removeAllAnimations];
-        self.statusDot.alpha = 1.0;
-        [UIView animateWithDuration:1.0 delay:0 options:UIViewAnimationOptionAutoreverse | UIViewAnimationOptionRepeat animations:^{
-            self.statusDot.alpha = 0.3;
-        } completion:nil];
     } else {
-        // 未激活状态
-        self.statusDot.backgroundColor = [UIColor systemOrangeColor];
-        self.statusLabel.text = L(@"No active AI Model detected.", @"当前未激活任何端侧大模型，请先前往模型中心进行激活。");
+        self.statusLabel.text = L(@"Built-in Smart Engine Ready (Instant)", @"内置端侧智能引擎就绪 (无需下载，秒级响应)");
         self.goToActivateBtn.hidden = NO;
-        self.testBtn.enabled = NO;
-        self.testBtn.alpha = 0.5;
-        [self.statusDot.layer removeAllAnimations];
-        self.statusDot.alpha = 1.0;
+        [self.goToActivateBtn setTitle:L(@"Explore Models", @"探索大模型") forState:UIControlStateNormal];
     }
+    
+    [self.statusDot.layer removeAllAnimations];
+    self.statusDot.alpha = 1.0;
+    [UIView animateWithDuration:1.2 delay:0 options:UIViewAnimationOptionAutoreverse | UIViewAnimationOptionRepeat animations:^{
+        self.statusDot.alpha = 0.35;
+    } completion:nil];
 }
 
 - (void)updateQuickPromptTags {
@@ -487,17 +494,26 @@ static inline NSString * L(NSString *en, NSString *zh) {
     if (self.typeSegment.selectedSegmentIndex == 0) {
         prompts = @[
             L(@"Translate 'The moon is beautiful tonight'", @"翻译: '今晚月色真美'"),
-            L(@"Translate: 'Artificial Intelligence will guide the future'", @"翻译: '人工智能指引未来'"),
+            L(@"Translate: 'Artificial Intelligence guides future'", @"翻译: '人工智能指引未来'"),
             L(@"Translate: 'Enjoy coding!'", @"翻译: '祝你配对编程愉快！'")
         ];
         self.placeholderLabel.text = L(@"Type text here to request translation...", @"在此处输入需要进行端侧 AI 同声传译的中文或英文内容...");
-    } else {
+    } else if (self.typeSegment.selectedSegmentIndex == 1) {
         prompts = @[
             L(@"Turn background to soft red", @"电视网页背景变成柔和红"),
             L(@"Hide page header container", @"隐藏电视网页的所有导航栏"),
-            L(@"Display an alert dialog", @"在电视上弹出一个 Hello 对话框")
+            L(@"Display an alert dialog", @"在电视上弹出一个 Hello 对话框"),
+            L(@"Scroll down one screen", @"平滑向下滚动一屏")
         ];
         self.placeholderLabel.text = L(@"Describe the control action to generate and run JS script on TV...", @"在此处用自然语言描述电视控制指令（如：让背景变红、隐藏标题栏），AI 将自动生成脚本控制电视网页...");
+    } else {
+        prompts = @[
+            L(@"How to pair Apple TV?", @"如何连接配对 Apple TV？"),
+            L(@"Remote unresponsive troubleshoot", @"电视按键无响应如何排查？"),
+            L(@"What is dual-mode mechanism?", @"双模遥控核心机制是什么？"),
+            L(@"Touchpad 5.5x gestures", @"微操触控板手势操作技巧")
+        ];
+        self.placeholderLabel.text = L(@"Ask Tanghulu AI Assistant anything about Apple TV and smart remote control...", @"向糖葫芦智能助手提问关于 Apple TV 遥控、电视网页浏览、网络连接的任何问题...");
     }
     
     self.placeholderLabel.hidden = (self.inputTextView.text.length > 0);
@@ -546,12 +562,10 @@ static inline NSString * L(NSString *en, NSString *zh) {
     BOOL isTranslation = (sender.selectedSegmentIndex == 0);
     self.languageConfigContainer.hidden = !isTranslation;
     
-    // 更新 tags 下方的约束，这里为简化直接控制 hidden，Auto Layout 如果没做动态高度可能会留白，
-    // 由于是测试页面，留白 32pt 高度可以接受。
-    
     [self updateQuickPromptTags];
     self.inputTextView.text = @"";
     self.placeholderLabel.hidden = NO;
+    self.resultCard.hidden = YES;
 }
 
 - (UIMenu *)createLanguageMenuForButton:(UIButton *)btn isSource:(BOOL)isSource {
@@ -601,11 +615,19 @@ static inline NSString * L(NSString *en, NSString *zh) {
             @"Artificial Intelligence will guide the future of human-machine interaction.",
             @"Enjoy pair programming with your smart assistant!"
         ];
+    } else if (self.typeSegment.selectedSegmentIndex == 1) {
+        prompts = @[
+            @"让电视网页的背景变成柔和红",
+            @"隐藏当前网页的 header 头部导航栏",
+            @"alert('糖葫芦遥控器：端侧智能验证成功！');",
+            @"平滑向下滚动一屏"
+        ];
     } else {
         prompts = @[
-            @"让电视网页的背景变成粉红色",
-            @"隐藏当前网页的 header 头部导航栏",
-            @"alert('糖葫芦遥控器：端侧大模型验证成功！');"
+            @"如何连接配对 Apple TV？",
+            @"电视按键无响应如何排查？",
+            @"双模遥控核心机制是什么？",
+            @"微操触控板手势操作技巧"
         ];
     }
     
@@ -625,20 +647,26 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.testBtn.enabled = NO;
     self.testBtn.alpha = 0.7;
     [self.spinner startAnimating];
-    [self.testBtn setTitle:L(@"AI Thinking...", @"端侧大模型推理中...") forState:UIControlStateNormal];
+    [self.testBtn setTitle:L(@"AI Generating...", @"端侧智能生成中...") forState:UIControlStateNormal];
     
-    NSInteger type = (self.typeSegment.selectedSegmentIndex == 0) ? 1 : 2;
-    
+    NSInteger segIndex = self.typeSegment.selectedSegmentIndex;
+    NSInteger type = 1;
     NSString *systemPrompt = @"";
     NSString *enhancedUserPrompt = @"";
     
-    if (type == 1) { // 翻译
+    if (segIndex == 0) {
+        type = 1; // 翻译
         systemPrompt = @"你是一个精准的翻译助手。只输出最终的翻译结果，不要任何多余的解释、Markdown 或标注。";
         NSString *sourceStr = [self.selectedSourceLang isEqualToString:@"自动识别"] ? @"自动识别语言" : self.selectedSourceLang;
         enhancedUserPrompt = [NSString stringWithFormat:@"请将下面这句话从【%@】翻译成【%@】：\n%@", sourceStr, self.selectedTargetLang, prompt];
-    } else { // JS
+    } else if (segIndex == 1) {
+        type = 2; // JS 控制
         systemPrompt = @"你是一个前端开发助手。只输出纯 JavaScript 代码，不要任何 Markdown 格式(如 ```javascript) 或解释。";
         enhancedUserPrompt = [NSString stringWithFormat:@"请写一段 JavaScript 代码来实现这个需求：%@", prompt];
+    } else {
+        type = 3; // 智能管家
+        systemPrompt = @"你是一个专业的客厅智能遥控管家。回答用户关于 Apple TV 和电视控制的问题。";
+        enhancedUserPrompt = prompt;
     }
     
     __weak typeof(self) weakSelf = self;
@@ -648,16 +676,19 @@ static inline NSString * L(NSString *en, NSString *zh) {
             weakSelf.resultCard.hidden = NO;
             weakSelf.resultTextView.text = response;
             
+            // 只有 JS 模式才显示“投送到电视运行”按钮
+            weakSelf.runOnTvBtn.hidden = (segIndex != 1);
+            
             if (isFinished) {
                 [weakSelf.spinner stopAnimating];
                 weakSelf.testBtn.enabled = YES;
                 weakSelf.testBtn.alpha = 1.0;
-                [weakSelf.testBtn setTitle:L(@"Start AI Inference", @"开始端侧 AI 推理") forState:UIControlStateNormal];
+                [weakSelf.testBtn setTitle:L(@"Start AI Generation", @"开始 AI 生成") forState:UIControlStateNormal];
                 
                 // 结果滚动到顶部
                 [weakSelf.resultTextView scrollRangeToVisible:NSMakeRange(0, 0)];
                 
-                // 👑 触觉反馈：只有大模型生成完全结束时触发单次震动，流式生成时不震动
+                // 👑 触觉反馈：只有生成完全结束时触发单次震动
                 UINotificationFeedbackGenerator *hap = [[UINotificationFeedbackGenerator alloc] init];
                 [hap notificationOccurred:UINotificationFeedbackTypeSuccess];
             }

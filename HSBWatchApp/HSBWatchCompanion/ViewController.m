@@ -16,6 +16,9 @@
 #import "HSBTVOSConnectionManager.h"
 #import "HSBWatchSessionManager.h"
 #import "HSBLocalLLMManager.h"
+#import "HSBOpenSourceLibrariesViewController.h"
+#import "HSBLLMModelCenterViewController.h"
+#import "HSBLLMTestViewController.h"
 #import "HSBWatchCompanion-Swift.h"
 
 #define BONJOUR_SERVICE_TYPE "_thltv._tcp"
@@ -127,9 +130,32 @@ static NSString * L(NSString *en, NSString *zh) {
     
     // 注册 TVOSConnectionManager 通知
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSConnectionStateChanged:) name:HSBTVOSConnectionStateNotification object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSStateUpdated:) name:HSBTVOSStateUpdatedNotification object:nil];
-    
     [self applyThemeStyle];
+    
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self openModernRemoteController];
+        });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenSettings"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self openSettings];
+        });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenOpenSource"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            HSBOpenSourceLibrariesViewController *vc = [[HSBOpenSourceLibrariesViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:NO];
+        });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModelCenter"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            HSBLLMModelCenterViewController *vc = [[HSBLLMModelCenterViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:NO];
+        });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenAIAssistant"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            HSBLLMTestViewController *vc = [[HSBLLMTestViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:NO];
+        });
+    }
 }
 
 - (void)applyThemeStyle {
@@ -156,8 +182,12 @@ static NSString * L(NSString *en, NSString *zh) {
         self.tvScanSwitch.onTintColor = palette.primaryColor;
     }
     
-    // 动态同步首页右上角设置齿轮按钮的颜色
-    self.navigationItem.rightBarButtonItem.tintColor = palette.primaryColor;
+    // 动态同步首页右上角按钮的颜色
+    for (UIBarButtonItem *item in self.navigationItem.rightBarButtonItems) {
+        if (item.action == @selector(openModernRemoteController)) {
+            item.tintColor = palette.primaryColor;
+        }
+    }
     
     // 实时重绘主列表里的电视设备图标颜色
     if (self.tvTableView) {
@@ -250,10 +280,14 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)setupUI {
     self.navigationItem.title = L(@"ZE Watch", @"糖葫芦遥控器");
     
-    // Settings Button
+    // Settings & Modern Remote Buttons
     UIBarButtonItem *settingsItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"gearshape.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(openSettings)];
     settingsItem.tintColor = [UIColor whiteColor];
-    self.navigationItem.rightBarButtonItem = settingsItem;
+    
+    UIBarButtonItem *remoteItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"appletvremote.gen4.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(openModernRemoteController)];
+    remoteItem.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
+    
+    self.navigationItem.rightBarButtonItems = @[settingsItem, remoteItem];
     
     // Subtitle
     UILabel *subtitleLabel = [[UILabel alloc] init];
@@ -571,6 +605,25 @@ static NSString * L(NSString *en, NSString *zh) {
         return [HSBTVOSConnectionManager sharedManager].isConnected;
     };
     [self presentViewController:vc animated:YES completion:nil];
+}
+
+- (void)openModernRemoteController {
+    UIViewController *modernVC = [HSBModernRemoteBridge createModernRemoteViewController];
+    if (self.currentEndpoint) {
+        const char *name = nw_endpoint_get_bonjour_service_name(self.currentEndpoint);
+        NSString *deviceName = name ? [NSString stringWithUTF8String:name] : @"Apple TV";
+        const char *hostname = nw_endpoint_get_hostname(self.currentEndpoint);
+        NSString *host = hostname ? [NSString stringWithUTF8String:hostname] : @"apple-tv.local";
+        [HSBModernRemoteBridge connectWithHost:host port:56789 deviceName:deviceName];
+    }
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:modernVC];
+    UIBarButtonItem *closeItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(dismissModernRemoteModal)];
+    modernVC.navigationItem.leftBarButtonItem = closeItem;
+    [self presentViewController:nav animated:YES completion:nil];
+}
+
+- (void)dismissModernRemoteModal {
+    [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 

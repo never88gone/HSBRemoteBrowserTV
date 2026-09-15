@@ -210,14 +210,14 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) {
-        return 1;
+        return 2;
     }
     return [HSBLocalLLMManager shared].availableModels.count;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     if (section == 0) {
-        return @"翻译引擎配置";
+        return @"AI 引擎与翻译配置";
     }
     return [HSBLocalLLMManager useAppleTranslation] ? @"电视控制 JS 脚本生成专用模型" : @"通用端侧大模型 (翻译与JS生成共用)";
 }
@@ -227,10 +227,27 @@
     
     if (indexPath.section == 0) {
         if (indexPath.row == 0) {
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"StatusCell"];
+            if (!cell) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"StatusCell"];
+            }
+            cell.textLabel.text = @"当前运行 AI 引擎";
+            cell.detailTextLabel.text = [HSBLocalLLMManager shared].currentEngineDisplayName;
+            cell.detailTextLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+            cell.detailTextLabel.textColor = palette.primaryColor;
+            cell.imageView.image = [UIImage systemImageNamed:@"bolt.shield.fill"];
+            cell.imageView.tintColor = [UIColor systemGreenColor];
+            cell.backgroundColor = palette.cardBgColor;
+            cell.textLabel.textColor = [UIColor whiteColor];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            cell.accessoryView = nil;
+            return cell;
+        } else if (indexPath.row == 1) {
             UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"SettingCell"];
             if (!cell) {
                 cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"SettingCell"];
             }
+            cell.imageView.image = nil;
             cell.textLabel.text = @"使用 Apple 原生翻译框架";
             cell.detailTextLabel.text = @"开启后，翻译将调用 iOS 原生 Translation API，本地大模型仅用于 JS 脚本生成。";
             cell.detailTextLabel.numberOfLines = 0;

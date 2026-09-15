@@ -56,51 +56,17 @@ NSString * const HSBThemeChangedNotification = @"HSBThemeChangedNotification";
 
 - (HSBThemePalette *)currentPalette {
     UIColor *bg = [UIColor blackColor]; // 纯黑 OLED 极黑背景
-    switch (self.currentStyle) {
-        case HSBThemeStyleGreen:
-            return [HSBThemePalette paletteWithPrimary:[UIColor systemGreenColor]
-                                             secondary:[UIColor systemTealColor]
-                                                cardBg:[UIColor colorWithRed:0.03 green:0.06 blue:0.04 alpha:1.0]
-                                                 bgCol:bg
-                                                 glowC:[[UIColor systemGreenColor] colorWithAlphaComponent:0.5]
-                                              gradient:@[[UIColor systemGreenColor], [UIColor systemTealColor]]];
-        case HSBThemeStylePink:
-            return [HSBThemePalette paletteWithPrimary:[UIColor systemPinkColor]
-                                             secondary:[UIColor systemOrangeColor]
-                                                cardBg:[UIColor colorWithRed:0.07 green:0.04 blue:0.05 alpha:1.0]
-                                                 bgCol:bg
-                                                 glowC:[[UIColor systemPinkColor] colorWithAlphaComponent:0.5]
-                                              gradient:@[[UIColor systemPinkColor], [UIColor systemOrangeColor]]];
-        case HSBThemeStyleOrange:
-            return [HSBThemePalette paletteWithPrimary:[UIColor systemOrangeColor]
-                                             secondary:[UIColor systemYellowColor]
-                                                cardBg:[UIColor colorWithRed:0.07 green:0.05 blue:0.03 alpha:1.0]
-                                                 bgCol:bg
-                                                 glowC:[[UIColor systemOrangeColor] colorWithAlphaComponent:0.5]
-                                              gradient:@[[UIColor systemOrangeColor], [UIColor systemYellowColor]]];
-        case HSBThemeStyleBlue:
-            return [HSBThemePalette paletteWithPrimary:[UIColor systemBlueColor]
-                                             secondary:[UIColor systemTealColor]
-                                                cardBg:[UIColor colorWithRed:0.03 green:0.05 blue:0.08 alpha:1.0]
-                                                 bgCol:bg
-                                                 glowC:[[UIColor systemBlueColor] colorWithAlphaComponent:0.5]
-                                              gradient:@[[UIColor systemBlueColor], [UIColor systemTealColor]]];
-        case HSBThemeStylePurple:
-            return [HSBThemePalette paletteWithPrimary:[UIColor systemPurpleColor]
-                                             secondary:[UIColor systemPinkColor]
-                                                cardBg:[UIColor colorWithRed:0.06 green:0.04 blue:0.08 alpha:1.0]
-                                                 bgCol:bg
-                                                 glowC:[[UIColor systemPurpleColor] colorWithAlphaComponent:0.5]
-                                              gradient:@[[UIColor systemPurpleColor], [UIColor systemPinkColor]]];
-        case HSBThemeStyleIndigo:
-        default:
-            return [HSBThemePalette paletteWithPrimary:[UIColor systemIndigoColor]
-                                             secondary:[UIColor systemPurpleColor]
-                                                cardBg:[UIColor colorWithRed:0.04 green:0.04 blue:0.08 alpha:1.0]
-                                                 bgCol:bg
-                                                 glowC:[[UIColor systemIndigoColor] colorWithAlphaComponent:0.5]
-                                              gradient:@[[UIColor systemIndigoColor], [UIColor systemPurpleColor]]];
-    }
+    // 统一为现代 Apple 原生系统默认质感调色板：
+    // - 主色调：纯正 Apple System Blue
+    // - 辅助色：优雅 Apple System Indigo
+    // - 卡片背景：标准 Apple 深色分组背景色 #1C1C1E (rgb: 0.11, 0.11, 0.12)
+    // - 纯净微光，去除高饱和杂暗色
+    return [HSBThemePalette paletteWithPrimary:[UIColor systemBlueColor]
+                                     secondary:[UIColor systemIndigoColor]
+                                        cardBg:[UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0]
+                                         bgCol:bg
+                                         glowC:[[UIColor systemBlueColor] colorWithAlphaComponent:0.25]
+                                      gradient:@[[UIColor systemBlueColor], [UIColor systemIndigoColor]]];
 }
 
 - (UIColor *)themeColor {
@@ -108,38 +74,17 @@ NSString * const HSBThemeChangedNotification = @"HSBThemeChangedNotification";
 }
 
 - (NSString *)themeName {
-    return [self nameForStyle:self.currentStyle];
+    NSString *language = [[NSLocale preferredLanguages] firstObject];
+    BOOL isZh = [language hasPrefix:@"zh"];
+    return isZh ? @"系统默认" : @"System Default";
 }
 
 - (NSString *)nameForStyle:(HSBThemeStyle)style {
-    NSString *language = [[NSLocale preferredLanguages] firstObject];
-    BOOL isZh = [language hasPrefix:@"zh"];
-    switch (style) {
-        case HSBThemeStyleGreen:
-            return isZh ? @"翡翠傲绿" : @"Emerald Green";
-        case HSBThemeStylePink:
-            return isZh ? @"落樱仙粉" : @"Sakura Pink";
-        case HSBThemeStyleOrange:
-            return isZh ? @"暖阳暖橙" : @"Warm Orange";
-        case HSBThemeStyleBlue:
-            return isZh ? @"深邃蔚蓝" : @"Ocean Blue";
-        case HSBThemeStylePurple:
-            return isZh ? @"极客魔紫" : @"Geeky Purple";
-        case HSBThemeStyleIndigo:
-        default:
-            return isZh ? @"经典靛蓝" : @"Classic Indigo";
-    }
+    return self.themeName;
 }
 
 - (NSArray<NSString *> *)allThemeNames {
-    return @[
-        [self nameForStyle:HSBThemeStyleIndigo],
-        [self nameForStyle:HSBThemeStyleGreen],
-        [self nameForStyle:HSBThemeStylePink],
-        [self nameForStyle:HSBThemeStyleOrange],
-        [self nameForStyle:HSBThemeStyleBlue],
-        [self nameForStyle:HSBThemeStylePurple]
-    ];
+    return @[self.themeName];
 }
 
 @end
