@@ -1,0 +1,1 @@
+remote,apple tv,mac,trackpad,iptv,presentation,pointer,smart tv,tv remote,media control

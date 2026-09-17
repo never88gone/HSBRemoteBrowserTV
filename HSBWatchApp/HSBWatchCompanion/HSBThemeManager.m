@@ -54,19 +54,49 @@ NSString * const HSBThemeChangedNotification = @"HSBThemeChangedNotification";
     });
 }
 
++ (UIColor *)tanghuluBrandColor {
+    // 糖葫芦官方应用图标同源品牌天蓝 / 冰魄蓝 (#1C7BF9)
+    return [UIColor colorWithRed:28.0/255.0 green:123.0/255.0 blue:249.0/255.0 alpha:1.0];
+}
+
++ (NSArray<UIColor *> *)brandGradientColors {
+    // 糖葫芦深空极光天蓝渐变色组：
+    // 顶部起始：深邃极光冰蓝 (#0A1C38)
+    // 中部过渡：神秘午夜深蓝 (#060F22)
+    // 底部结束：沉稳暗夜蓝黑 (#02050E)
+    return @[
+        [UIColor colorWithRed:10.0/255.0 green:28.0/255.0 blue:56.0/255.0 alpha:1.0],
+        [UIColor colorWithRed:6.0/255.0 green:15.0/255.0 blue:34.0/255.0 alpha:1.0],
+        [UIColor colorWithRed:2.0/255.0 green:5.0/255.0 blue:14.0/255.0 alpha:1.0]
+    ];
+}
+
++ (CAGradientLayer *)createBrandGradientLayerWithBounds:(CGRect)bounds {
+    CAGradientLayer *gradient = [CAGradientLayer layer];
+    gradient.frame = bounds;
+    NSMutableArray *cgColors = [NSMutableArray array];
+    for (UIColor *color in [self brandGradientColors]) {
+        [cgColors addObject:(id)color.CGColor];
+    }
+    gradient.colors = cgColors;
+    gradient.locations = @[@(0.0), @(0.45), @(1.0)];
+    gradient.startPoint = CGPointMake(0.0, 0.0);
+    gradient.endPoint = CGPointMake(1.0, 1.0);
+    return gradient;
+}
+
 - (HSBThemePalette *)currentPalette {
-    UIColor *bg = [UIColor blackColor]; // 纯黑 OLED 极黑背景
-    // 统一为现代 Apple 原生系统默认质感调色板：
-    // - 主色调：纯正 Apple System Blue
-    // - 辅助色：优雅 Apple System Indigo
-    // - 卡片背景：标准 Apple 深色分组背景色 #1C1C1E (rgb: 0.11, 0.11, 0.12)
-    // - 纯净微光，去除高饱和杂暗色
-    return [HSBThemePalette paletteWithPrimary:[UIColor systemBlueColor]
-                                     secondary:[UIColor systemIndigoColor]
-                                        cardBg:[UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0]
+    UIColor *bg = [UIColor colorWithRed:6.0/255.0 green:15.0/255.0 blue:34.0/255.0 alpha:1.0];
+    UIColor *brandBlue = [HSBThemeManager tanghuluBrandColor];
+    UIColor *secondaryBlue = [UIColor colorWithRed:10.0/255.0 green:90.0/255.0 blue:210.0/255.0 alpha:1.0];
+    // 卡片背景：深蓝磨砂半透明质感
+    UIColor *cardBg = [UIColor colorWithRed:14.0/255.0 green:25.0/255.0 blue:48.0/255.0 alpha:0.65];
+    return [HSBThemePalette paletteWithPrimary:brandBlue
+                                     secondary:secondaryBlue
+                                        cardBg:cardBg
                                          bgCol:bg
-                                         glowC:[[UIColor systemBlueColor] colorWithAlphaComponent:0.25]
-                                      gradient:@[[UIColor systemBlueColor], [UIColor systemIndigoColor]]];
+                                         glowC:[brandBlue colorWithAlphaComponent:0.25]
+                                      gradient:[HSBThemeManager brandGradientColors]];
 }
 
 - (UIColor *)themeColor {

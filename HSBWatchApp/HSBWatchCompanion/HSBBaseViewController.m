@@ -5,6 +5,10 @@
 
 #import "HSBBaseViewController.h"
 
+@interface HSBBaseViewController ()
+@property (nonatomic, strong, readwrite, nullable) CAGradientLayer *backgroundGradientLayer;
+@end
+
 @implementation HSBBaseViewController
 
 - (void)dealloc {
@@ -14,8 +18,12 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    // 设置高档 OLED 极黑背景
-    self.view.backgroundColor = [HSBThemeManager shared].currentPalette.backgroundColor;
+    // 设置深空极光自然渐变背景层
+    self.view.backgroundColor = [UIColor clearColor];
+    if (!self.backgroundGradientLayer) {
+        self.backgroundGradientLayer = [HSBThemeManager createBrandGradientLayerWithBounds:self.view.bounds];
+        [self.view.layer insertSublayer:self.backgroundGradientLayer atIndex:0];
+    }
     
     // 监听全局主题变更通知
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -24,6 +32,13 @@
                                                object:nil];
     
     [self applyThemeStyle];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    if (self.backgroundGradientLayer) {
+        self.backgroundGradientLayer.frame = self.view.bounds;
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -45,14 +60,22 @@
     
     HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
     
-    self.view.backgroundColor = palette.backgroundColor;
+    self.view.backgroundColor = [UIColor clearColor];
+    if (self.backgroundGradientLayer) {
+        self.backgroundGradientLayer.frame = self.view.bounds;
+        NSMutableArray *cgColors = [NSMutableArray array];
+        for (UIColor *color in palette.gradientColors) {
+            [cgColors addObject:(id)color.CGColor];
+        }
+        self.backgroundGradientLayer.colors = cgColors;
+    }
     
     // 自动配置导航栏风格与 Tint 颜色
     if (self.navigationController) {
         self.navigationController.navigationBar.barStyle = UIBarStyleBlack;
         self.navigationController.navigationBar.tintColor = palette.primaryColor;
         
-        // 配置导航栏字体颜色，确保在极黑背景下高清晰高亮显示
+        // 配置导航栏字体颜色，确保在深空极光背景下高清晰高亮显示
         NSMutableDictionary *titleAttrs = [NSMutableDictionary dictionary];
         titleAttrs[NSForegroundColorAttributeName] = [UIColor whiteColor];
         
@@ -67,7 +90,7 @@
 }
 
 - (UIStatusBarStyle)preferredStatusBarStyle {
-    // 采用高雅的白字状态栏，极其适配 OLED 极黑卡片体系
+    // 采用高雅的白字状态栏，适配深空极光渐变体系
     return UIStatusBarStyleLightContent;
 }
 

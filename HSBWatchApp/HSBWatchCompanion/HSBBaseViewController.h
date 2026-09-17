@@ -10,6 +10,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface HSBBaseViewController : UIViewController
 
+/** 全局品牌深空极光渐变背景层 */
+@property (nonatomic, strong, readonly, nullable) CAGradientLayer *backgroundGradientLayer;
+
 /**
  子类重写此方法以在其中应用自己特化的主题元素（卡片背景、特定图标等）。
  基类会自动在 viewDidLoad、viewWillAppear 以及主题发生变更通知时调用此方法。

@@ -37,8 +37,9 @@ class MotionManager: NSObject, ObservableObject, WCSessionDelegate, WKExtendedRu
     private var lastFlipUpTime: Date = Date.distantPast
     private var lastFlipDownTime: Date = Date.distantPast
     private var lastShakeTime: Date = Date.distantPast
-    private let sameCooldown: TimeInterval = 0.8    // 同一手势重复冷却（优化为0.8秒以便连续打卡）
-    private let crossCooldown: TimeInterval = 0.35  // 切换不同手势冷却
+    private var suppressOppositePitchUntil: Date = Date.distantPast // 手腕落回反向手势抑制
+    private let sameCooldown: TimeInterval = 0.65   // 同一手势重复冷却（优化为0.65秒）
+    private let crossCooldown: TimeInterval = 0.30  // 切换不同手势冷却
 
     // 滑动窗口缓冲（保留最近 N 帧做峰值检测）
     private struct MotionSample {
@@ -48,13 +49,13 @@ class MotionManager: NSObject, ObservableObject, WCSessionDelegate, WKExtendedRu
         let totalAccel: Double
     }
     private var motionBuffer: [MotionSample] = []
-    private let bufferSize = 25  // 25帧×20ms = 500ms 窗口，配合 50Hz 采样率
+    private let bufferSize = 20  // 20帧×20ms = 400ms 窗口，延迟更低响应更迅速
 
-    // 识别阈值
-    private let flipThreshold: Double = 3.0      // 翻腕角速率阈值 rad/s
-    private let dominanceRatio: Double = 1.3     // 主轴相对其他轴的倍数优势（降低严格度容忍人体真实非直线运动）
-    private let shakeAccelThreshold: Double = 2.2  // 摇晃加速度阈值 g
-    private let shakeRollThreshold: Double = 4.0   // 摇晃角速率阈值 rad/s
+    // 识别阈值（优化为更符合人体工学的轻灵动作阈值）
+    private let flipThreshold: Double = 2.2         // 翻腕角速率阈值 rad/s (灵敏轻巧)
+    private let dominanceRatio: Double = 1.2        // 主轴优势倍数
+    private let shakeAccelThreshold: Double = 1.75  // 摇晃加速度阈值 g (告别用力猛甩)
+    private let shakeRollThreshold: Double = 3.2    // 摇晃角速率阈值 rad/s
     
     override init() {
         super.init()
@@ -231,10 +232,10 @@ class MotionManager: NSObject, ObservableObject, WCSessionDelegate, WKExtendedRu
         ))
         if motionBuffer.count > bufferSize { motionBuffer.removeFirst() }
 
-        // 窗口未满：等待更多数据
-        guard motionBuffer.count == bufferSize else { return }
+        // 采样达 10 帧 (200ms) 以上即可参与轻敏手势判定
+        guard motionBuffer.count >= 10 else { return }
 
-        // --- 500ms 窗口内取各轴峰值（保留符号方向）---
+        // --- 窗口内取各轴峰值（保留符号方向）---
         let peakPitch = motionBuffer.max(by: { abs($0.pitchRate) < abs($1.pitchRate) })!.pitchRate
         let peakRoll  = motionBuffer.max(by: { abs($0.rollRate)  < abs($1.rollRate)  })!.rollRate
         let peakAccel = motionBuffer.map(\.totalAccel).max()!
@@ -247,13 +248,15 @@ class MotionManager: NSObject, ObservableObject, WCSessionDelegate, WKExtendedRu
         // -------------------------------------------------------
         if peakPitch > flipThreshold
             && absPitch > absYaw * dominanceRatio
-            && absPitch > absRoll * dominanceRatio {
+            && absPitch > absRoll * dominanceRatio
+            && now > suppressOppositePitchUntil {
 
             let lastOther = max(lastFlipDownTime, lastShakeTime)
             guard now.timeIntervalSince(lastFlipUpTime) > sameCooldown,
                   now.timeIntervalSince(lastOther) > crossCooldown else { return }
 
             lastFlipUpTime = now
+            suppressOppositePitchUntil = now.addingTimeInterval(0.45) // 450ms 内抑制手腕落回反向误触
             motionBuffer.removeAll()   // 清空缓冲，防止同帧重复触发
             triggerAction(L("↑ Flip Up", "↑ 向上翻腕"), haptic: .directionUp)
             sendMessage(action: "flip_up")
@@ -265,13 +268,15 @@ class MotionManager: NSObject, ObservableObject, WCSessionDelegate, WKExtendedRu
         // -------------------------------------------------------
         if peakPitch < -flipThreshold
             && absPitch > absYaw * dominanceRatio
-            && absPitch > absRoll * dominanceRatio {
+            && absPitch > absRoll * dominanceRatio
+            && now > suppressOppositePitchUntil {
 
             let lastOther = max(lastFlipUpTime, lastShakeTime)
             guard now.timeIntervalSince(lastFlipDownTime) > sameCooldown,
                   now.timeIntervalSince(lastOther) > crossCooldown else { return }
 
             lastFlipDownTime = now
+            suppressOppositePitchUntil = now.addingTimeInterval(0.45) // 450ms 内抑制抬手回弹反向误触
             motionBuffer.removeAll()
             triggerAction(L("↓ Flip Down", "↓ 向下翻腕"), haptic: .directionDown)
             sendMessage(action: "flip_down")

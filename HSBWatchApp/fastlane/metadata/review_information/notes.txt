@@ -1,0 +1,20 @@
+Dear Apple App Review Team,
+
+Thank you for reviewing Tanghulu Smart Remote!
+
+[How to Test Without External TV Devices]:
+This app is designed to work with Apple TV and Mac displays. To make your review process convenient and comprehensive, especially if your testing environment does not have an Apple TV running on the local Wi-Fi:
+1. Launch the app on iPhone.
+2. On the main screen, tap the Apple TV Remote icon on the top-right navigation bar.
+3. This opens the complete modern remote controller with 3 interactive scenes:
+   - Tab 0 (System): 270pt D-Pad directional navigation, OK button, media controls (seek 10s, play/pause), system keys (Home, Back, Mute, Standby), and volume buttons.
+   - Tab 1 (IPTV): Channel CH+/- and volume VOL+/- stepping towers, quick channel direct-play, and numeric keypad.
+   - Tab 2 (PDF): Presentation slide turners, first/last page jumping, and live drawing whiteboard with multi-color palette and undo support.
+4. All touch controls and buttons are fully interactive with haptic feedback even when disconnected from a television.
+
+[Real Hardware Pairing (Optional)]:
+If you wish to test physical Bonjour pairing, launch companion display app on an Apple TV or Mac on the same Wi-Fi network. The app will automatically discover and connect within seconds.
+
+No subscription or login account is required to use this application.
+
+Thank you very much for your review and guidance!

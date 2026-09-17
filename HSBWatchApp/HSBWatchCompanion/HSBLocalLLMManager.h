@@ -84,6 +84,23 @@ typedef void (^HSBLocalLLMMessageCompletion)(NSString *response, BOOL isFinished
 /// 动态添加用户自定义的端侧大模型（指定自定义名称与 HuggingFace Repo ID）
 - (BOOL)addCustomModelWithName:(NSString *)name repoId:(NSString *)repoId error:(NSError * _Nullable * _Nullable)error;
 
+/// 物理删除特定模型的沙盒权重缓存以释放手机存储空间
+- (BOOL)deleteModelCacheForModel:(HSBLocalLLMModel *)model;
+
+#pragma mark - 自定义大模型 API (兼容 OpenAI / DeepSeek / Ollama / LM Studio)
+/// 是否启用自定义大模型 API 模式（开启后无需下载庞大端侧权重即可调用局域网或云端大模型）
++ (BOOL)useCustomAPI;
++ (void)setUseCustomAPI:(BOOL)use;
+
++ (NSString *)customAPIEndpoint;
++ (void)setCustomAPIEndpoint:(NSString *)endpoint;
+
++ (NSString *)customAPIKey;
++ (void)setCustomAPIKey:(NSString *)key;
+
++ (NSString *)customAPIModel;
++ (void)setCustomAPIModel:(NSString *)model;
+
 @end
 
 NS_ASSUME_NONNULL_END

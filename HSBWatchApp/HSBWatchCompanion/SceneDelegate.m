@@ -7,6 +7,7 @@
 
 #import "SceneDelegate.h"
 #import "AppDelegate.h"
+#import "HSBThemeManager.h"
 
 @interface SceneDelegate ()
 
@@ -27,11 +28,13 @@
             if (@available(iOS 13.0, *)) {
                 self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
             }
+            self.window.tintColor = [HSBThemeManager tanghuluBrandColor];
             [self.window makeKeyAndVisible];
         } else {
             if (@available(iOS 13.0, *)) {
                 self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
             }
+            self.window.tintColor = [HSBThemeManager tanghuluBrandColor];
         }
     }
 }

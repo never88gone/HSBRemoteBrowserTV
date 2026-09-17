@@ -21,7 +21,13 @@ public final class HSBBrowserProtocolClient {
     
     private(set) var currentEndpoint: nw_endpoint_t?
     private(set) var currentDeviceName: String?
-    public private(set) var isConnected: Bool = false
+    private var internalIsConnected: Bool = false
+    public var isConnected: Bool {
+        if connection != nil && internalIsConnected {
+            return true
+        }
+        return HSBTVOSConnectionManager.shared().isConnected
+    }
     
     public init() {}
     
@@ -60,7 +66,7 @@ public final class HSBBrowserProtocolClient {
             connection = nil
         }
         parser.reset()
-        isConnected = false
+        internalIsConnected = false
         DispatchQueue.main.async {
             self.delegate?.browserClient(self, didChangeState: .disconnected)
         }
@@ -76,29 +82,43 @@ public final class HSBBrowserProtocolClient {
     
     public func send(rawJSONData: Data, completion: ((Bool) -> Void)? = nil) {
         queue.async { [weak self] in
-            guard let self = self, let conn = self.connection, self.isConnected else {
+            guard let self = self else {
                 completion?(false)
                 return
             }
             
-            let dispatchData = rawJSONData.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> DispatchData in
-                return DispatchData(bytes: buf)
-            }
-            
-            nw_connection_send(
-                conn,
-                dispatchData as __DispatchData,
-                HSBGetDefaultMessageContext(),
-                true
-            ) { error in
-                completion?(error == nil)
+            if let conn = self.connection, self.internalIsConnected {
+                let dispatchData = rawJSONData.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> DispatchData in
+                    return DispatchData(bytes: buf)
+                }
+                
+                nw_connection_send(
+                    conn,
+                    dispatchData as __DispatchData,
+                    HSBGetDefaultMessageContext(),
+                    true
+                ) { error in
+                    completion?(error == nil)
+                }
+            } else if HSBTVOSConnectionManager.shared().isConnected {
+                // 统一复用 HSBTVOSConnectionManager 既有长连接通道，杜绝重复向 56789 端口建立连接
+                if let json = try? JSONSerialization.jsonObject(with: rawJSONData, options: []) as? [String: Any] {
+                    DispatchQueue.main.async {
+                        HSBTVOSConnectionManager.shared().sendPayload(json)
+                        completion?(true)
+                    }
+                } else {
+                    completion?(false)
+                }
+            } else {
+                completion?(false)
             }
         }
     }
     
     private func handleConnectionStateChange(_ state: nw_connection_state_t, error: nw_error_t?) {
         if state == nw_connection_state_ready {
-            isConnected = true
+            internalIsConnected = true
             reconnectionPolicy.notifyConnected()
             let deviceName = currentDeviceName ?? "Apple TV"
             DispatchQueue.main.async {
@@ -106,14 +126,14 @@ public final class HSBBrowserProtocolClient {
             }
             receiveLoop()
         } else if state == nw_connection_state_failed {
-            isConnected = false
+            internalIsConnected = false
             let errDesc = error.map { "\($0)" } ?? "Connection failed"
             DispatchQueue.main.async {
                 self.delegate?.browserClient(self, didChangeState: .failed(error: errDesc))
             }
             scheduleReconnectIfNeeded()
         } else if state == nw_connection_state_cancelled {
-            isConnected = false
+            internalIsConnected = false
             DispatchQueue.main.async {
                 self.delegate?.browserClient(self, didChangeState: .disconnected)
             }
@@ -121,7 +141,7 @@ public final class HSBBrowserProtocolClient {
     }
     
     private func receiveLoop() {
-        guard let conn = connection, isConnected else { return }
+        guard let conn = connection, internalIsConnected else { return }
         
         nw_connection_receive(conn, 1, 65536) { [weak self] content, _, isComplete, error in
             guard let self = self else { return }
@@ -140,7 +160,7 @@ public final class HSBBrowserProtocolClient {
             }
             
             if isComplete || error != nil {
-                self.isConnected = false
+                self.internalIsConnected = false
                 self.scheduleReconnectIfNeeded()
             } else {
                 self.receiveLoop()

@@ -104,4 +104,29 @@ platform :ios do
     
     UI.success("🎉 TestFlight upload completed successfully!")
   end
+
+  desc "Upload and sync App Store metadata and screenshots without compiling code"
+  lane :metadata do
+    ENV["SPACESHIP_CONNECT_API_KEY_ID"] = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"]
+    ENV["SPACESHIP_CONNECT_API_ISSUER_ID"] = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
+    ENV["SPACESHIP_CONNECT_API_KEY_CONTENT"] = ENV["APP_STORE_CONNECT_API_KEY_KEY"]
+
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_API_KEY_KEY"],
+      is_key_content_base64: true,
+      in_house: false
+    )
+
+    UI.message("🚀 Syncing App Store Metadata & Screenshots...")
+    deliver(
+      api_key: api_key,
+      skip_binary_upload: true,
+      skip_screenshots: false,
+      force: true,
+      overwrite_screenshots: true
+    )
+    UI.success("🎉 App Store Metadata sync completed successfully!")
+  end
 end

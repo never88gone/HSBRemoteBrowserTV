@@ -50,3 +50,50 @@ Integrity mode: development
 ### 交互与用户体验 (Interaction & UI)
 - [ ] 新版遥控交互视图具备清晰直观的布局，D-pad、手势触控区与快捷操作栏响应灵敏。
 - [ ] 支持输入框实时打字事件的捕获与指令分发。
+
+## 2026-09-17T12:57:26Z
+
+This is a single self-contained fix; keep it small and focused. 用户要求使用精简聚焦团队（Small, focused team）对糖葫芦遥控器（HSBWatchCompanion）中的三大端侧大模型全生命周期与功能调用进行专项完整测试与质量验收。
+
+Working directory: `/Volumes/MacintoshData/Work/MY/Project/Product/HSBRemoteBrowserTV/HSBWatchApp`
+Integrity mode: development
+
+## Requirements
+
+### R1. 三大官方端侧大模型远端镜像与下载校验
+验证预置的三大模型（Qwen1.5-0.5B `mlx-community/Qwen1.5-0.5B-Chat-4bit`、SmolLM-135M `mlx-community/SmolLM-135M-Instruct-4bit`、Gemma-2-2B-IT `mlx-community/gemma-2-2b-it-4bit`）的远端镜像源连通性，支持断点与进度计算，并具备本地权重完整性校验。
+
+### R2. 下载生命周期状态机与 UI 联动
+验证模型管理中心（`HSBLLMModelCenterViewController`）全生命周期流转：未下载状态、下载中实时进度条与百分比刷新、暂停、捕获异常信号（-1.0）自动转为 Failed 失败状态并解除假死、一键重试、以及左滑清除物理沙盒缓存。
+
+### R3. 三大核心场景模型功能业务调用
+验证三大模型的实际业务响应能力：
+- 场景 1（同声传译）：Qwen1.5-0.5B 模型激活并完成中英/多语言精准翻译；
+- 场景 2（电视控制）：SmolLM-135M 模型激活并生成标准 TV 控制 JavaScript 脚本（包含全屏、背景色调整等）；
+- 场景 3（智能管家）：Gemma-2-2B-IT 模型激活并完成客厅大屏遥控指南与百科问答。
+
+### R4. 自定义 API 兼容与离线内置引擎兜底保障
+验证自定义 API 模式（兼容 Ollama / DeepSeek / LM Studio / OpenAI 标准协议）联动与连通性；在无模型激活、模拟器环境或网络异常时，100% 自动无缝降级至内置端侧智能引擎，保证零白屏、零报错、秒级流式打字输出。
+
+### R5. 环境防御与工程规范
+实施 iOS 模拟器 Metal 算子安全隔离，消除 `basic_string(nullptr)` 崩溃风险；工程编译成功，产物版本号严格核准保持为 `1.0.0`。
+
+## Acceptance Criteria
+
+### 模型下载与状态机
+- [ ] 三大模型远端镜像校验 HTTP 状态码均为 200 (OK)
+- [ ] 状态机正确流转于 None -> Downloading (含进度百分比) -> Finished
+- [ ] 遇到错误信号能自动置为 Failed 状态并重置进度条，允许再次点击重试，绝无死锁假死
+- [ ] 物理缓存清理接口能安全删除沙盒权重文件并重置模型状态
+
+### 功能调用与业务验收
+- [ ] 同声传译场景成功输出合规译文（带端侧校对标示）
+- [ ] 电视控制场景成功输出包含标准 DOM/媒体 API（如 `requestFullscreen` 或 `style.backgroundColor`）的合规 JavaScript 代码
+- [ ] 智能管家场景针对客厅遥控问答给出结构清晰、针对性强的排版解答
+- [ ] 自定义 API 模式与内置智能引擎降级链路 100% 畅通可用
+
+### 稳定性与工程规范
+- [ ] 自动化测试套件 `HSBLLMVerificationTest` 11 项用例全部通过（Pass: 11, Fail: 0）
+- [ ] 模拟器与真机运行稳定，无崩溃无阻塞
+- [ ] `HSBWatchCompanion` 产物版本号严格为 1.0.0
+

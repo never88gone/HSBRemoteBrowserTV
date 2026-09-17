@@ -61,9 +61,70 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         screenClient.delegate = self
         nativeClient.delegate = self
         stateMachine.delegate = self
+        
+        setupUnifiedConnectionObserver()
     }
     
-    // MARK: - Connection Lifecycle
+    // MARK: - Unified Connection Lifecycle & Bonding
+    private func setupUnifiedConnectionObserver() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleUnifiedConnectionStateChanged(_:)),
+            name: .HSBTVOSConnectionState,
+            object: nil
+        )
+        
+        // 初始状态同步（如果主大屏连接已就绪）
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if legacyMgr.isConnected {
+            let deviceName = legacyMgr.deviceName ?? "Apple TV"
+            self.stateMachine.handle(event: .requestConnect(deviceName: deviceName, mode: self.currentMode))
+            self.stateMachine.handle(event: .socketConnected(deviceName: deviceName, mode: self.currentMode))
+        }
+    }
+    
+    @objc private func handleUnifiedConnectionStateChanged(_ note: Notification) {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        let deviceName = legacyMgr.deviceName ?? "Apple TV"
+        
+        if legacyMgr.isConnected {
+            self.stateMachine.handle(event: .requestConnect(deviceName: deviceName, mode: self.currentMode))
+            self.stateMachine.handle(event: .socketConnected(deviceName: deviceName, mode: self.currentMode))
+            
+            // 自动并发连接/唤醒 Native 系统通道（实现一键双模聚合）
+            if !self.nativeClient.isConnected {
+                var host = "apple-tv.local"
+                if let ep = legacyMgr.currentEndpoint {
+                    if nw_endpoint_get_type(ep) == nw_endpoint_type_host {
+                        host = String(cString: nw_endpoint_get_hostname(ep))
+                    } else if nw_endpoint_get_type(ep) == nw_endpoint_type_bonjour_service {
+                        host = "\(String(cString: nw_endpoint_get_bonjour_service_name(ep))).local"
+                    }
+                }
+                self.connectToNative(host: host, deviceName: deviceName)
+            }
+        } else {
+            // 大屏通道断开
+            if currentMode == .screenOnly || !nativeClient.isConnected {
+                self.stateMachine.handle(event: .requestDisconnect(reason: "Unified display disconnected"))
+            }
+        }
+    }
+    
+    /// 统一连接入口：单次触发，双模静默聚合
+    public func unifiedConnect(endpoint: nw_endpoint_t, deviceName: String) {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        legacyMgr.connect(to: endpoint, deviceName: deviceName)
+        
+        var host = "apple-tv.local"
+        if nw_endpoint_get_type(endpoint) == nw_endpoint_type_host {
+            host = String(cString: nw_endpoint_get_hostname(endpoint))
+        } else if nw_endpoint_get_type(endpoint) == nw_endpoint_type_bonjour_service {
+            host = "\(String(cString: nw_endpoint_get_bonjour_service_name(endpoint))).local"
+        }
+        connectToNative(host: host, deviceName: deviceName)
+    }
+    
     public func connectToScreen(endpoint: nw_endpoint_t, deviceName: String) {
         stateMachine.handle(event: .requestConnect(deviceName: deviceName, mode: currentMode))
         screenClient.connect(to: endpoint, deviceName: deviceName)
@@ -76,6 +137,10 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     public func disconnectAll() {
         screenClient.disconnect()
         nativeClient.disconnect()
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if legacyMgr.isConnected {
+            legacyMgr.disconnect()
+        }
         stateMachine.handle(event: .requestDisconnect(reason: "User requested disconnect"))
     }
     

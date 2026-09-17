@@ -59,7 +59,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.strokeWidth = 4.0;
     self.isEraserMode = NO;
     
-    self.view.backgroundColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+    self.view.backgroundColor = [UIColor clearColor];
     
     [self setupCanvas];
     [self setupTopToolBar];

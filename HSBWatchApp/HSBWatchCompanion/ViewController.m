@@ -19,6 +19,7 @@
 #import "HSBOpenSourceLibrariesViewController.h"
 #import "HSBLLMModelCenterViewController.h"
 #import "HSBLLMTestViewController.h"
+#import "HSBAboutViewController.h"
 #import "HSBWatchCompanion-Swift.h"
 
 #define BONJOUR_SERVICE_TYPE "_thltv._tcp"
@@ -128,9 +129,17 @@ static NSString * L(NSString *en, NSString *zh) {
         self.aiLoadingHUD.alpha = 1.0;
     }
     
-    // 注册 TVOSConnectionManager 通知
+    // 注册 TVOSConnectionManager 通知与 WatchSession 通知
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSConnectionStateChanged:) name:HSBTVOSConnectionStateNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchReachabilityChanged:) name:HSBWatchSessionReachabilityDidChangeNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchActionReceived:) name:HSBWatchActionReceivedNotification object:nil];
     [self applyThemeStyle];
+    
+    // 配置返回按钮仅展示纯图标箭头，隐藏冗余页面标题文字
+    if (@available(iOS 14.0, *)) {
+        self.navigationItem.backButtonDisplayMode = UINavigationItemBackButtonDisplayModeMinimal;
+    }
+    self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"" style:UIBarButtonItemStylePlain target:nil action:nil];
     
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -155,6 +164,11 @@ static NSString * L(NSString *en, NSString *zh) {
             HSBLLMTestViewController *vc = [[HSBLLMTestViewController alloc] init];
             [self.navigationController pushViewController:vc animated:NO];
         });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenAbout"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            HSBAboutViewController *vc = [[HSBAboutViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:NO];
+        });
     }
 }
 
@@ -164,6 +178,8 @@ static NSString * L(NSString *en, NSString *zh) {
     
     for (UIView *card in self.themeCards) {
         card.backgroundColor = palette.cardBgColor;
+        card.layer.borderColor = [palette.primaryColor colorWithAlphaComponent:0.15].CGColor;
+        card.layer.borderWidth = 1.0;
     }
     
     if (self.goBtn) {
@@ -292,7 +308,7 @@ static NSString * L(NSString *en, NSString *zh) {
     // Subtitle
     UILabel *subtitleLabel = [[UILabel alloc] init];
     subtitleLabel.text = L(@"Keep this app open while using your Watch.", @"在使用手表遥控时保持此应用在前台运行");
-    subtitleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    subtitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     subtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:subtitleLabel];
@@ -318,7 +334,7 @@ static NSString * L(NSString *en, NSString *zh) {
     
     // Video Control Card
     self.videoControlCard = [self createVideoControlCard];
-    self.videoControlCard.hidden = YES; // Default hidden until we receive progress
+    self.videoControlCard.hidden = YES;
     
     // Browser Control Card
     self.browserControlCard = [self createBrowserControlCard];
@@ -332,7 +348,7 @@ static NSString * L(NSString *en, NSString *zh) {
     // Stack View
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[card1, card2, card3]];
     stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = 8;
+    stack.spacing = 6;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:stack];
     
@@ -347,11 +363,10 @@ static NSString * L(NSString *en, NSString *zh) {
     tableContainer.layer.shadowOpacity = 0.05;
     tableContainer.layer.shadowOffset = CGSizeMake(0, 4);
     tableContainer.layer.shadowRadius = 8;
-    
     [self.view addSubview:tableContainer];
     
     UILabel *tableTitle = [[UILabel alloc] init];
-    tableTitle.text = L(@"SELECT EXTERNAL DISPLAY (SSDP)", @"选择连接可用外部显示单元");
+    tableTitle.text = L(@"EXTERNAL DISPLAYS", @"外部显示单元");
     tableTitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
     tableTitle.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     tableTitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -363,6 +378,14 @@ static NSString * L(NSString *en, NSString *zh) {
     [self.scanSpinner startAnimating];
     [tableContainer addSubview:self.scanSpinner];
     
+    // 配对指引与帮助按钮
+    UIButton *helpBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    [helpBtn setImage:[UIImage systemImageNamed:@"questionmark.circle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightMedium]] forState:UIControlStateNormal];
+    helpBtn.tintColor = [HSBThemeManager tanghuluBrandColor];
+    [helpBtn addTarget:self action:@selector(showPairingGuideAlert) forControlEvents:UIControlEventTouchUpInside];
+    helpBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [tableContainer addSubview:helpBtn];
+    
     self.tvTableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tvTableView.delegate = self;
     self.tvTableView.dataSource = self;
@@ -373,41 +396,57 @@ static NSString * L(NSString *en, NSString *zh) {
     [self.tvTableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TVCell"];
     
     UILabel *emptyLabel = [[UILabel alloc] init];
-    emptyLabel.text = L(@"No nearby screens found.\nLocal tracking active.", @"局域网未发现可用投影显示单元\n手表本地体感记录仍在进行中");
+    emptyLabel.text = L(@"Scanning for nearby screens...\nTip: Tap the remote icon in the top right for instant offline control.", @"正在扫描局域网大屏设备...\n提示：您可随时点击右上角遥控器图标离线使用全部功能。");
     emptyLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-    emptyLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
+    emptyLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.45];
     emptyLabel.textAlignment = NSTextAlignmentCenter;
     emptyLabel.numberOfLines = 0;
     self.tvTableView.backgroundView = emptyLabel;
-    emptyLabel.hidden = YES;
+    emptyLabel.hidden = NO;
     
     [tableContainer addSubview:self.tvTableView];
     
     [NSLayoutConstraint activateConstraints:@[
-        [subtitleLabel.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:10],
-        [subtitleLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:24],
-        [subtitleLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
+        [subtitleLabel.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [subtitleLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [subtitleLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         
-        [stack.topAnchor constraintEqualToAnchor:subtitleLabel.bottomAnchor constant:15],
-        [stack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:24],
-        [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
+        // 状态卡片 Stack（紧接 Subtitle 下方，布局清爽大方）
+        [stack.topAnchor constraintEqualToAnchor:subtitleLabel.bottomAnchor constant:12],
+        [stack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         
-        [tableContainer.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:15],
-        [tableContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:24],
-        [tableContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-24],
-        [tableContainer.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-20],
+        // 大屏列表区域
+        [tableContainer.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:10],
+        [tableContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [tableContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [tableContainer.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-14],
         
-        [tableTitle.topAnchor constraintEqualToAnchor:tableContainer.topAnchor constant:16],
-        [tableTitle.leadingAnchor constraintEqualToAnchor:tableContainer.leadingAnchor constant:20],
+        [tableTitle.topAnchor constraintEqualToAnchor:tableContainer.topAnchor constant:14],
+        [tableTitle.leadingAnchor constraintEqualToAnchor:tableContainer.leadingAnchor constant:16],
         
         [self.scanSpinner.centerYAnchor constraintEqualToAnchor:tableTitle.centerYAnchor],
         [self.scanSpinner.leadingAnchor constraintEqualToAnchor:tableTitle.trailingAnchor constant:8],
         
-        [self.tvTableView.topAnchor constraintEqualToAnchor:tableTitle.bottomAnchor constant:10],
+        [helpBtn.centerYAnchor constraintEqualToAnchor:tableTitle.centerYAnchor],
+        [helpBtn.trailingAnchor constraintEqualToAnchor:tableContainer.trailingAnchor constant:-16],
+        [helpBtn.widthAnchor constraintEqualToConstant:28],
+        [helpBtn.heightAnchor constraintEqualToConstant:28],
+        
+        [self.tvTableView.topAnchor constraintEqualToAnchor:tableTitle.bottomAnchor constant:8],
         [self.tvTableView.leadingAnchor constraintEqualToAnchor:tableContainer.leadingAnchor],
         [self.tvTableView.trailingAnchor constraintEqualToAnchor:tableContainer.trailingAnchor],
-        [self.tvTableView.bottomAnchor constraintEqualToAnchor:tableContainer.bottomAnchor constant:-10]
+        [self.tvTableView.bottomAnchor constraintEqualToAnchor:tableContainer.bottomAnchor constant:-8]
     ]];
+}
+
+- (void)showPairingGuideAlert {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"Display Connection Guide", @"📺 大屏连接与配对指引") message:L(@"1. Ensure your iPhone and Apple TV / Mac are connected to the same Wi-Fi network.\n\n2. Launch 'HSBBrowser' on your Apple TV or 'itsytv' on macOS.\n\n3. This app will automatically discover and pair within seconds via Bonjour.\n\n4. You can tap the Remote icon at the top right anytime to test all 4 remote control scenarios offline.", @"1. 确保手机与 Apple TV / Mac 处于同一个局域网 Wi-Fi。\n\n2. 在 Apple TV 上启动《HSBBrowser》或在 Mac 上启动配套应用。\n\n3. 手机端将自动通过 Bonjour 广播秒级发现并连接。\n\n4. 审核测试或未连接大屏时，可随时点击右上角【遥控器】图标离线试用全部四大场景遥控器。") preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"Understood", @"我知道了") style:UIAlertActionStyleDefault handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"Open Remote", @"打开遥控器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self openModernRemoteController];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (UILabel *)createLabel {
@@ -590,21 +629,7 @@ static NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)openFullscreenTrackpad {
-    BrowserControlViewController *vc = [[BrowserControlViewController alloc] init];
-    __weak typeof(self) weakSelf = self;
-    vc.sendPayloadBlock = ^(NSDictionary *payload) {
-        [weakSelf sendDirectPayload:payload msg:nil];
-    };
-    vc.sendActionBlock = ^(HSBRemoteSimulateAction action) {
-        // Here we intercept the action to send formatted dictionary over tcp
-        NSMutableDictionary *p = [NSMutableDictionary dictionary];
-        p[HSBRemotePayloadKeyAction] = action;
-        [weakSelf sendDirectPayload:p msg:nil];
-    };
-    vc.checkConnectionBlock = ^BOOL {
-        return [HSBTVOSConnectionManager sharedManager].isConnected;
-    };
-    [self presentViewController:vc animated:YES completion:nil];
+    [self openModernRemoteController];
 }
 
 - (void)openModernRemoteController {
@@ -616,15 +641,27 @@ static NSString * L(NSString *en, NSString *zh) {
         NSString *host = hostname ? [NSString stringWithUTF8String:hostname] : @"apple-tv.local";
         [HSBModernRemoteBridge connectWithHost:host port:56789 deviceName:deviceName];
     }
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:modernVC];
-    UIBarButtonItem *closeItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(dismissModernRemoteModal)];
-    modernVC.navigationItem.leftBarButtonItem = closeItem;
-    [self presentViewController:nav animated:YES completion:nil];
+    modernVC.hidesBottomBarWhenPushed = YES;
+    if (self.navigationController) {
+        // 使用导航栏全屏压栈推入，绝非浮层弹窗，彻底杜绝下拉手势冲突导致页面关闭
+        [self.navigationController pushViewController:modernVC animated:YES];
+    } else {
+        // 防御性兜底：若不在导航栈中，强制采用 UIModalPresentationFullScreen 并禁用交互式下拉
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:modernVC];
+        nav.modalPresentationStyle = UIModalPresentationFullScreen;
+        if (@available(iOS 13.0, *)) {
+            nav.modalInPresentation = YES;
+        }
+        UIBarButtonItem *closeItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose target:self action:@selector(dismissModernRemoteModal)];
+        modernVC.navigationItem.leftBarButtonItem = closeItem;
+        [self presentViewController:nav animated:YES completion:nil];
+    }
 }
 
 - (void)dismissModernRemoteModal {
     [self dismissViewControllerAnimated:YES completion:nil];
 }
+
 
 
 - (void)sendDirectPayload:(NSDictionary *)payload msg:(NSString *)msg {
@@ -1005,6 +1042,44 @@ static NSString * L(NSString *en, NSString *zh) {
         } else {
             weakSelf.isConnectedToTV = NO;
         }
+    }];
+}
+
+- (void)handleWatchReachabilityChanged:(NSNotification *)note {
+    [self updateWatchSessionState];
+}
+
+- (void)handleWatchActionReceived:(NSNotification *)note {
+    NSString *action = note.userInfo[@"action"];
+    if (!action) return;
+    
+    __weak typeof(self) weakSelf = self;
+    [self updateUI:^{
+        NSString *readableName = action;
+        if ([action isEqualToString:@"flip_up"]) {
+            readableName = L(@"⌚️ Wrist Flip Up (Next)", @"⌚️ 向上翻腕 (下一页)");
+        } else if ([action isEqualToString:@"flip_down"]) {
+            readableName = L(@"⌚️ Wrist Flip Down (Prev)", @"⌚️ 向下翻腕 (上一页)");
+        } else if ([action isEqualToString:@"shake"]) {
+            readableName = L(@"⌚️ Wrist Shake (Refresh)", @"⌚️ 摇动手腕 (刷新)");
+        }
+        
+        BOOL tvConnected = [HSBTVOSConnectionManager sharedManager].isConnected;
+        if (tvConnected) {
+            weakSelf.logLabel.text = [NSString stringWithFormat:L(@"✅ %@ -> TV", @"✅ %@ -> 已投送电视"), readableName];
+            weakSelf.logLabel.textColor = [UIColor systemGreenColor];
+        } else {
+            weakSelf.logLabel.text = [NSString stringWithFormat:L(@"⌚️ %@ (TV Offline)", @"⌚️ %@ (电视未连接)"), readableName];
+            weakSelf.logLabel.textColor = [UIColor systemCyanColor];
+        }
+        
+        UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+        [feedback impactOccurred];
+        
+        weakSelf.logLabel.alpha = 0.3;
+        [UIView animateWithDuration:0.25 animations:^{
+            weakSelf.logLabel.alpha = 1.0;
+        }];
     }];
 }
 

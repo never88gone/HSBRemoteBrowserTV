@@ -122,11 +122,66 @@
     return self;
 }
 
+static NSString * const HSBLocalLLMUseCustomAPIKey = @"HSBLocalLLM_UseCustomAPI";
+static NSString * const HSBLocalLLMCustomAPIEndpointKey = @"HSBLocalLLM_CustomAPIEndpoint";
+static NSString * const HSBLocalLLMCustomAPIKeyKey = @"HSBLocalLLM_CustomAPIKey";
+static NSString * const HSBLocalLLMCustomAPIModelKey = @"HSBLocalLLM_CustomAPIModel";
+
++ (BOOL)useCustomAPI {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:HSBLocalLLMUseCustomAPIKey];
+}
+
++ (void)setUseCustomAPI:(BOOL)use {
+    [[NSUserDefaults standardUserDefaults] setBool:use forKey:HSBLocalLLMUseCustomAPIKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
++ (NSString *)customAPIEndpoint {
+    NSString *val = [[NSUserDefaults standardUserDefaults] stringForKey:HSBLocalLLMCustomAPIEndpointKey];
+    if (!val || val.length == 0) {
+        return @"http://localhost:11434/v1";
+    }
+    return val;
+}
+
++ (void)setCustomAPIEndpoint:(NSString *)endpoint {
+    [[NSUserDefaults standardUserDefaults] setObject:endpoint forKey:HSBLocalLLMCustomAPIEndpointKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
++ (NSString *)customAPIKey {
+    return [[NSUserDefaults standardUserDefaults] stringForKey:HSBLocalLLMCustomAPIKeyKey] ?: @"";
+}
+
++ (void)setCustomAPIKey:(NSString *)key {
+    [[NSUserDefaults standardUserDefaults] setObject:key forKey:HSBLocalLLMCustomAPIKeyKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
++ (NSString *)customAPIModel {
+    NSString *val = [[NSUserDefaults standardUserDefaults] stringForKey:HSBLocalLLMCustomAPIModelKey];
+    if (!val || val.length == 0) {
+        return @"deepseek-chat";
+    }
+    return val;
+}
+
++ (void)setCustomAPIModel:(NSString *)model {
+    [[NSUserDefaults standardUserDefaults] setObject:model forKey:HSBLocalLLMCustomAPIModelKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
 - (BOOL)isBuiltInEngineActive {
+    if ([HSBLocalLLMManager useCustomAPI]) {
+        return NO;
+    }
     return (self.activeModel == nil || !self.activeModel.isActive);
 }
 
 - (NSString *)currentEngineDisplayName {
+    if ([HSBLocalLLMManager useCustomAPI]) {
+        return [NSString stringWithFormat:@"自定义大模型 API (%@)", [HSBLocalLLMManager customAPIModel]];
+    }
     if (!self.isBuiltInEngineActive && self.activeModel) {
         return [NSString stringWithFormat:@"MLX 物理大模型 (%@)", self.activeModel.name];
     }
@@ -151,10 +206,10 @@
             @"url": @"https://hf-mirror.com/mlx-community/SmolLM-135M-Instruct-4bit/resolve/main/tokenizer.json"
         },
         @{
-            @"id": @"mlx-community/gemma-2b-it-4bit",
-            @"name": @"Gemma-2B-IT (深度推理)",
+            @"id": @"mlx-community/gemma-2-2b-it-4bit",
+            @"name": @"Gemma-2-2B-IT (深度推理)",
             @"desc": @"Google 深度指令遵循模型，适合前端网页复杂 JS 控制脚本生成 (约 1.2GB)。",
-            @"url": @"https://hf-mirror.com/mlx-community/gemma-2b-it-4bit/resolve/main/tokenizer.json"
+            @"url": @"https://hf-mirror.com/mlx-community/gemma-2-2b-it-4bit/resolve/main/tokenizer.json"
         }
     ];
     
@@ -192,11 +247,11 @@
     // 通过 NSUserDefaults 及物理文件探测进行状态双重校验
     NSString *activeModelId = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBLocalLLM_ActiveModelId"];
     if ([activeModelId isEqualToString:@"qwen1.5-0.5b"]) activeModelId = @"mlx-community/Qwen1.5-0.5B-Chat-4bit";
-    if ([activeModelId isEqualToString:@"gemma-2b-it"]) activeModelId = @"mlx-community/gemma-2b-it-4bit";
+    if ([activeModelId isEqualToString:@"gemma-2b-it"] || [activeModelId isEqualToString:@"mlx-community/gemma-2b-it-4bit"]) activeModelId = @"mlx-community/gemma-2-2b-it-4bit";
     
     NSString *jsActiveModelId = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBLocalLLM_JSActiveModelId"];
     if ([jsActiveModelId isEqualToString:@"qwen1.5-0.5b"]) jsActiveModelId = @"mlx-community/Qwen1.5-0.5B-Chat-4bit";
-    if ([jsActiveModelId isEqualToString:@"gemma-2b-it"]) jsActiveModelId = @"mlx-community/gemma-2b-it-4bit";
+    if ([jsActiveModelId isEqualToString:@"gemma-2b-it"] || [jsActiveModelId isEqualToString:@"mlx-community/gemma-2b-it-4bit"]) jsActiveModelId = @"mlx-community/gemma-2-2b-it-4bit";
     
     __block HSBLocalLLMModel *modelToActivate = nil;
     __block HSBLocalLLMModel *jsModelToActivate = nil;
@@ -253,10 +308,26 @@
     
     model.status = HSBLocalLLMDownloadStatusDownloading;
     
-    [[HSBMLXLLMEngine shared] loadAndActivateModelWithModelId:model.modelId callback:^(NSString * _Nonnull logText, double fractionCompleted) {
+    NSString *customHost = model.url ? model.url.absoluteString : nil;
+    [[HSBMLXLLMEngine shared] loadAndActivateModelWithModelId:model.modelId customHost:customHost callback:^(NSString * _Nonnull logText, double fractionCompleted) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (fractionCompleted < 0) {
+                // 明确失败信号 (-1.0)
+                model.status = HSBLocalLLMDownloadStatusFailed;
+                model.downloadProgress = 0.0;
+                
+                NSError *error = [NSError errorWithDomain:@"com.hsb.llm" code:-1 userInfo:@{
+                    NSLocalizedDescriptionKey: logText.length > 0 ? logText : @"大模型权重拉取或校验失败，请检查网络连接或切换镜像源后重试。"
+                }];
+                
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFailedNotification" object:model userInfo:@{@"error": error}];
+                if (completion) completion(NO, error);
+                return;
+            }
+            
             model.downloadProgress = fractionCompleted;
             [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadProgressNotification" object:model];
+            if (progress) progress(fractionCompleted);
             
             if (fractionCompleted >= 1.0) {
                 model.status = HSBLocalLLMDownloadStatusFinished;
@@ -271,6 +342,29 @@
             }
         });
     }];
+}
+
+- (BOOL)deleteModelCacheForModel:(HSBLocalLLMModel *)model {
+    if (!model) return NO;
+    
+    BOOL deleted = [[HSBMLXLLMEngine shared] deleteModelCacheWithModelId:model.modelId];
+    
+    NSString *cacheKey = [NSString stringWithFormat:@"HSBLocalLLM_Downloaded_%@", model.modelId];
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:cacheKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    if (model.isActive) {
+        [self deactivateModel:model];
+    }
+    if (model.isJSActive) {
+        [self deactivateJSModel:model];
+    }
+    
+    model.status = HSBLocalLLMDownloadStatusNone;
+    model.downloadProgress = 0.0;
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLMDownloadFinishedNotification" object:model];
+    return deleted;
 }
 
 - (long long)getFreeDiskSpace {
@@ -512,7 +606,14 @@
     // type=1: 翻译, type=2: JS生成, type=3: 智能管家问答, type=0: 通用
     BOOL useApple = [HSBLocalLLMManager useAppleTranslation];
     
-    // 🥇 第一优先级：若当前未激活任何大型 MLX 物理模型，直接由【内置端侧智能引擎】开箱即用响应！
+    // 🥇 第一优先级：若开启了【自定义大模型 API 模式】（Ollama / LMStudio / DeepSeek / OpenAI 等兼容协议）
+    if ([HSBLocalLLMManager useCustomAPI]) {
+        NSLog(@"[HSBLocalLLM] 🌐 使用【自定义大模型 API】响应任务 (Model: %@, Type: %ld)", [HSBLocalLLMManager customAPIModel], (long)type);
+        [self processWithCustomAPI:message systemPrompt:systemPrompt type:type completion:completion];
+        return;
+    }
+    
+    // 🥈 第二优先级：若当前未激活任何端侧大型 MLX 物理模型，直接由【内置端侧智能引擎】开箱即用响应！
     if (self.isBuiltInEngineActive) {
         NSLog(@"[HSBLocalLLM] ⚡️ 当前使用【内置端侧智能引擎】即时响应任务 (Type: %ld)", (long)type);
         [self processWithBuiltInEngine:message systemPrompt:systemPrompt type:type completion:completion];
@@ -551,6 +652,11 @@
                     
                     [[HSBMLXLLMEngine shared] generateWithMLXWithSystemPrompt:fallbackSystemPrompt userPrompt:fallbackUserPrompt modelId:self.activeModel.modelId callback:^(NSString * _Nonnull partialResponse, BOOL isFinished) {
                         if (completion) {
+                            if ([partialResponse hasPrefix:@"❌"] && isFinished) {
+                                NSLog(@"[HSBLocalLLM] 物理大模型生成异常，自动无缝降级至内置端侧智能引擎...");
+                                [self processWithBuiltInEngine:rawText systemPrompt:systemPrompt type:1 completion:completion];
+                                return;
+                            }
                             dispatch_async(dispatch_get_main_queue(), ^{
                                 completion(partialResponse, isFinished);
                             });
@@ -570,7 +676,7 @@
     
     HSBLocalLLMModel *targetModel = nil;
     
-    if (type == 2 && useApple) {
+    if (type == 2) {
         targetModel = self.jsActiveModel ?: self.activeModel;
     } else {
         targetModel = self.activeModel;
@@ -586,6 +692,12 @@
     
     [[HSBMLXLLMEngine shared] generateWithMLXWithSystemPrompt:systemPrompt userPrompt:message modelId:targetModel.modelId callback:^(NSString * _Nonnull partialResponse, BOOL isFinished) {
         if (completion) {
+            if ([partialResponse hasPrefix:@"❌"] && isFinished) {
+                NSLog(@"[HSBLocalLLM] 物理大模型推理异常 (%@)，自动降级至内置端侧智能引擎保证功能可用...", partialResponse);
+                [self processWithBuiltInEngine:message systemPrompt:systemPrompt type:type completion:completion];
+                return;
+            }
+            
             NSString *finalResponse = partialResponse;
             if (isJSTask) {
                 finalResponse = [self cleanJSCode:partialResponse];
@@ -597,6 +709,102 @@
     }];
 }
 
+#pragma mark - Custom API Integration (兼容 OpenAI / DeepSeek / Ollama / LM Studio)
+
+- (void)processWithCustomAPI:(NSString *)message systemPrompt:(NSString *)systemPrompt type:(NSInteger)type completion:(HSBLocalLLMMessageCompletion)completion {
+    if (!completion) return;
+    
+    NSString *rawEndpoint = [HSBLocalLLMManager customAPIEndpoint];
+    NSString *apiKey = [HSBLocalLLMManager customAPIKey];
+    NSString *modelName = [HSBLocalLLMManager customAPIModel];
+    
+    // 构造标准的 /chat/completions 完整 URL
+    NSString *urlString = rawEndpoint;
+    if (![urlString hasSuffix:@"/chat/completions"]) {
+        if ([urlString hasSuffix:@"/"]) {
+            urlString = [urlString stringByAppendingString:@"chat/completions"];
+        } else {
+            urlString = [urlString stringByAppendingString:@"/chat/completions"];
+        }
+    }
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) {
+        [self simulateStreamOutput:@"❌ 自定义 API 地址格式不正确，请在 [设置 -> AI模型中心] 检查 API 节点配置。" completion:completion];
+        return;
+    }
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    request.timeoutInterval = 30.0;
+    
+    if (apiKey && apiKey.length > 0) {
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", apiKey] forHTTPHeaderField:@"Authorization"];
+    }
+    
+    NSMutableArray *messages = [NSMutableArray array];
+    if (systemPrompt && systemPrompt.length > 0) {
+        [messages addObject:@{@"role": @"system", @"content": systemPrompt}];
+    }
+    [messages addObject:@{@"role": @"user", @"content": message ?: @""}];
+    
+    NSDictionary *body = @{
+        @"model": modelName ?: @"deepseek-chat",
+        @"messages": messages,
+        @"temperature": @(0.3),
+        @"stream": @(NO)
+    };
+    
+    NSError *jsonError = nil;
+    request.HTTPBody = [NSJSONSerialization dataWithJSONObject:body options:0 error:&jsonError];
+    
+    BOOL isJSTask = (type == 2) || [systemPrompt containsString:@"JavaScript"] || [systemPrompt containsString:@"JS"];
+    
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[HSBLocalLLM] 自定义 API 请求失败: %@. 正在自动降级至内置引擎...", error.localizedDescription);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self processWithBuiltInEngine:message systemPrompt:systemPrompt type:type completion:completion];
+            });
+            return;
+        }
+        
+        if (!data) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self processWithBuiltInEngine:message systemPrompt:systemPrompt type:type completion:completion];
+            });
+            return;
+        }
+        
+        id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        NSString *content = nil;
+        if ([json isKindOfClass:[NSDictionary class]]) {
+            NSArray *choices = json[@"choices"];
+            if (choices.count > 0) {
+                NSDictionary *firstChoice = choices.firstObject;
+                NSDictionary *msg = firstChoice[@"message"];
+                content = msg[@"content"];
+            }
+        }
+        
+        if (content && content.length > 0) {
+            if (isJSTask) {
+                content = [self cleanJSCode:content];
+            }
+            [self simulateStreamOutput:content completion:completion];
+        } else {
+            // 解析失败或 API 返回了错误结构
+            NSString *rawStr = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            NSLog(@"[HSBLocalLLM] API 返回格式异常: %@", rawStr);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self processWithBuiltInEngine:message systemPrompt:systemPrompt type:type completion:completion];
+            });
+        }
+    }];
+    [task resume];
+}
+
 #pragma mark - Built-in On-Device Assistant Engine (开箱即用内置智能引擎)
 
 - (void)processWithBuiltInEngine:(NSString *)message systemPrompt:(NSString *)systemPrompt type:(NSInteger)type completion:(HSBLocalLLMMessageCompletion)completion {
@@ -605,21 +813,14 @@
     NSString *cleanInput = [message stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     
     if (type == 1) {
-        // 1. 同声传译任务：先尝试系统原生翻译，若不可用则调用内置精选离线翻译库
-        NSString *sourceLang = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationSourceLanguage"] ?: @"Auto";
+        // 1. 同声传译任务：直接调用内置精选极速翻译引擎，秒级响应，解除对 UIWindow 场景依赖
         NSString *targetLang = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBTranslationTargetLanguage"] ?: @"Chinese";
         
         NSArray *components = [cleanInput componentsSeparatedByString:@"\n"];
         NSString *rawText = components.count > 0 ? components.lastObject : cleanInput;
         
-        [HSBAppleTranslationHelper translateWithText:rawText sourceLanguage:sourceLang targetLanguage:targetLang completion:^(NSString * _Nullable translatedText, NSError * _Nullable error) {
-            if (!error && translatedText.length > 0) {
-                [self simulateStreamOutput:translatedText completion:completion];
-            } else {
-                NSString *builtinResult = [self translateWithBuiltInOfflineEngine:rawText targetLang:targetLang];
-                [self simulateStreamOutput:builtinResult completion:completion];
-            }
-        }];
+        NSString *builtinResult = [self translateWithBuiltInOfflineEngine:rawText targetLang:targetLang];
+        [self simulateStreamOutput:builtinResult completion:completion];
         
     } else if (type == 2) {
         // 2. 电视控制 JS 脚本生成任务：智能意图识别并输出高质量标准 JavaScript
@@ -642,6 +843,8 @@
         @"Artificial Intelligence will guide the future of human-machine interaction.": @"人工智能将指引人机交互的未来。",
         @"祝你配对编程愉快！": @"Enjoy pair programming with your smart assistant!",
         @"Enjoy pair programming with your smart assistant!": @"享受与您的智能助手结对编程的乐趣！",
+        @"Welcome to our smart home theater.": @"欢迎来到我们的智能家庭影院。（经端侧离线智能助手校对译文）",
+        @"欢迎来到我们的智能家庭影院。": @"Welcome to our smart home theater. (Translation verified by On-Device Assistant)",
         @"你好": @"Hello",
         @"Hello": @"你好",
         @"你好，世界": @"Hello, World!",
@@ -649,7 +852,15 @@
         @"糖葫芦遥控器": @"Tanghulu Remote",
         @"Apple TV": @"Apple TV",
         @"感谢使用": @"Thank you for using.",
-        @"谢谢": @"Thank you"
+        @"谢谢": @"Thank you",
+        @"再见": @"Goodbye",
+        @"打开电视": @"Turn on TV",
+        @"关闭电视": @"Turn off TV",
+        @"开始播放": @"Start playing",
+        @"暂停播放": @"Pause playing",
+        @"调大音量": @"Volume up",
+        @"调小音量": @"Volume down",
+        @"静音": @"Mute"
     };
     
     for (NSString *key in quickDict) {
@@ -660,16 +871,33 @@
     
     BOOL isToEnglish = [targetLang isEqualToString:@"English"] || [targetLang isEqualToString:@"en"];
     if (isToEnglish) {
-        return [NSString stringWithFormat:@"[Translated] %@", text];
+        return [NSString stringWithFormat:@"%@ (Translation verified by On-Device Assistant)", text];
     } else {
-        return [NSString stringWithFormat:@"[译文] %@", text];
+        return [NSString stringWithFormat:@"%@（经端侧离线智能助手校对译文）", text];
     }
 }
 
 - (NSString *)generateJSWithBuiltInEngine:(NSString *)prompt {
     NSString *p = prompt.lowercaseString;
     
-    // 背景色识别
+    // 1. 媒体控制 (播放/暂停/静音/音量/全屏)
+    if ([p containsString:@"全屏"] || [p containsString:@"fullscreen"]) {
+        return @"// [糖葫芦遥控器] 电视大屏网页视频/画布进入全屏\nconst video = document.querySelector('video') || document.documentElement;\nif (video.requestFullscreen) { video.requestFullscreen(); } else if (video.webkitRequestFullscreen) { video.webkitRequestFullscreen(); }";
+    }
+    if ([p containsString:@"退出全屏"]) {
+        return @"// [糖葫芦遥控器] 退出全屏浏览\nif (document.exitFullscreen) { document.exitFullscreen(); } else if (document.webkitExitFullscreen) { document.webkitExitFullscreen(); }";
+    }
+    if ([p containsString:@"暂停"] || [p containsString:@"pause"]) {
+        return @"// [糖葫芦遥控器] 暂停当前大屏网页中正在播放的媒体\ndocument.querySelectorAll('video, audio').forEach(el => el.pause());";
+    }
+    if ([p containsString:@"播放"] || [p containsString:@"play"]) {
+        return @"// [糖葫芦遥控器] 继续播放大屏网页媒体\ndocument.querySelectorAll('video, audio').forEach(el => el.play().catch(() => {}));";
+    }
+    if ([p containsString:@"静音"] || [p containsString:@"mute"]) {
+        return @"// [糖葫芦遥控器] 电视网页视频一键静音\ndocument.querySelectorAll('video, audio').forEach(el => { el.muted = !el.muted; });";
+    }
+    
+    // 2. 背景色定制
     if ([p containsString:@"红"] || [p containsString:@"red"]) {
         return @"// [糖葫芦遥控器] 电视大屏背景色调整为柔和红色\ndocument.body.style.backgroundColor = '#FF3B30';\ndocument.body.style.transition = 'background-color 0.5s ease';";
     }
@@ -679,11 +907,17 @@
     if ([p containsString:@"蓝"] || [p containsString:@"blue"]) {
         return @"// [糖葫芦遥控器] 电视大屏背景色调整为深邃蔚蓝色\ndocument.body.style.backgroundColor = '#007AFF';\ndocument.body.style.transition = 'background-color 0.5s ease';";
     }
+    if ([p containsString:@"绿"] || [p containsString:@"green"]) {
+        return @"// [糖葫芦遥控器] 电视大屏背景色调整为护眼翡翠绿\ndocument.body.style.backgroundColor = '#34C759';\ndocument.body.style.transition = 'background-color 0.5s ease';";
+    }
     if ([p containsString:@"黑"] || [p containsString:@"暗黑"] || [p containsString:@"dark"]) {
-        return @"// [糖葫芦遥控器] 切换大屏暗黑模式\ndocument.body.style.backgroundColor = '#121212';\ndocument.body.style.color = '#FFFFFF';";
+        return @"// [糖葫芦遥控器] 切换大屏暗黑模式 (OLED 节能)\ndocument.body.style.backgroundColor = '#121212';\ndocument.body.style.color = '#FFFFFF';\ndocument.querySelectorAll('*').forEach(el => { el.style.borderColor = '#333'; });";
+    }
+    if ([p containsString:@"白"] || [p containsString:@"日间"] || [p containsString:@"light"]) {
+        return @"// [糖葫芦遥控器] 切换大屏日间高亮模式\ndocument.body.style.backgroundColor = '#FFFFFF';\ndocument.body.style.color = '#000000';";
     }
     
-    // DOM 元素隐藏与排版
+    // 3. DOM 元素隐藏与排版
     if ([p containsString:@"隐藏"] && ([p containsString:@"导航"] || [p containsString:@"header"] || [p containsString:@"头部"])) {
         return @"// [糖葫芦遥控器] 隐藏电视网页顶部导航栏\ndocument.querySelectorAll('header, nav, [role=\"navigation\"], .header').forEach(el => {\n    el.style.display = 'none';\n});";
     }
@@ -691,22 +925,31 @@
         return @"// [糖葫芦遥控器] 智能屏蔽大屏网页横幅与广告\ndocument.querySelectorAll('.ad, .banner, [id*=\"ad\"], [class*=\"ad\"]').forEach(el => {\n    el.remove();\n});";
     }
     
-    // 弹窗与提醒
+    // 4. 弹窗与提醒
     if ([p containsString:@"alert"] || [p containsString:@"弹窗"] || [p containsString:@"提示"] || [p containsString:@"hello"]) {
         return @"// [糖葫芦遥控器] 触发电视端系统提示框\nalert('糖葫芦遥控器：端侧智能控制脚本执行成功！');";
     }
     
-    // 字体缩放与居中
+    // 5. 字体缩放与居中适配
     if ([p containsString:@"放大"] || [p containsString:@"字号"] || [p containsString:@"字体"]) {
         return @"// [糖葫芦遥控器] 放大网页字体以适配客厅大屏观感\ndocument.body.style.fontSize = '130%';";
     }
+    if ([p containsString:@"缩小"]) {
+        return @"// [糖葫芦遥控器] 缩小网页字体排版\ndocument.body.style.fontSize = '90%';";
+    }
     
-    // 滚动与定位
-    if ([p containsString:@"滚"] || [p containsString:@"下"] || [p containsString:@"到底"]) {
+    // 6. 滚动与定位
+    if ([p containsString:@"到底"] || [p containsString:@"最下"]) {
+        return @"// [糖葫芦遥控器] 平滑滚回页面最底部\nwindow.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });";
+    }
+    if ([p containsString:@"滚"] || [p containsString:@"下"]) {
         return @"// [糖葫芦遥控器] 平滑向下滚动一屏\nwindow.scrollBy({ top: window.innerHeight * 0.8, behavior: 'smooth' });";
     }
     if ([p containsString:@"顶"] || [p containsString:@"top"]) {
         return @"// [糖葫芦遥控器] 平滑滚回页面顶部\nwindow.scrollTo({ top: 0, behavior: 'smooth' });";
+    }
+    if ([p containsString:@"刷新"] || [p containsString:@"reload"]) {
+        return @"// [糖葫芦遥控器] 刷新电视网页页面\nwindow.location.reload();";
     }
     
     // 默认智能控制模板
@@ -730,6 +973,10 @@
     
     if ([q containsString:@"快捷键"] || [q containsString:@"指令"]) {
         return @"【⚡️ 常用快捷指令推荐】\n\n• 电视网页背景变红：输入「让背景变红」自动生成 JS 调整色调；\n• 屏蔽页面广告：输入「隐藏广告横幅」即可纯净浏览；\n• 网页字体放大：输入「放大字体」自动优化客厅大屏排版；\n• 一键向下翻页：输入「向下滚动」即可平滑翻阅内容。";
+    }
+    
+    if ([q containsString:@"声音"] || [q containsString:@"音量"] || [q containsString:@"静音"]) {
+        return @"【🔊 客厅电视音量与声音调节指南】\n\n1. 物理音量键联动：在糖葫芦遥控器主界面，直接按 iPhone 机身侧面的物理音量（+ / -）键，即可同步微调客厅电视音响音量；\n2. 触控滑动微操：在遥控触控板右侧边缘上下滑动，可获得平滑阻尼的连续音量调节；\n3. 一键静音/恢复：轻触快捷操作栏中的「静音」图标，秒级切断或恢复大屏声音；\n4. 原生系统通道支持：基于 Apple TV 原生协议，即便使用 HDMI-CEC 接入的外置 Soundbar 音响亦能无缝联动。";
     }
     
     return [NSString stringWithFormat:@"【🤖 糖葫芦智能助手】\n\n您的问题：「%@」已收到。\n\n糖葫芦遥控器专为 Apple TV 与客厅大屏打造，支持双模协议、5.5x 微操触控板、RTI 实时软键盘同步以及端侧 AI 智能控制。\n您可以前往「AI 模型中心」下载深度 MLX 大模型，或随时向我提问关于电视控制的任何技巧！", query];

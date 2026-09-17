@@ -11,10 +11,13 @@ public struct ModernDPadView: View {
     public var onSelect: ((KeyAction) -> Void)?
     
     // 布局常量
-    private let outerSize: CGFloat = HSBRemoteConstants.dpadOuterSize       // 150pt
-    private let centerSize: CGFloat = HSBRemoteConstants.dpadCenterSize     // 75pt
-    private let visualDotSize: CGFloat = HSBRemoteConstants.visualDotSize   // 5pt
-    private let hitTargetSize: CGFloat = HSBRemoteConstants.hitTargetSize   // 30pt
+    private let outerSize: CGFloat
+    private let centerSize: CGFloat
+    private let hitTargetSize: CGFloat = 48.0
+    
+    private var offsetDistance: CGFloat {
+        return outerSize * 0.35
+    }
     
     // 触觉反馈发生器
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -25,47 +28,69 @@ public struct ModernDPadView: View {
     @State private var isCenterPressed: Bool = false
     
     public init(
+        size: CGFloat = 260.0,
         onDirection: ((DPadDirection, KeyAction) -> Void)? = nil,
         onSelect: ((KeyAction) -> Void)? = nil
     ) {
+        self.outerSize = size
+        self.centerSize = size * 0.44
         self.onDirection = onDirection
         self.onSelect = onSelect
     }
     
     public var body: some View {
         ZStack {
-            // 外盘圆环底座
+            // 外盘圆环底座 (质感深色微渐变)
             Circle()
-                .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                .fill(
+                    RadialGradient(
+                        gradient: Gradient(colors: [
+                            Color(UIColor.secondarySystemBackground),
+                            Color(UIColor.secondarySystemBackground).opacity(0.8)
+                        ]),
+                        center: .center,
+                        startRadius: 20,
+                        endRadius: outerSize * 0.5
+                    )
+                )
                 .frame(width: outerSize, height: outerSize)
                 .overlay(
                     Circle()
                         .stroke(Color.white.opacity(0.12), lineWidth: 1.5)
                 )
-                .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 5)
+                .shadow(color: Color.black.opacity(0.2), radius: 12, x: 0, y: 6)
             
-            // 四向按压白色高光动效 (25% 不透明度)
+            // 四向按压白色高光动效
             if let dir = pressedDirection {
                 directionHighlight(for: dir)
             }
             
-            // 四向视觉圆点与 30x30 扩展触控热区
-            directionHitButton(direction: .up, offset: CGSize(width: 0, height: -46))
-            directionHitButton(direction: .down, offset: CGSize(width: 0, height: 46))
-            directionHitButton(direction: .left, offset: CGSize(width: -46, height: 0))
-            directionHitButton(direction: .right, offset: CGSize(width: 46, height: 0))
+            // 四向视觉方向箭头与 48x48 扩展触控热区（符合 Apple HIG 规范）
+            directionHitButton(direction: .up, offset: CGSize(width: 0, height: -offsetDistance))
+            directionHitButton(direction: .down, offset: CGSize(width: 0, height: offsetDistance))
+            directionHitButton(direction: .left, offset: CGSize(width: -offsetDistance, height: 0))
+            directionHitButton(direction: .right, offset: CGSize(width: offsetDistance, height: 0))
             
-            // 中心确认键 (75pt, 精准 50% 比例)
+            // 中心确认键
             Button(action: {}) {
                 ZStack {
                     Circle()
-                        .fill(Color(UIColor.tertiarySystemBackground))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(UIColor.tertiarySystemBackground),
+                                    Color(UIColor.secondarySystemBackground)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .frame(width: centerSize, height: centerSize)
                         .overlay(
                             Circle()
                                 .stroke(Color.white.opacity(0.15), lineWidth: 1)
                         )
-                        .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
                     
                     if isCenterPressed {
                         Circle()
@@ -74,9 +99,10 @@ public struct ModernDPadView: View {
                     }
                     
                     Text("OK")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: max(17, outerSize * 0.08), weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                 }
+                .scaleEffect(isCenterPressed ? 0.94 : 1.0)
             }
             .buttonStyle(PlainButtonStyle())
             .simultaneousGesture(
@@ -109,7 +135,7 @@ public struct ModernDPadView: View {
                     gradient: Gradient(colors: [Color.white.opacity(HSBRemoteConstants.blinkOpacity), Color.clear]),
                     center: highlightCenter(for: direction),
                     startRadius: 5,
-                    endRadius: 50
+                    endRadius: outerSize * 0.35
                 )
             )
             .frame(width: outerSize, height: outerSize)
@@ -127,13 +153,15 @@ public struct ModernDPadView: View {
     
     @ViewBuilder
     private func directionHitButton(direction: DPadDirection, offset: CGSize) -> some View {
+        let isPressed = (pressedDirection == direction)
         ZStack {
-            // 5x5 视觉指示器
-            Circle()
-                .fill(Color.primary.opacity(0.55))
-                .frame(width: visualDotSize, height: visualDotSize)
+            // 精致 SF Symbol 方向指示图标 (取代单调小圆点)
+            Image(systemName: chevronIcon(for: direction))
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(isPressed ? Color.accentColor : Color.primary.opacity(0.45))
+                .scaleEffect(isPressed ? 1.25 : 1.0)
             
-            // 30x30 扩展触控透明热区
+            // 48x48 扩展触控透明热区
             Color.clear
                 .frame(width: hitTargetSize, height: hitTargetSize)
                 .contentShape(Rectangle())
@@ -157,5 +185,14 @@ public struct ModernDPadView: View {
                     onDirection?(direction, .tap)
                 }
         )
+    }
+    
+    private func chevronIcon(for direction: DPadDirection) -> String {
+        switch direction {
+        case .up: return "chevron.up"
+        case .down: return "chevron.down"
+        case .left: return "chevron.left"
+        case .right: return "chevron.right"
+        }
     }
 }

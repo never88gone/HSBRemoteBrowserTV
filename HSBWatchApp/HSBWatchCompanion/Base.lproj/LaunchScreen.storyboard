@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="24765" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
-    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <device id="retina6_12" orientation="portrait" appearance="dark"/>
     <dependencies>
         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24743"/>
         <capability name="Safe area layout guides" minToolsVersion="9.0"/>
@@ -15,21 +15,40 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="lunchlogo" translatesAutoresizingMaskIntoConstraints="NO" id="3OW-7h-6tQ">
-                                <rect key="frame" x="121.66666666666669" y="251" width="150" height="150"/>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="brandlogo" translatesAutoresizingMaskIntoConstraints="NO" id="3OW-7h-6tQ">
+                                <rect key="frame" x="126.66666666666669" y="306" width="140" height="140"/>
                                 <color key="backgroundColor" white="0.0" alpha="0.0" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
-                                <rect key="contentStretch" x="1" y="0.0" width="1" height="1"/>
                                 <constraints>
-                                    <constraint firstAttribute="width" constant="150" id="4dk-b9-zqT"/>
-                                    <constraint firstAttribute="height" constant="150" id="qlO-U5-FCm"/>
+                                    <constraint firstAttribute="width" constant="140" id="4dk-b9-zqT"/>
+                                    <constraint firstAttribute="height" constant="140" id="qlO-U5-FCm"/>
                                 </constraints>
                             </imageView>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="糖葫芦遥控器" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="H8G-pD-title">
+                                <rect key="frame" x="20" y="468" width="353" height="27"/>
+                                <fontDescription key="fontDescription" type="system" weight="heavy" pointSize="22"/>
+                                <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="智能大屏触控与演示助手" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="sK2-sub-title">
+                                <rect key="frame" x="20" y="503" width="353" height="17"/>
+                                <fontDescription key="fontDescription" type="system" weight="medium" pointSize="14"/>
+                                <color key="textColor" white="0.65000000000000002" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                <nil key="highlightedColor"/>
+                            </label>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
-                        <color key="backgroundColor" red="0.14948633310000001" green="0.25156062839999999" blue="0.46616232400000002" alpha="1" colorSpace="custom" customColorSpace="displayP3"/>
+                        <color key="backgroundColor" white="0.0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                         <constraints>
-                            <constraint firstItem="3OW-7h-6tQ" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" constant="-100" id="4g6-AX-O0i"/>
+                            <constraint firstItem="3OW-7h-6tQ" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" constant="-50" id="4g6-AX-O0i"/>
                             <constraint firstItem="3OW-7h-6tQ" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="y6d-Pb-qqx"/>
+                            <constraint firstItem="H8G-pD-title" firstAttribute="top" secondItem="3OW-7h-6tQ" secondAttribute="bottom" constant="22" id="H8G-top-constraint"/>
+                            <constraint firstItem="H8G-pD-title" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="H8G-x-constraint"/>
+                            <constraint firstItem="H8G-pD-title" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="H8G-l-constraint"/>
+                            <constraint firstItem="H8G-pD-title" firstAttribute="trailing" secondItem="6Tk-OE-BBY" secondAttribute="trailing" constant="20" id="H8G-r-constraint"/>
+                            <constraint firstItem="sK2-sub-title" firstAttribute="top" secondItem="H8G-pD-title" secondAttribute="bottom" constant="8" id="sK2-top-constraint"/>
+                            <constraint firstItem="sK2-sub-title" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="sK2-x-constraint"/>
+                            <constraint firstItem="sK2-sub-title" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" constant="20" id="sK2-l-constraint"/>
+                            <constraint firstItem="sK2-sub-title" firstAttribute="trailing" secondItem="6Tk-OE-BBY" secondAttribute="trailing" constant="20" id="sK2-r-constraint"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -39,6 +58,6 @@
         </scene>
     </scenes>
     <resources>
-        <image name="lunchlogo" width="360" height="360"/>
+        <image name="brandlogo" width="150" height="150"/>
     </resources>
 </document>

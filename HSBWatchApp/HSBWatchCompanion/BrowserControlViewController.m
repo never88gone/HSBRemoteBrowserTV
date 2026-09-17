@@ -119,7 +119,7 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.view.backgroundColor = [UIColor clearColor];
     self.title = L(@"Fullscreen Trackpad", @"全屏触控板");
     
     [self setupUI];

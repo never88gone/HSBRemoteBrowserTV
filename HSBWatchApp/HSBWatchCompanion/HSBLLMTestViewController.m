@@ -466,7 +466,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.testBtn.enabled = YES;
     self.testBtn.alpha = 1.0;
     
-    if (activeModel && activeModel.isActive) {
+    if ([HSBLocalLLMManager useCustomAPI]) {
+        self.statusLabel.text = [NSString stringWithFormat:@"已连接自定义 API：%@\n%@", [HSBLocalLLMManager customAPIModel], [HSBLocalLLMManager customAPIEndpoint]];
+        self.goToActivateBtn.hidden = NO;
+        [self.goToActivateBtn setTitle:@"管理配置" forState:UIControlStateNormal];
+    } else if (activeModel && activeModel.isActive) {
         self.statusLabel.text = [NSString stringWithFormat:L(@"Active Model: %@ (MLX Engine)", @"已挂载物理大模型：%@ (MLX 神经网络推理)"), activeModel.name];
         self.goToActivateBtn.hidden = YES;
     } else {

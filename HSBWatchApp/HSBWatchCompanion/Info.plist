@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleDisplayName</key>
 	<string>糖葫芦遥控器</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -16,6 +20,8 @@
 	<string>需要访问您的本地网络，以便自动发现并连接局域网中的 Apple TV 与糖葫芦大屏浏览器，提供双模无线遥控、光标微操及实时多媒体控制功能。</string>
 	<key>NSMotionUsageDescription</key>
 	<string>使用设备运动传感器以支持遥控器体感空中飞鼠光标控制与健康运动数据联动。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>使用语音识别功能，支持通过语音输入向大屏发送文字内容与智能搜索指令。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

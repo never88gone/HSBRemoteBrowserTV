@@ -91,10 +91,17 @@
     [super viewDidLoad];
     self.title = @"AI 模型中心";
     
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"添加模型"
-                                                                              style:UIBarButtonItemStylePlain
-                                                                             target:self
-                                                                             action:@selector(handleCustomModelAdding)];
+    UIBarButtonItem *apiItem = [[UIBarButtonItem alloc] initWithTitle:@"API配置"
+                                                                style:UIBarButtonItemStylePlain
+                                                               target:self
+                                                               action:@selector(handleCustomAPIConfig)];
+    
+    UIBarButtonItem *addItem = [[UIBarButtonItem alloc] initWithTitle:@"添加模型"
+                                                                style:UIBarButtonItemStylePlain
+                                                               target:self
+                                                               action:@selector(handleCustomModelAdding)];
+    
+    self.navigationItem.rightBarButtonItems = @[addItem, apiItem];
     
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.tableView.delegate = self;
@@ -106,6 +113,91 @@
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleDownloadNotification:) name:@"HSBLocalLLMDownloadProgressNotification" object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleDownloadNotification:) name:@"HSBLocalLLMDownloadFinishedNotification" object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleDownloadNotification:) name:@"HSBLocalLLMDownloadFailedNotification" object:nil];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestDemoDownloading"]) {
+        if ([HSBLocalLLMManager shared].availableModels.count >= 3) {
+            HSBLocalLLMModel *m0 = [HSBLocalLLMManager shared].availableModels[0];
+            HSBLocalLLMModel *m1 = [HSBLocalLLMManager shared].availableModels[1];
+            
+            m0.status = HSBLocalLLMDownloadStatusFinished;
+            [[HSBLocalLLMManager shared] activateModel:m0];
+            
+            m1.status = HSBLocalLLMDownloadStatusDownloading;
+            m1.downloadProgress = 0.685;
+            
+            [self.tableView reloadData];
+        }
+    }
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"UITestTriggerDownloadIndex"]) {
+        NSInteger downloadIdx = [[NSUserDefaults standardUserDefaults] integerForKey:@"UITestTriggerDownloadIndex"];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (downloadIdx < [HSBLocalLLMManager shared].availableModels.count) {
+                UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+                btn.tag = downloadIdx;
+                [self handleAction:btn];
+            }
+        });
+    }
+    
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"UITestVerifyModelActivationIndex"]) {
+        NSInteger actIdx = [[NSUserDefaults standardUserDefaults] integerForKey:@"UITestVerifyModelActivationIndex"];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (actIdx < [HSBLocalLLMManager shared].availableModels.count) {
+                HSBLocalLLMModel *m = [HSBLocalLLMManager shared].availableModels[actIdx];
+                m.status = HSBLocalLLMDownloadStatusFinished;
+                [[HSBLocalLLMManager shared] activateModel:m];
+                [self.tableView reloadData];
+            }
+        });
+    }
+}
+
+- (void)handleCustomAPIConfig {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"自定义大模型 API 配置"
+                                                                   message:@"兼容 OpenAI / DeepSeek / Ollama / LM Studio 协议。\n配置后可在局域网或云端直接调用大模型，无需占用手机下载庞大端侧权重。"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"API 端点 (例如: http://192.168.1.100:11434/v1)";
+        textField.text = [HSBLocalLLMManager customAPIEndpoint];
+        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"API Key (可选，局域网 Ollama 可留空)";
+        textField.text = [HSBLocalLLMManager customAPIKey];
+        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"模型名称 (例如: deepseek-chat 或 qwen2.5:7b)";
+        textField.text = [HSBLocalLLMManager customAPIModel];
+        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    }];
+    
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"保存并开启" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        NSString *endpoint = alert.textFields[0].text;
+        NSString *apiKey = alert.textFields[1].text;
+        NSString *model = alert.textFields[2].text;
+        
+        [HSBLocalLLMManager setCustomAPIEndpoint:endpoint];
+        [HSBLocalLLMManager setCustomAPIKey:apiKey];
+        [HSBLocalLLMManager setCustomAPIModel:model];
+        [HSBLocalLLMManager setUseCustomAPI:YES];
+        
+        [self.tableView reloadData];
+    }]];
+    
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)handleCustomModelAdding {
@@ -172,13 +264,19 @@
         NSError *error = note.userInfo[@"error"];
         HSBLocalLLMModel *model = note.object;
         dispatch_async(dispatch_get_main_queue(), ^{
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"下载失败"
-                                                                           message:[NSString stringWithFormat:@"%@\n\n是否启用“离线模拟模式”直接生成模拟模型以供测试？", error.localizedDescription ?: @"未知网络错误"]
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"模型下载未完成"
+                                                                           message:[NSString stringWithFormat:@"%@\n\n提示：端侧大模型体积较大，受国际网络带宽与镜像源影响可能超时。您可以点击“重试”，或直接使用“自定义 API 模式”免下载调用顶级大模型。", error.localizedDescription ?: @"未知网络错误"]
                                                                     preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-            [alert addAction:[UIAlertAction actionWithTitle:@"启用模拟模式" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                [self enableDemoModeForModel:model];
+            [alert addAction:[UIAlertAction actionWithTitle:@"重试下载" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                if (model) {
+                    [[HSBLocalLLMManager shared] downloadModel:model progress:^(double p) {} completion:^(BOOL success, NSError * _Nullable err) {}];
+                    [self.tableView reloadData];
+                }
             }]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"配置 API (免下载)" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                [self handleCustomAPIConfig];
+            }]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
             [self presentViewController:alert animated:YES completion:nil];
         });
     }
@@ -187,20 +285,13 @@
     });
 }
 
-- (void)enableDemoModeForModel:(HSBLocalLLMModel *)model {
-    if (!model) return;
-    NSString *docDir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-    NSString *modelcPath = [docDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mlmodelc", model.modelId]];
-    [[NSFileManager defaultManager] createDirectoryAtPath:modelcPath withIntermediateDirectories:YES attributes:nil error:nil];
-    
-    model.status = HSBLocalLLMDownloadStatusFinished;
-    model.downloadProgress = 1.0;
-    
+- (void)translationSwitchChanged:(UISwitch *)sender {
+    [HSBLocalLLMManager setUseAppleTranslation:sender.on];
     [self.tableView reloadData];
 }
 
-- (void)translationSwitchChanged:(UISwitch *)sender {
-    [HSBLocalLLMManager setUseAppleTranslation:sender.on];
+- (void)customAPISwitchChanged:(UISwitch *)sender {
+    [HSBLocalLLMManager setUseCustomAPI:sender.on];
     [self.tableView reloadData];
 }
 
@@ -210,7 +301,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) {
-        return 2;
+        return 3;
     }
     return [HSBLocalLLMManager shared].availableModels.count;
 }
@@ -219,7 +310,7 @@
     if (section == 0) {
         return @"AI 引擎与翻译配置";
     }
-    return [HSBLocalLLMManager useAppleTranslation] ? @"电视控制 JS 脚本生成专用模型" : @"通用端侧大模型 (翻译与JS生成共用)";
+    return [HSBLocalLLMManager useAppleTranslation] ? @"电视控制 JS 脚本生成专用模型 (端侧)" : @"通用端侧大模型 (翻译与JS生成共用)";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -243,6 +334,33 @@
             cell.accessoryView = nil;
             return cell;
         } else if (indexPath.row == 1) {
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"APISettingCell"];
+            if (!cell) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"APISettingCell"];
+            }
+            cell.imageView.image = nil;
+            cell.textLabel.text = @"自定义大模型 API 模式";
+            BOOL isCustomAPI = [HSBLocalLLMManager useCustomAPI];
+            if (isCustomAPI) {
+                cell.detailTextLabel.text = [NSString stringWithFormat:@"已开启 (%@: %@) - 点击可修改配置", [HSBLocalLLMManager customAPIModel], [HSBLocalLLMManager customAPIEndpoint]];
+                cell.detailTextLabel.textColor = palette.primaryColor;
+            } else {
+                cell.detailTextLabel.text = @"开启后直连局域网或云端 API (Ollama/LMStudio/DeepSeek)，免下载几百兆文件。点击配置。";
+                cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+            }
+            cell.detailTextLabel.numberOfLines = 0;
+            cell.detailTextLabel.font = [UIFont systemFontOfSize:11];
+            cell.backgroundColor = palette.cardBgColor;
+            cell.textLabel.textColor = [UIColor whiteColor];
+            
+            UISwitch *sw = [[UISwitch alloc] init];
+            sw.on = isCustomAPI;
+            sw.onTintColor = palette.primaryColor;
+            [sw addTarget:self action:@selector(customAPISwitchChanged:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = sw;
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            return cell;
+        } else if (indexPath.row == 2) {
             UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"SettingCell"];
             if (!cell) {
                 cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"SettingCell"];
@@ -271,7 +389,16 @@
     HSBLocalLLMModel *model = [HSBLocalLLMManager shared].availableModels[indexPath.row];
     
     cell.textLabel.text = model.name;
-    cell.detailTextLabel.text = model.modelDescription;
+    if (model.status == HSBLocalLLMDownloadStatusDownloading) {
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"正在高速拉取端侧权重: %.1f%%", model.downloadProgress * 100];
+        cell.detailTextLabel.textColor = palette.primaryColor;
+    } else if (model.status == HSBLocalLLMDownloadStatusFailed) {
+        cell.detailTextLabel.text = @"下载连接异常，可点击“重试”或左滑清除缓存";
+        cell.detailTextLabel.textColor = [UIColor systemOrangeColor];
+    } else {
+        cell.detailTextLabel.text = model.modelDescription;
+        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+    }
     
     // OLED 高奢暗黑换肤适配
     cell.backgroundColor = palette.cardBgColor;
@@ -302,6 +429,10 @@
         [cell.actionButton setTitle:@"暂停" forState:UIControlStateNormal];
     } else if (model.status == HSBLocalLLMDownloadStatusPaused) {
         [cell.actionButton setTitle:@"继续" forState:UIControlStateNormal];
+    } else if (model.status == HSBLocalLLMDownloadStatusFailed) {
+        [cell.actionButton setTitle:@"重试" forState:UIControlStateNormal];
+        cell.actionButton.tintColor = [UIColor systemOrangeColor];
+        cell.actionButton.backgroundColor = [[UIColor systemOrangeColor] colorWithAlphaComponent:0.15];
     } else {
         [cell.actionButton setTitle:@"下载" forState:UIControlStateNormal];
     }
@@ -317,10 +448,26 @@
     [cell.testButton addTarget:self action:@selector(handleTestAction:) forControlEvents:UIControlEventTouchUpInside];
     cell.testButton.tag = indexPath.row;
     
-    cell.progressView.hidden = (model.status == HSBLocalLLMDownloadStatusNone || model.status == HSBLocalLLMDownloadStatusFinished);
+    cell.progressView.hidden = (model.status == HSBLocalLLMDownloadStatusNone || model.status == HSBLocalLLMDownloadStatusFinished || model.status == HSBLocalLLMDownloadStatusFailed);
     cell.progressView.progress = model.downloadProgress;
     
     return cell;
+}
+
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.section == 0) return nil;
+    
+    HSBLocalLLMModel *model = [HSBLocalLLMManager shared].availableModels[indexPath.row];
+    
+    UIContextualAction *deleteAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:@"清除缓存" handler:^(UIContextualAction * _Nonnull action, __kindof UIView * _Nonnull sourceView, void (^ _Nonnull completionHandler)(BOOL)) {
+        BOOL ok = [[HSBLocalLLMManager shared] deleteModelCacheForModel:model];
+        [self.tableView reloadData];
+        completionHandler(ok);
+    }];
+    deleteAction.backgroundColor = [UIColor systemRedColor];
+    deleteAction.image = [UIImage systemImageNamed:@"trash.fill"];
+    
+    return [UISwipeActionsConfiguration configurationWithActions:@[deleteAction]];
 }
 
 - (void)handleAction:(UIButton *)sender {
@@ -376,6 +523,9 @@
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.section == 0 && indexPath.row == 1) {
+        [self handleCustomAPIConfig];
+    }
 }
 
 

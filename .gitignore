@@ -32,3 +32,7 @@ session_progress.json
 .agents
 Tests/.build
 Tests
+mlx-swift-lm-local/
+HSBWatchApp/mlx-swift-lm-local/
+ORIGINAL_REQUEST.md
+

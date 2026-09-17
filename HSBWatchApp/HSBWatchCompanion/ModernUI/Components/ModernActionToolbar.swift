@@ -28,18 +28,6 @@ public struct ModernActionToolbar: View {
     
     public var body: some View {
         VStack(spacing: 16) {
-            // 模式选择栏
-            HStack(spacing: 8) {
-                modeButton(mode: .dual, title: "双模协同", icon: "arrow.triangle.swap")
-                modeButton(mode: .screenOnly, title: "大屏专有", icon: "tv")
-                modeButton(mode: .nativeOnly, title: "原生系统", icon: "applelogo")
-            }
-            .padding(4)
-            .background(
-                Capsule()
-                    .fill(Color(UIColor.tertiarySystemBackground))
-            )
-            
             // 系统与媒体快捷按钮行
             HStack(spacing: 18) {
                 // 系统 Home 键
@@ -99,29 +87,6 @@ public struct ModernActionToolbar: View {
             }
             .padding(.horizontal, 8)
         }
-    }
-    
-    @ViewBuilder
-    private func modeButton(mode: HSBRemoteMode, title: String, icon: String) -> some View {
-        Button(action: {
-            lightHaptic.impactOccurred()
-            currentMode = mode
-        }) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
-            .foregroundColor(currentMode == mode ? .white : .primary)
-            .background(
-                Capsule()
-                    .fill(currentMode == mode ? Color.accentColor : Color.clear)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
     }
     
     @ViewBuilder

@@ -44,6 +44,9 @@ extern NSString * const HSBThemeChangedNotification;
 @property (nonatomic, readonly) NSString *themeName;
 
 + (instancetype)shared;
++ (UIColor *)tanghuluBrandColor;
++ (NSArray<UIColor *> *)brandGradientColors;
++ (CAGradientLayer *)createBrandGradientLayerWithBounds:(CGRect)bounds;
 - (void)updateTheme:(HSBThemeStyle)style;
 - (NSArray<NSString *> *)allThemeNames;
 

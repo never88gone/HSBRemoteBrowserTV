@@ -6,6 +6,7 @@
 #import "HSBContactUsViewController.h"
 #import "HSBLocalLLMManager.h"
 #import "HSBOpenSourceLibrariesViewController.h"
+#import "HSBAboutViewController.h"
 
 
 static inline NSString * L(NSString *en, NSString *zh) {
@@ -15,6 +16,18 @@ static inline NSString * L(NSString *en, NSString *zh) {
     }
     return en;
 }
+
+@interface HSBGradientBackgroundView : UIView
+@end
+
+@implementation HSBGradientBackgroundView
++ (Class)layerClass {
+    return [CAGradientLayer class];
+}
+@end
+
+@interface SettingsViewController ()
+@end
 
 @implementation SettingsViewController
 
@@ -27,8 +40,27 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.title = L(@"Settings", @"设置");
     [self.tableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"Cell"];
     
-    // Add close button if presented modally
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:L(@"Done", @"完成") style:UIBarButtonItemStyleDone target:self action:@selector(closeSettings)];
+    // 设置深空极光自适应渐变背景
+    self.tableView.backgroundColor = [UIColor clearColor];
+    self.view.backgroundColor = [UIColor clearColor];
+    
+    HSBGradientBackgroundView *bgView = [[HSBGradientBackgroundView alloc] initWithFrame:self.tableView.bounds];
+    CAGradientLayer *gradLayer = (CAGradientLayer *)bgView.layer;
+    NSMutableArray *cgColors = [NSMutableArray array];
+    for (UIColor *color in [HSBThemeManager brandGradientColors]) {
+        [cgColors addObject:(id)color.CGColor];
+    }
+    gradLayer.colors = cgColors;
+    gradLayer.locations = @[@(0.0), @(0.45), @(1.0)];
+    gradLayer.startPoint = CGPointMake(0.0, 0.0);
+    gradLayer.endPoint = CGPointMake(1.0, 1.0);
+    self.tableView.backgroundView = bgView;
+    self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
+    
+    // 仅在模态独立展示时保留完成按钮；Push 堆栈时自动隐藏，保留原生返回导航
+    if (self.presentingViewController && self.navigationController.viewControllers.firstObject == self) {
+        self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:L(@"Done", @"完成") style:UIBarButtonItemStyleDone target:self action:@selector(closeSettings)];
+    }
     
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleThemeChanged:) name:HSBThemeChangedNotification object:nil];
 }
@@ -49,7 +81,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
     HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
     
     self.navigationController.navigationBar.tintColor = palette.primaryColor;
-    self.navigationItem.rightBarButtonItem.tintColor = palette.primaryColor;
+    if (self.navigationItem.rightBarButtonItem) {
+        self.navigationItem.rightBarButtonItem.tintColor = palette.primaryColor;
+    }
     
     NSMutableDictionary *titleAttrs = [NSMutableDictionary dictionary];
     titleAttrs[NSForegroundColorAttributeName] = [UIColor whiteColor];
@@ -58,12 +92,25 @@ static inline NSString * L(NSString *en, NSString *zh) {
         self.navigationController.navigationBar.largeTitleTextAttributes = titleAttrs;
     }
     
-    self.tableView.backgroundColor = palette.backgroundColor;
-    self.view.backgroundColor = palette.backgroundColor;
+    self.tableView.backgroundColor = [UIColor clearColor];
+    self.view.backgroundColor = [UIColor clearColor];
+    
+    if ([self.tableView.backgroundView.layer isKindOfClass:[CAGradientLayer class]]) {
+        CAGradientLayer *gradLayer = (CAGradientLayer *)self.tableView.backgroundView.layer;
+        NSMutableArray *cgColors = [NSMutableArray array];
+        for (UIColor *color in palette.gradientColors) {
+            [cgColors addObject:(id)color.CGColor];
+        }
+        gradLayer.colors = cgColors;
+    }
 }
 
 - (void)closeSettings {
-    [self.navigationController popViewControllerAnimated:YES];
+    if (self.presentingViewController && self.navigationController.viewControllers.firstObject == self) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    } else {
+        [self.navigationController popViewControllerAnimated:YES];
+    }
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -197,64 +244,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)showAbout {
-    HSBBaseViewController *vc = [[HSBBaseViewController alloc] init];
-    vc.title = L(@"About", @"关于");
-    
-    NSDictionary *infoDict = [[NSBundle mainBundle] infoDictionary];
-    NSString *appName = [infoDict objectForKey:@"CFBundleDisplayName"] ?: [infoDict objectForKey:@"CFBundleName"];
-    NSString *appVersion = [infoDict objectForKey:@"CFBundleShortVersionString"];
-    NSString *buildNum = [infoDict objectForKey:@"CFBundleVersion"];
-    
-    NSDictionary *iconsDict = infoDict[@"CFBundleIcons"];
-    NSDictionary *primaryIconDict = iconsDict[@"CFBundlePrimaryIcon"];
-    NSArray *iconFiles = primaryIconDict[@"CFBundleIconFiles"];
-    NSString *lastIcon = [iconFiles lastObject];
-    UIImage *appIconImage = [UIImage imageNamed:lastIcon];
-    if (!appIconImage) {
-        appIconImage = [UIImage systemImageNamed:@"tv.circle.fill"];
-    }
-    
-    UIImageView *iconView = [[UIImageView alloc] initWithImage:appIconImage];
-    iconView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.05];
-    iconView.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
-    iconView.layer.cornerRadius = 22;
-    iconView.clipsToBounds = YES;
-    iconView.translatesAutoresizingMaskIntoConstraints = NO;
-    [vc.view addSubview:iconView];
-    
-    UILabel *nameLabel = [[UILabel alloc] init];
-    nameLabel.text = appName ?: @"糖葫芦遥控器";
-    nameLabel.font = [UIFont boldSystemFontOfSize:24];
-    nameLabel.textColor = [UIColor whiteColor];
-    nameLabel.textAlignment = NSTextAlignmentCenter;
-    nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [vc.view addSubview:nameLabel];
-    
-    UILabel *versionLabel = [[UILabel alloc] init];
-    versionLabel.text = [NSString stringWithFormat:@"Version %@ (Build %@)", appVersion, buildNum];
-    versionLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-    versionLabel.textAlignment = NSTextAlignmentCenter;
-    versionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    versionLabel.userInteractionEnabled = YES;
-    
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapVersion:)];
-    [versionLabel addGestureRecognizer:tap];
-    
-    [vc.view addSubview:versionLabel];
-    
-    [NSLayoutConstraint activateConstraints:@[
-        [iconView.centerXAnchor constraintEqualToAnchor:vc.view.centerXAnchor],
-        [iconView.topAnchor constraintEqualToAnchor:vc.view.safeAreaLayoutGuide.topAnchor constant:50],
-        [iconView.widthAnchor constraintEqualToConstant:100],
-        [iconView.heightAnchor constraintEqualToConstant:100],
-        
-        [nameLabel.centerXAnchor constraintEqualToAnchor:vc.view.centerXAnchor],
-        [nameLabel.topAnchor constraintEqualToAnchor:iconView.bottomAnchor constant:20],
-        
-        [versionLabel.centerXAnchor constraintEqualToAnchor:vc.view.centerXAnchor],
-        [versionLabel.topAnchor constraintEqualToAnchor:nameLabel.bottomAnchor constant:10]
-    ]];
-    
+    HSBAboutViewController *vc = [[HSBAboutViewController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
 }
 

@@ -1,0 +1,25 @@
+Tanghulu Smart Remote is a versatile companion controller designed for Apple TV, Mac, and large screen displays. Featuring refined aesthetics and ultra-low latency protocols, it transforms your iPhone and Apple Watch into powerful input devices.
+
+[Core Interactive Scenarios]
+1. System Remote:
+• 270pt tactile D-pad wheel with precision directional navigation and haptic feedback;
+• Integrated Control Island: media seek, play/pause, Home, Back, Mute, Standby, and volume controls;
+• Streamlined software keyboard entry for effortless large-screen typing.
+
+2. IPTV & Media Playback Control:
+• Dual-tower CH+/- and VOL+/- stepping controls;
+• Quick access to popular channels with instant channel switching;
+• Numeric keypad selection and EPG guide access.
+
+3. PDF Presentation & Live Drawing:
+• Big presentation slide turners and first/last page jumping;
+• On-screen laser pointer and drawing whiteboard with color picker and undo support.
+
+4. Apple Watch Motion & Smart Assistant:
+• Wearable motion sync engine: wrist flip to turn slides, shake to refresh;
+• On-device private local LLM assistant for offline TV control guidance.
+
+[Seamless Connectivity]
+• Zero-config automatic Bonjour discovery on local Wi-Fi networks;
+• Direct IP pairing support;
+• Built-in offline exploration mode for immediate feature preview anywhere.

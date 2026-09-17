@@ -8,6 +8,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+extern NSString * const HSBWatchSessionReachabilityDidChangeNotification;
+extern NSString * const HSBWatchActionReceivedNotification;
+
 @interface HSBWatchSessionManager : NSObject <WCSessionDelegate>
 
 + (instancetype)sharedManager;

@@ -46,70 +46,159 @@ public class HSBMLXLLMEngine: NSObject {
         #endif
     }
     
-    /// HSBLocalLLMManager 会通过这个接口桥接物理下载与加载，真正下载 safetensors 权重分片
-    @objc public func loadAndActivateModel(modelId: String, callback: @escaping (String, Double) -> Void) {
+    /// 核心物理下载与加载接口：支持精确进度与错误上报，支持镜像源自动重试与完整性校验
+    /// 核心物理下载与加载接口：支持精确进度与错误上报，支持镜像源自动重试与完整性校验 (支持指定 customHost)
+    @objc(loadAndActivateModelWithModelId:customHost:callback:)
+    public func loadAndActivateModel(modelId: String, customHost: String?, callback: @escaping (String, Double) -> Void) {
         Task { @MainActor in
-            do {
-                self.accumulatedText = "【🚀 启动 Apple MLX 原生神经网络物理下载与编译模块】\n"
-                callback(self.accumulatedText, 0.0)
-                
-                let repoName = getRepoName(from: modelId)
-                
-                let config = ModelConfiguration(id: repoName)
-                MLX.Memory.cacheLimit = 20 * 1024 * 1024
-                
-                // 1. 智能判定：优先进行 100% 纯本地离线极速加载，绝不发起 any HuggingFace 握手网络请求
+            let repoName = getRepoName(from: modelId)
+            self.accumulatedText = "【🚀 启动 Apple MLX 原生神经网络物理下载与编译模块】\n"
+            callback(self.accumulatedText, 0.0)
+            
+            // 1. 智能判定：优先进行 100% 纯本地离线极速加载，绝不发起网络请求
+            if self.isModelDownloaded(modelId: modelId) {
                 let cache = HubCache.default
                 if let repoId = Repo.ID(rawValue: repoName),
                    let commitHash = cache.resolveRevision(repo: repoId, kind: .model, ref: "main") {
                     let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
-                    let configJson = localModelDir.appendingPathComponent("config.json")
-                    if FileManager.default.fileExists(atPath: configJson.path) {
-                        self.accumulatedText += "【📦 本地离线优先】发现本地完整缓存数据，正在进行 100% 纯本地离线装装...\n"
+                    do {
+                        self.accumulatedText += "【📦 本地离线优先】发现完整本地模型缓存，正在装载到统一内存...\n"
                         callback(self.accumulatedText, 0.5)
                         
+                        #if !targetEnvironment(simulator)
                         let container = try await LLMModelFactory.shared.loadContainer(
                             from: localModelDir,
                             using: #huggingFaceTokenizerLoader()
                         )
                         self.modelContainer = container
+                        #endif
                         self.currentModelId = modelId
                         
                         self.accumulatedText += "\n✅ 端侧纯血 MLX 模型加载完毕！硬件就绪。\n"
                         callback(self.accumulatedText, 1.0)
                         return
+                    } catch {
+                        print("[HSBMLXLLMEngine] 本地缓存装载异常: \(error.localizedDescription)，准备重新拉取。")
                     }
                 }
-                
-                // 2. 物理下载阶段：读取用户在【AI模型中心】自定义指定的下载地址/镜像源 Host 基准值进行下载
-                let customHost = self.getCustomHubHost(for: modelId)
-                self.accumulatedText += "正在桥接自定义镜像源 [\(customHost)] 拉取物理大模型张量...\n"
-                callback(self.accumulatedText, 0.1)
-                
-                let customHubClient = HubClient(host: URL(string: customHost)!)
-                let container = try await LLMModelFactory.shared.loadContainer(
-                    from: #hubDownloader(customHubClient),
-                    using: #huggingFaceTokenizerLoader(),
-                    configuration: config
-                ) { progress in
-                    Task { @MainActor in
-                        let pct = progress.fractionCompleted * 100
-                        let progStr = String(format: "%.1f%%", pct)
-                        callback("【原生模型下载与挂载进度】: \(progStr)", progress.fractionCompleted)
+            }
+            
+            // 2. 物理下载阶段：构建配置与多源重试列表
+            let config = ModelConfiguration(id: repoName)
+            #if !targetEnvironment(simulator)
+            MLX.Memory.cacheLimit = 20 * 1024 * 1024
+            #endif
+            
+            let primaryHost: String
+            let isSpecifiedHost: Bool
+            if let customHost = customHost, !customHost.isEmpty {
+                primaryHost = customHost
+                isSpecifiedHost = !customHost.contains("hf-mirror.com")
+            } else {
+                primaryHost = self.getCustomHubHost(for: modelId)
+                isSpecifiedHost = false
+            }
+            
+            let hostsToTry: [String]
+            if isSpecifiedHost {
+                hostsToTry = [primaryHost]
+            } else {
+                let fallbackHost = (primaryHost.contains("hf-mirror.com")) ? "https://huggingface.co" : "https://hf-mirror.com"
+                hostsToTry = [primaryHost, fallbackHost]
+            }
+            
+            var lastError: Error? = nil
+            var succeeded = false
+            
+            for (index, currentHost) in hostsToTry.enumerated() {
+                do {
+                    guard let hostURL = URL(string: currentHost) else { continue }
+                    let hostLabel = currentHost.contains("mirror") ? "国内镜像源" : (isSpecifiedHost ? "指定端点" : "官方直连源")
+                    self.accumulatedText += "正在桥接 [\(hostLabel): \(currentHost)] 拉取物理大模型张量...\n"
+                    callback(self.accumulatedText, 0.05)
+                    
+                    let customHubClient = HubClient(host: hostURL)
+                    
+                    let downloadTask = Task {
+                        try await resolve(
+                            configuration: config,
+                            from: #hubDownloader(customHubClient),
+                            useLatest: false
+                        ) { progress in
+                            Task { @MainActor in
+                                let fraction = max(0.02, min(0.99, progress.fractionCompleted))
+                                let pct = fraction * 100
+                                let progStr = String(format: "%.1f%%", pct)
+                                callback("【物理大模型下载与校验进度】: \(progStr)", fraction)
+                            }
+                        }
+                    }
+                    
+                    let timerTask = Task {
+                        try await Task.sleep(nanoseconds: 3_500_000_000)
+                        downloadTask.cancel()
+                    }
+                    
+                    let resolved: ResolvedModelConfiguration
+                    do {
+                        resolved = try await downloadTask.value
+                        timerTask.cancel()
+                    } catch {
+                        timerTask.cancel()
+                        throw error
+                    }
+                    
+                    // 物理校验：下载成功后验证核心权重是否存在
+                    guard self.isModelDownloaded(modelId: modelId) else {
+                        throw NSError(domain: "com.hsb.llm", code: -404, userInfo: [
+                            NSLocalizedDescriptionKey: "模型权重文件校验失败，safetensors 数据不完整。"
+                        ])
+                    }
+                    
+                    #if !targetEnvironment(simulator)
+                    let container = try await LLMModelFactory.shared.loadContainer(
+                        from: resolved.modelDirectory,
+                        using: #huggingFaceTokenizerLoader()
+                    )
+                    self.modelContainer = container
+                    #endif
+                    
+                    self.currentModelId = modelId
+                    self.accumulatedText += "\n✅ 端侧纯血 MLX 模型加载并挂载完毕！硬件就绪。\n"
+                    callback(self.accumulatedText, 1.0)
+                    succeeded = true
+                    break
+                    
+                } catch {
+                    lastError = error
+                    let errStr = error.localizedDescription.lowercased()
+                    let isNotFound = errStr.contains("404") || errStr.contains("not found") || errStr.contains("entry not found") || errStr.contains("nonexistent")
+                    
+                    if isNotFound {
+                        self.accumulatedText += "⚠️ 远端模型仓库不存在 (HTTP 404 / Not Found)，无需重试备用源。\n"
+                        break
+                    }
+                    
+                    let isLast = (index == hostsToTry.count - 1)
+                    if !isLast {
+                        self.accumulatedText += "⚠️ 当前源连接异常 (\(error.localizedDescription))，正在自动切换备用源重试...\n"
+                        callback(self.accumulatedText, 0.02)
                     }
                 }
-                
-                self.modelContainer = container
-                self.currentModelId = modelId
-                
-                self.accumulatedText += "\n✅ 端侧纯血 MLX 模型加载并挂载完毕！硬件就绪。\n"
-                callback(self.accumulatedText, 1.0)
-                
-            } catch {
-                self.accumulatedText += "\n❌ 原生 MLX 模型加载/下载失败: \(error.localizedDescription)\n"
-                callback(self.accumulatedText, 0.0)
+            }
+            
+            if !succeeded {
+                let errDesc = lastError?.localizedDescription ?? "未知网络连接错误"
+                self.accumulatedText += "\n❌ 原生 MLX 模型加载/下载失败: \(errDesc)\n"
+                // 约定：使用 -1.0 明确标记下载失败，防止上层状态机停留在 Downloading 死锁
+                callback(self.accumulatedText, -1.0)
             }
         }
+    }
+    
+    @objc(loadAndActivateModelWithModelId:callback:)
+    public func loadAndActivateModel(modelId: String, callback: @escaping (String, Double) -> Void) {
+        self.loadAndActivateModel(modelId: modelId, customHost: nil, callback: callback)
     }
     
     /// 获取特定模型设定的自定义 Host，默认 fallback 到全局自定义 Host 或 hf-mirror.com
@@ -138,6 +227,11 @@ public class HSBMLXLLMEngine: NSObject {
     }
     
     private func performInference(systemPrompt: String, userPrompt: String, modelId: String, callback: @escaping (String, Bool) -> Void) async {
+        #if targetEnvironment(simulator)
+        // 模拟器环境安全保护：iOS 模拟器不具备 Apple Silicon 原生 Metal 物理神经网络硬件，自动返回降级标记
+        callback("❌ [模拟器防护] 当前处于 iOS 模拟器环境，MLX 物理神经网络需真机运行。已自动为您无缝切换至端侧智能引擎响应。", true)
+        return
+        #else
         // 本地模型若未装载，则先以异步静默方式将其安全加载进 Unified Memory
         if self.modelContainer == nil || self.currentModelId != modelId {
             do {
@@ -160,12 +254,20 @@ public class HSBMLXLLMEngine: NSObject {
                 ["role": "user", "content": userPrompt]
             ]
             
-            let promptTokens = try await container.perform { context in
-                try context.tokenizer.applyChatTemplate(messages: messages)
+            // 安全构造输入 Tokens：优先使用 Chat Template，失败时自动降级编码
+            let promptTokens: [Int] = try await container.perform { context in
+                do {
+                    return try context.tokenizer.applyChatTemplate(messages: messages)
+                } catch {
+                    let fallbackPrompt = "\(systemPrompt)\n\nUser: \(userPrompt)\n\nAssistant:"
+                    return context.tokenizer.encode(text: fallbackPrompt)
+                }
             }
             let lmInput = LMInput(tokens: MLXArray(promptTokens))
             
             var generatedOutput = ""
+            var didReportFinished = false
+            
             let stream = try await container.perform { context in
                 try MLXLMCommon.generate(
                     input: lmInput,
@@ -177,65 +279,74 @@ public class HSBMLXLLMEngine: NSObject {
             for try await result in stream {
                 if Task.isCancelled {
                     callback("❌ 推理任务已手动取消或超时中断", true)
+                    didReportFinished = true
                     return
                 }
                 switch result {
                 case .chunk(let text):
                     if Task.isCancelled {
                         callback("❌ 推理任务已手动取消或超时中断", true)
+                        didReportFinished = true
                         return
                     }
                     generatedOutput += text
-                    // 极致清爽流式返回：只将大模型产出的纯净译文/代码回调给外部，绝无任何中间编译或思考日志前缀
                     callback(generatedOutput, false)
                 case .info(let stats):
-                    // 依然在后台控制台打印详细底层物理信息供分析，不显示给用户
                     let logText = String(format: "【🏆 本地 MLX 推理成功】吞吐率: %.2f tokens/s", stats.tokensPerSecond)
                     print(logText)
                     callback(generatedOutput, true)
+                    didReportFinished = true
                 case .toolCall(_):
                     break
                 }
             }
+            
+            // 兜底保障：确保循环结束时始终触发 isFinished 回调
+            if !didReportFinished {
+                callback(generatedOutput.isEmpty ? "（模型推理已就绪，无文本产出）" : generatedOutput, true)
+            }
         } catch {
             callback("❌ 本地物理大模型运算出错: \(error.localizedDescription)", true)
         }
+        #endif
     }
     
     private func loadAndActivateModelAsync(modelId: String) async throws {
+        #if targetEnvironment(simulator)
+        return
+        #else
         let repoName = getRepoName(from: modelId)
         
         MLX.Memory.cacheLimit = 20 * 1024 * 1024
+        
+        guard self.isModelDownloaded(modelId: modelId) else {
+            throw NSError(domain: "com.hsb.llm", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "本地模型数据未就绪。请前往 [设置 -> AI模型中心] 下载并激活当前模型。"
+            ])
+        }
         
         let cache = HubCache.default
         guard let repoId = Repo.ID(rawValue: repoName),
               let commitHash = cache.resolveRevision(repo: repoId, kind: .model, ref: "main") else {
             throw NSError(domain: "com.hsb.llm", code: 404, userInfo: [
-                NSLocalizedDescriptionKey: "本地模型数据未就绪。请前往 [设置 -> AI模型中心] 下载并激活当前模型。"
+                NSLocalizedDescriptionKey: "无法解析模型本地提交哈希。"
             ])
         }
         
         let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
-        let configJson = localModelDir.appendingPathComponent("config.json")
-        guard FileManager.default.fileExists(atPath: configJson.path) else {
-            throw NSError(domain: "com.hsb.llm", code: 404, userInfo: [
-                NSLocalizedDescriptionKey: "本地模型数据未就绪。请前往 [设置 -> AI模型中心] 下载并激活当前模型。"
-            ])
-        }
-        
         let container = try await LLMModelFactory.shared.loadContainer(
             from: localModelDir,
             using: #huggingFaceTokenizerLoader()
         )
         self.modelContainer = container
         self.currentModelId = modelId
+        #endif
     }
     
-    /// 物理检查本地沙盒缓存是否存在完整的 Safetensors 模型文件
+    /// 物理检查本地沙盒缓存是否存在完整的 Safetensors 模型文件与配置文件
     @objc(isModelDownloaded:)
     public func isModelDownloaded(modelId: String) -> Bool {
         let repoName = getRepoName(from: modelId)
-        
         let cache = HubCache.default
         guard let repoId = Repo.ID(rawValue: repoName),
               let commitHash = cache.resolveRevision(repo: repoId, kind: .model, ref: "main") else {
@@ -244,12 +355,63 @@ public class HSBMLXLLMEngine: NSObject {
         
         let localModelDir = cache.snapshotsDirectory(repo: repoId, kind: .model).appendingPathComponent(commitHash)
         let configJson = localModelDir.appendingPathComponent("config.json")
-        return FileManager.default.fileExists(atPath: configJson.path)
+        guard FileManager.default.fileExists(atPath: configJson.path) else {
+            return false
+        }
+        
+        // 校验是否存在至少一个非空的 safetensors 权重文件
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: localModelDir.path) else {
+            return false
+        }
+        
+        var hasValidSafetensors = false
+        for file in files {
+            if file.hasSuffix(".safetensors") {
+                let filePath = localModelDir.appendingPathComponent(file).path
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: filePath),
+                   let size = attrs[.size] as? NSNumber, size.int64Value > 1024 * 1024 { // 大于 1MB
+                    hasValidSafetensors = true
+                    break
+                }
+            }
+        }
+        return hasValidSafetensors
     }
     
     /// 检查大模型是否已经被成功载入内存中
     @objc public func isModelLoadedInMemory() -> Bool {
         return self.modelContainer != nil
+    }
+    
+    /// 物理删除本地模型缓存以释放空间
+    @objc public func deleteModelCache(modelId: String) -> Bool {
+        let repoName = getRepoName(from: modelId)
+        let cache = HubCache.default
+        guard let repoId = Repo.ID(rawValue: repoName) else { return false }
+        
+        let repoDir = cache.repoDirectory(repo: repoId, kind: .model)
+        let metaDir = cache.metadataDirectory(repo: repoId, kind: .model)
+        
+        var deleted = false
+        if FileManager.default.fileExists(atPath: repoDir.path) {
+            do {
+                try FileManager.default.removeItem(at: repoDir)
+                deleted = true
+                print("[HSBMLXLLMEngine] 成功清除模型物理缓存: \(repoDir.path)")
+            } catch {
+                print("[HSBMLXLLMEngine] 清理模型缓存失败: \(error.localizedDescription)")
+            }
+        }
+        
+        if FileManager.default.fileExists(atPath: metaDir.path) {
+            try? FileManager.default.removeItem(at: metaDir)
+        }
+        
+        if self.currentModelId == modelId {
+            self.modelContainer = nil
+            self.currentModelId = ""
+        }
+        return deleted
     }
     
     /// 主动终止/取消当前的流式文本生成任务，切断 Metal / GPU 运算
@@ -370,7 +532,7 @@ fileprivate func getRepoName(from modelId: String) -> String {
     if modelId.contains("/") {
         return modelId
     } else if modelId.contains("gemma") {
-        return "mlx-community/gemma-2b-it-4bit"
+        return "mlx-community/gemma-2-2b-it-4bit"
     } else {
         return "mlx-community/Qwen1.5-0.5B-Chat-4bit"
     }
