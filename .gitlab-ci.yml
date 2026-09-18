@@ -1,0 +1,86 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  LC_ALL: "en_US.UTF-8"
+  LANG: "en_US.UTF-8"
+  PATH: "/opt/homebrew/opt/ruby/bin:/opt/homebrew/bin:/usr/local/opt/ruby/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  APPLE_TEAM_ID: "876385K952"
+
+.apple_build:
+  stage: build
+  tags:
+    - macos
+  # 串行使用签名钥匙串，确保本地与 CI 构建不发生钥匙串锁竞争
+  resource_group: apple-signing
+  interruptible: false
+  before_script:
+    - 'test -n "${CI_PIPELINE_ID:-}" || { echo "Missing CI_PIPELINE_ID"; exit 1; }'
+    - 'PIPELINE_DATE="$(echo "${CI_PIPELINE_CREATED_AT:-}" | tr -dc "0-9" | cut -c1-12)"'
+    - 'export THLBROWSER_BUILD_NUMBER="${PIPELINE_DATE:-$(date +%Y%m%d%H%M)}$(printf "%02d" $((CI_PIPELINE_ID % 100)))"'
+    - 'export THLBROWSER_ARCHIVE_ROOT="$CI_PROJECT_DIR/Artifacts/AppStore/$THLBROWSER_BUILD_NUMBER"'
+    - 'export THLBROWSER_DERIVED_DATA_PATH="$CI_PROJECT_DIR/.thlbrowser-ci-derived/$CI_PIPELINE_ID"'
+    - 'mkdir -p "$CI_PROJECT_DIR/Artifacts/AppStore"'
+    - 'echo "$THLBROWSER_BUILD_NUMBER" > "$CI_PROJECT_DIR/Artifacts/AppStore/build_number.txt"'
+  artifacts:
+    name: "HSBRemoteBrowserTV-candidate-$CI_JOB_NAME-$CI_PIPELINE_ID"
+    paths:
+      - Artifacts/AppStore/
+    expire_in: 7 days
+
+# iOS + Watch 客户端自动打包：代码推送自动触发签名归档、独立验签与 IPA 导出
+build_ios_candidate:
+  extends: .apple_build
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: on_success
+    - if: '$CI_COMMIT_TAG'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /^release\//'
+      changes:
+        - ".gitlab-ci.yml"
+        - "HSBWatchApp/**/*"
+        - "script/**/*"
+        - "ExportOptions_iOS_appstore.plist"
+      when: on_success
+  script:
+    - bash script/archive_app_store.sh ios --export
+    - bash script/archive_app_store.sh ios --verify-only
+    - shasum -a 256 "$THLBROWSER_ARCHIVE_ROOT/ios/export/HSBWatchCompanion.ipa"
+
+# iOS 客户端自动分发到 TestFlight
+deploy_ios_testflight:
+  stage: deploy
+  tags:
+    - macos
+  resource_group: apple-signing
+  needs:
+    - build_ios_candidate
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: on_success
+    - if: '$CI_COMMIT_TAG'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH == "dev" || $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /^release\//'
+      changes:
+        - ".gitlab-ci.yml"
+        - "HSBWatchApp/**/*"
+        - "script/**/*"
+        - "ExportOptions_iOS_appstore.plist"
+      when: on_success
+  script:
+    - 'export THLBROWSER_BUILD_NUMBER="$(cat "$CI_PROJECT_DIR/Artifacts/AppStore/build_number.txt")"'
+    - 'export THLBROWSER_ARCHIVE_ROOT="$CI_PROJECT_DIR/Artifacts/AppStore/$THLBROWSER_BUILD_NUMBER"'
+    - 'export THLBROWSER_TESTFLIGHT_ARCHIVE_ROOT="$THLBROWSER_ARCHIVE_ROOT"'
+    - 'export THLBROWSER_TESTFLIGHT_BUILD_NUMBER="$THLBROWSER_BUILD_NUMBER"'
+    - 'export THLBROWSER_TESTFLIGHT_IPA_PATH="$THLBROWSER_ARCHIVE_ROOT/ios/export/HSBWatchCompanion.ipa"'
+    - 'export THLBROWSER_TESTFLIGHT_IPA_SHA256="$(shasum -a 256 "$THLBROWSER_TESTFLIGHT_IPA_PATH" | awk "{print \$1}")"'
+    - |
+      if [ -n "${APP_STORE_CONNECT_API_KEY_KEY:-}" ] || [ -n "${APP_STORE_CONNECT_API_KEY:-}" ] || [ -n "${ASC_API_KEY_P8_PATH:-}" ] || [ -f "HSBWatchApp/fastlane/.env" ]; then
+        echo "==> Deploying iOS to TestFlight automatically via fastlane..."
+        cd HSBWatchApp && fastlane ios upload_testflight
+      else
+        echo "==> APP_STORE_CONNECT_API_KEY not configured in GitLab CI/CD variables."
+        echo "==> Skipping automatic TestFlight upload. The verified iOS IPA artifact is preserved for download."
+      fi

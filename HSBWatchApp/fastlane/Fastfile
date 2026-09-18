@@ -1,10 +1,15 @@
+# Fastfile for HSBRemoteBrowserTV (iOS & watchOS Companion)
+# 参考 THLDance 工业级 CI/CD 与 TestFlight 分发标准
+
+require "open3"
+require "digest"
+
 # 自动读取并注入本地私有 .env 环境变量（如果存在，仅用于本地调试；在云端 CI 时安全跳过）
 ['../../.env', '../.env', '.env'].each do |relative_path|
   env_path = File.expand_path(relative_path, __FILE__)
   if File.exist?(env_path)
     begin
       content = File.read(env_path)
-      # 使用正则 scan 状态机匹配，可完美处理跨多行的双引号私钥（如 Apple PEM 私钥）
       content.scan(/^\s*([A-Za-z0-9_]+)\s*=\s*(?:"([\s\S]*?)"|'([\s\S]*?)'|([^\n#]+))/).each do |match|
         key = match[0]
         val = match[1] || match[2] || match[3]
@@ -13,112 +18,108 @@
         end
       end
     rescue => e
-      # 静默跳过读取错误
     end
   end
 end
 
+TEAM_ID = "876385K952"
+ENV["CERT_IGNORE_WWDR_CERTIFICATE"] = "true"
+
 default_platform(:ios)
 
-platform :ios do
-  desc "Build and upload iOS Companion app to TestFlight"
-  lane :beta do |options|
-    # 1. 从环境变量获取 App Store Connect API Key
-    # 自动同步注入给 fastlane 官方推荐的全局 SPACESHIP_ 变量，以在 pilot/deliver/spaceship 中实现多重鉴权兜底保障
-    ENV["SPACESHIP_CONNECT_API_KEY_ID"] = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"]
-    ENV["SPACESHIP_CONNECT_API_ISSUER_ID"] = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
-    ENV["SPACESHIP_CONNECT_API_KEY_CONTENT"] = ENV["APP_STORE_CONNECT_API_KEY_KEY"]
+def get_asc_api_key
+  key_id = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"] || ENV["APP_STORE_CONNECT_KEY_ID"]
+  issuer_id = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"] || ENV["APP_STORE_CONNECT_ISSUER_ID"]
+  key_content = ENV["APP_STORE_CONNECT_API_KEY_KEY"] || ENV["APP_STORE_CONNECT_API_KEY"] || ENV["APP_STORE_CONNECT_KEY_CONTENT"]
+  key_filepath = ENV["ASC_API_KEY_P8_PATH"] || ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"]
 
-    api_key = app_store_connect_api_key(
-      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
-      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
-      key_content: ENV["APP_STORE_CONNECT_API_KEY_KEY"],
-      is_key_content_base64: true, # 告诉 Fastlane 内容是 Base64 编码的
+  if key_filepath && File.exist?(key_filepath)
+    app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_filepath: key_filepath,
       in_house: false
     )
+  elsif key_content && File.exist?(key_content)
+    app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_filepath: key_content,
+      in_house: false
+    )
+  elsif key_content
+    is_base64 = !key_content.include?("BEGIN PRIVATE KEY")
+    app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_content: key_content,
+      is_key_content_base64: is_base64,
+      in_house: false
+    )
+  else
+    UI.user_error!("Missing App Store Connect API Key configuration")
+  end
+end
 
-    if options[:skip_build]
-      UI.important("⏭️ Skipping build as requested (skip_build:true)")
-    else
-      # 2. 从 AppVersion.xcconfig 动态获取版本号
-      version = ""
-      begin
-        # 路径解析：相对于 Fastfile 所在目录的上级目录中的配置文件
-        xcconfig_path = File.expand_path("../HSBWatchCompanion/AppVersion.xcconfig", __FILE__)
-        if File.exist?(xcconfig_path)
-          File.foreach(xcconfig_path) do |line|
-            if line =~ /MARKETING_VERSION\s*=\s*(.+)/
-              version = $1.strip
-            end
-          end
-        end
-      rescue => e
-        UI.important("Failed to read AppVersion.xcconfig: #{e.message}")
-      end
+def verified_testflight_ipa
+  archive_root = ENV["THLBROWSER_TESTFLIGHT_ARCHIVE_ROOT"].to_s
+  build_number = ENV["THLBROWSER_TESTFLIGHT_BUILD_NUMBER"].to_s
+  ipa_path = ENV["THLBROWSER_TESTFLIGHT_IPA_PATH"].to_s
+  expected_sha = ENV["THLBROWSER_TESTFLIGHT_IPA_SHA256"].to_s
 
-      # 动态生成基于时间戳的 Build Number (格式: YYMMDDHHMM，如 2605202105)
-      build_num = Time.now.strftime("%y%m%d%H%M")
+  if [archive_root, build_number, ipa_path, expected_sha].any?(&:empty?)
+    UI.user_error!("TestFlight candidate is not explicit: set THLBROWSER_TESTFLIGHT_ARCHIVE_ROOT, THLBROWSER_TESTFLIGHT_BUILD_NUMBER, THLBROWSER_TESTFLIGHT_IPA_PATH and THLBROWSER_TESTFLIGHT_IPA_SHA256.")
+  end
 
-      UI.message("📦 Starting Build for HSBWatchCompanion...")
-      UI.message("💡 Marketing Version: #{version}")
-      UI.message("💡 Auto-Generated Build Number: #{build_num}")
+  verifier = File.expand_path("../../script/verify_testflight_candidate.sh", __FILE__)
+  stdout, stderr, status = Open3.capture3(
+    verifier, "ios",
+    "--archive-root", archive_root,
+    "--build-number", build_number,
+    "--ipa", ipa_path,
+    "--sha256", expected_sha
+  )
+  unless status.success?
+    UI.user_error!("TestFlight candidate verification failed. #{stderr.strip}")
+  end
 
+  frozen_line = stdout.lines.find { |line| line.start_with?("VERIFIED_IPA_PATH=") }
+  UI.user_error!("Verifier returned no frozen IPA path") unless frozen_line
+  frozen_ipa = frozen_line.delete_prefix("VERIFIED_IPA_PATH=").strip
 
-      # 3. 将 GITHUB_VERSION 同步设置到 Xcode 工程中的 Build Version
-      if !build_num.empty?
-        increment_build_number(
-          build_number: build_num,
-          xcodeproj: "./HSBWatchApp.xcodeproj"
-        )
-      end
+  UI.message("Verified frozen iOS IPA, build #{build_number}, SHA-256 #{expected_sha}")
+  frozen_ipa
+end
 
-      # 4. 执行 IPA 编译打包
-      build_options = {
-        scheme: "HSBWatchCompanion",
-        project: "./HSBWatchApp.xcodeproj",
-        output_directory: "./build",
-        output_name: "HSBWatchCompanion.ipa",
-        export_method: "app-store",
-        export_options: {
-          method: "app-store",
-          compileBitcode: false,
-          provisioningProfiles: {
-            "com.never88gone.thlbrowserios" => (ENV["MAIN_PP_UUID"] && !ENV["MAIN_PP_UUID"].empty?) ? ENV["MAIN_PP_UUID"] : "thlbrowserios_dis",
-            "com.never88gone.thlbrowserios.watch" => (ENV["WATCH_PP_UUID"] && !ENV["WATCH_PP_UUID"].empty?) ? ENV["WATCH_PP_UUID"] : "thlbrowseriosWatch_dis"
-          }
-        }
-      }
+platform :ios do
+  desc "Upload verified iOS IPA to TestFlight (never rebuilds)"
+  lane :upload_testflight do
+    ipa = verified_testflight_ipa
+    api_key = get_asc_api_key
 
-      build_app(build_options)
-    end
-
-    UI.message("🚀 Uploading IPA to TestFlight...")
-
-    # 5. 上传包到 App Store Connect TestFlight
     upload_to_testflight(
       api_key: api_key,
-      ipa: "./build/HSBWatchCompanion.ipa",
-      skip_waiting_for_build_processing: true, # 不等待处理完成以缩短云端运行时长
-      skip_submission: true
+      skip_waiting_for_build_processing: true,
+      skip_submission: true,
+      beta_app_description: "糖葫芦大屏遥控器 (HSBRemoteBrowserTV) 测试更新",
+      changelog: "更新大模型与 TV 控制系统通道稳定性",
+      beta_app_feedback_email: "support@thltv.com",
+      ipa: ipa
     )
-    
     UI.success("🎉 TestFlight upload completed successfully!")
   end
 
-  desc "Upload and sync App Store metadata and screenshots without compiling code"
+  desc "Upload and sync App Store metadata and screenshots"
   lane :metadata do
-    ENV["SPACESHIP_CONNECT_API_KEY_ID"] = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"]
-    ENV["SPACESHIP_CONNECT_API_ISSUER_ID"] = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]
-    ENV["SPACESHIP_CONNECT_API_KEY_CONTENT"] = ENV["APP_STORE_CONNECT_API_KEY_KEY"]
+    # 上传前本地校验截图合规性 (尺寸、Alpha 通道)
+    validator = File.expand_path("validate_review_assets.rb", __dir__)
+    stdout, stderr, status = Open3.capture3("ruby", validator)
+    unless status.success?
+      UI.user_error!("Screenshot asset validation failed:\n#{stderr}\n#{stdout}")
+    end
+    UI.message(stdout)
 
-    api_key = app_store_connect_api_key(
-      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
-      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
-      key_content: ENV["APP_STORE_CONNECT_API_KEY_KEY"],
-      is_key_content_base64: true,
-      in_house: false
-    )
-
+    api_key = get_asc_api_key
     UI.message("🚀 Syncing App Store Metadata & Screenshots...")
     deliver(
       api_key: api_key,
@@ -128,5 +129,20 @@ platform :ios do
       overwrite_screenshots: true
     )
     UI.success("🎉 App Store Metadata sync completed successfully!")
+  end
+
+  desc "Legacy local build and upload lane"
+  lane :beta do
+    sh("bash ../script/archive_app_store.sh ios --export")
+    ipa_file = Dir.glob("../Artifacts/AppStore/*/ios/export/*.ipa").max_by { |f| File.mtime(f) }
+    UI.user_error!("No exported IPA found") unless ipa_file
+
+    api_key = get_asc_api_key
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      skip_submission: true,
+      ipa: ipa_file
+    )
   end
 end
