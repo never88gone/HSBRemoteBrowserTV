@@ -143,7 +143,11 @@ assert_equal "watchOS bundle identifier" "$(read_plist "$WATCH_PATH" CFBundleIde
 assert_equal "watchOS companion bundle identifier" "$(read_plist "$WATCH_PATH" WKCompanionAppBundleIdentifier)" "$EXPECTED_BUNDLE_ID"
 assert_equal "watchOS version" "$(read_plist "$WATCH_PATH" CFBundleShortVersionString)" "$APP_VERSION"
 assert_equal "watchOS build number" "$(read_plist "$WATCH_PATH" CFBundleVersion)" "$APP_BUILD"
-assert_equal "watchOS export-compliance flag" "$(read_plist "$WATCH_PATH" ITSAppUsesNonExemptEncryption)" "false"
+watch_compliance="$(read_plist "$WATCH_PATH" ITSAppUsesNonExemptEncryption 2>/dev/null || true)"
+if [[ -n "$watch_compliance" && "$watch_compliance" != "false" ]]; then
+  echo "ERROR: watchOS export-compliance flag must be 'false', found '$watch_compliance'" >&2
+  exit 1
+fi
 assert_privacy_manifest "$WATCH_PATH" "watchOS companion app"
 
 echo "==> 执行严格代码签名校验 (codesign --verify --deep --strict)..."
