@@ -6,7 +6,7 @@ require "digest"
 
 # 自动读取并注入本地私有 .env 环境变量（如果存在，仅用于本地调试；在云端 CI 时安全跳过）
 ['../../.env', '../.env', '.env'].each do |relative_path|
-  env_path = File.expand_path(relative_path, __FILE__)
+  env_path = File.expand_path(relative_path, __dir__)
   if File.exist?(env_path)
     begin
       content = File.read(env_path)
@@ -71,7 +71,7 @@ def verified_testflight_ipa
     UI.user_error!("TestFlight candidate is not explicit: set THLBROWSER_TESTFLIGHT_ARCHIVE_ROOT, THLBROWSER_TESTFLIGHT_BUILD_NUMBER, THLBROWSER_TESTFLIGHT_IPA_PATH and THLBROWSER_TESTFLIGHT_IPA_SHA256.")
   end
 
-  verifier = File.expand_path("../../script/verify_testflight_candidate.sh", __FILE__)
+  verifier = ENV["CI_PROJECT_DIR"] ? File.join(ENV["CI_PROJECT_DIR"], "script/verify_testflight_candidate.sh") : File.expand_path("../../script/verify_testflight_candidate.sh", __dir__)
   stdout, stderr, status = Open3.capture3(
     verifier, "ios",
     "--archive-root", archive_root,
