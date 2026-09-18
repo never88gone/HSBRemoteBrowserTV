@@ -26,6 +26,7 @@
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, HSBLocalLLMModel *> *taskMap;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSURLSessionDownloadTask *> *activeTasks;
 @property (nonatomic, strong, nullable) MLModel *coreMLModel;
+@property (nonatomic, assign) BOOL isPrewarming;
 
 // 🏆 私有方法前置声明以消除编译错误
 - (void)enterMockActivationModeForModel:(HSBLocalLLMModel *)model;
@@ -421,16 +422,42 @@ static NSString * const HSBLocalLLMCustomAPIModelKey = @"HSBLocalLLM_CustomAPIMo
 - (void)prewarmActiveModel {
     if (!self.activeModel) return;
     
+    // 🥇 物理缓存前置校验：若当前激活模型在沙盒本地尚未完整下载，绝对不进行静默预热（避免在冷启动后台偷跑下载引发网络阻塞）
+    BOOL isDownloaded = [[HSBMLXLLMEngine shared] isModelDownloaded:self.activeModel.modelId];
+    if (!isDownloaded) {
+        NSLog(@"[HSBLocalLLM] Active model '%@' is not yet downloaded on local disk. Skip background prewarming.", self.activeModel.modelId);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLM_PrewarmingFinishedNotification" object:self.activeModel];
+        });
+        return;
+    }
+    
+    // 防并发与防重入保护
+    if (self.isPrewarming) {
+        NSLog(@"[HSBLocalLLM] Background prewarming already in progress for '%@', ignoring duplicate request.", self.activeModel.modelId);
+        return;
+    }
+    self.isPrewarming = YES;
+    
     // 发送开始预热加载通知
     [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLM_PrewarmingStartedNotification" object:self.activeModel];
     
+    HSBLocalLLMModel *targetModel = self.activeModel;
+    
+    // 异步预热并静默加载大模型文件到 GPU/Unified Memory，不阻塞 UI 线程
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [[HSBMLXLLMEngine shared] loadAndActivateModelWithModelId:self.activeModel.modelId callback:^(NSString * _Nonnull logText, double progress) {
-            if (progress >= 1.0) {
+        [[HSBMLXLLMEngine shared] loadAndActivateModelWithModelId:targetModel.modelId callback:^(NSString * _Nonnull logText, double progress) {
+            // 🏆 无论加载成功 (progress >= 1.0) 还是遇到异常/失败 (progress < 0.0)，均必须向主线程广播 Finished 通知以闭环生命周期
+            if (progress >= 1.0 || progress < 0.0) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    NSLog(@"[HSBLocalLLM] Active Model Pre-warmed & Loaded in Background Memory successfully.");
-                    // 发送预热加载完成通知
-                    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLM_PrewarmingFinishedNotification" object:self.activeModel];
+                    self.isPrewarming = NO;
+                    if (progress >= 1.0) {
+                        NSLog(@"[HSBLocalLLM] Active Model Pre-warmed & Loaded in Background Memory successfully: %@", targetModel.name);
+                    } else {
+                        NSLog(@"[HSBLocalLLM] Active Model Pre-warming failed or canceled: %@", targetModel.name);
+                    }
+                    // 发送预热加载完成通知（闭环解除 UI 状态）
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBLocalLLM_PrewarmingFinishedNotification" object:targetModel];
                 });
             }
         }];

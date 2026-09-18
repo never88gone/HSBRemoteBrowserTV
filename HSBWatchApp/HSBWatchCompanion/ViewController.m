@@ -117,17 +117,10 @@ static NSString * L(NSString *en, NSString *zh) {
     
     [self setupAILoadingHUD];
     
-    // 监听本地大模型异步后台载入（预热）状态的广播通知
+    // 监听本地大模型异步后台载入（预热）状态的广播通知（非阻断式静默流转）
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLLMPrewarmingStarted:) name:@"HSBLocalLLM_PrewarmingStartedNotification" object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLLMPrewarmingFinished:) name:@"HSBLocalLLM_PrewarmingFinishedNotification" object:nil];
-    
-    // 🥇 开机即时检测：若当前已激活大模型，且底层内存尚未完成装载，则直接拉起 Loading，保证状态丝滑同步
-    BOOL hasActiveModel = [HSBLocalLLMManager shared].activeModel != nil;
-    BOOL isLoaded = [[HSBMLXLLMEngine shared] isModelLoadedInMemory];
-    if (hasActiveModel && !isLoaded) {
-        self.aiLoadingHUD.hidden = NO;
-        self.aiLoadingHUD.alpha = 1.0;
-    }
+
     
     // 注册 TVOSConnectionManager 通知与 WatchSession 通知
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSConnectionStateChanged:) name:HSBTVOSConnectionStateNotification object:nil];
@@ -1231,63 +1224,80 @@ static NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)setupAILoadingHUD {
+    // 🏆 非阻断式顶部微型指示胶囊：高度仅 28pt，且 userInteractionEnabled = NO 手势 100% 穿透，绝不遮挡或阻断遥控器按键
     self.aiLoadingHUD = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
     self.aiLoadingHUD.translatesAutoresizingMaskIntoConstraints = NO;
-    self.aiLoadingHUD.layer.cornerRadius = 16;
+    self.aiLoadingHUD.layer.cornerRadius = 14;
     self.aiLoadingHUD.clipsToBounds = YES;
-    self.aiLoadingHUD.layer.borderWidth = 1;
-    self.aiLoadingHUD.layer.borderColor = [[UIColor systemPurpleColor] colorWithAlphaComponent:0.2].CGColor;
+    self.aiLoadingHUD.layer.borderWidth = 0.8;
+    self.aiLoadingHUD.layer.borderColor = [[UIColor systemPurpleColor] colorWithAlphaComponent:0.3].CGColor;
+    self.aiLoadingHUD.userInteractionEnabled = NO;
     self.aiLoadingHUD.hidden = YES;
+    self.aiLoadingHUD.alpha = 0.0;
     [self.view addSubview:self.aiLoadingHUD];
     
     UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     spinner.color = [UIColor systemPurpleColor];
+    spinner.transform = CGAffineTransformMakeScale(0.65, 0.65);
     spinner.translatesAutoresizingMaskIntoConstraints = NO;
     [spinner startAnimating];
     [self.aiLoadingHUD.contentView addSubview:spinner];
     
     UILabel *loadingLabel = [[UILabel alloc] init];
-    loadingLabel.text = L(@"AI Engine Warming Up...", @"本地大模型载入中...");
-    loadingLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-    loadingLabel.textColor = [UIColor whiteColor];
+    loadingLabel.text = L(@"AI Readying...", @"本地模型静默预热中...");
+    loadingLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+    loadingLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.9];
     loadingLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.aiLoadingHUD.contentView addSubview:loadingLabel];
     
     [NSLayoutConstraint activateConstraints:@[
+        [self.aiLoadingHUD.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
         [self.aiLoadingHUD.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.aiLoadingHUD.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
-        [self.aiLoadingHUD.widthAnchor constraintEqualToConstant:180],
-        [self.aiLoadingHUD.heightAnchor constraintEqualToConstant:100],
+        [self.aiLoadingHUD.heightAnchor constraintEqualToConstant:28],
         
-        [spinner.centerXAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.centerXAnchor],
-        [spinner.topAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.topAnchor constant:22],
+        [spinner.leadingAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.leadingAnchor constant:10],
+        [spinner.centerYAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.centerYAnchor],
         
-        [loadingLabel.centerXAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.centerXAnchor],
-        [loadingLabel.bottomAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.bottomAnchor constant:-20]
+        [loadingLabel.leadingAnchor constraintEqualToAnchor:spinner.trailingAnchor constant:6],
+        [loadingLabel.trailingAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.trailingAnchor constant:-12],
+        [loadingLabel.centerYAnchor constraintEqualToAnchor:self.aiLoadingHUD.contentView.centerYAnchor]
     ]];
+}
+
+- (void)dismissAILoadingHUD {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(dismissAILoadingHUD) object:nil];
+    if (self.aiLoadingHUD.hidden || self.aiLoadingHUD.alpha == 0.0) {
+        self.aiLoadingHUD.hidden = YES;
+        return;
+    }
+    [UIView animateWithDuration:0.3 animations:^{
+        self.aiLoadingHUD.alpha = 0.0;
+    } completion:^(BOOL finished) {
+        self.aiLoadingHUD.hidden = YES;
+    }];
 }
 
 - (void)handleLLMPrewarmingStarted:(NSNotification *)note {
     dispatch_async(dispatch_get_main_queue(), ^{
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(dismissAILoadingHUD) object:nil];
         self.aiLoadingHUD.hidden = NO;
         self.aiLoadingHUD.alpha = 0.0;
-        [UIView animateWithDuration:0.3 animations:^{
+        [UIView animateWithDuration:0.25 animations:^{
             self.aiLoadingHUD.alpha = 1.0;
         }];
+        // 🏆 1.5 秒安全自动关闭兜底：无论底层通知是否丢失，1.5 秒后无条件自动渐隐退出，绝不阻断用户交互
+        [self performSelector:@selector(dismissAILoadingHUD) withObject:nil afterDelay:1.5];
     });
 }
 
 - (void)handleLLMPrewarmingFinished:(NSNotification *)note {
     dispatch_async(dispatch_get_main_queue(), ^{
-        [UIView animateWithDuration:0.3 animations:^{
-            self.aiLoadingHUD.alpha = 0.0;
-        } completion:^(BOOL finished) {
-            self.aiLoadingHUD.hidden = YES;
-        }];
+        [self dismissAILoadingHUD];
     });
 }
 
 - (void)dealloc {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(dismissAILoadingHUD) object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 

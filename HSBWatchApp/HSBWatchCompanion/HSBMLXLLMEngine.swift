@@ -134,19 +134,8 @@ public class HSBMLXLLMEngine: NSObject {
                         }
                     }
                     
-                    let timerTask = Task {
-                        try await Task.sleep(nanoseconds: 3_500_000_000)
-                        downloadTask.cancel()
-                    }
-                    
-                    let resolved: ResolvedModelConfiguration
-                    do {
-                        resolved = try await downloadTask.value
-                        timerTask.cancel()
-                    } catch {
-                        timerTask.cancel()
-                        throw error
-                    }
+                    let resolved: ResolvedModelConfiguration = try await downloadTask.value
+
                     
                     // 物理校验：下载成功后验证核心权重是否存在
                     guard self.isModelDownloaded(modelId: modelId) else {
