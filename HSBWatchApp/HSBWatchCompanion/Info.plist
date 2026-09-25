@@ -15,6 +15,9 @@
 		<string>_thltv._tcp</string>
 		<string>_companion-link._tcp</string>
 		<string>_airplay._tcp</string>
+		<string>_mediaremotetv._tcp</string>
+		<string>_appletv-v2._tcp</string>
+		<string>_raop._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>需要访问您的本地网络，以便自动发现并连接局域网中的 Apple TV 与糖葫芦大屏浏览器，提供双模无线遥控、光标微操及实时多媒体控制功能。</string>

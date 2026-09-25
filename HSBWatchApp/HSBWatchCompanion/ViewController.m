@@ -52,6 +52,7 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, assign) BOOL tvScanEnabled;
 
 // Data Source
+@property (nonatomic, strong) NSMutableArray<HSBDiscoveredAppleTV *> *discoveredDevices;
 @property (nonatomic, strong) NSMutableArray<nw_endpoint_t> *discoveredEndpoints;
 @property (nonatomic, strong) nw_endpoint_t currentEndpoint;
 
@@ -94,6 +95,7 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)viewDidLoad {
     self.themeCards = [NSMutableArray array];
     self.discoveredEndpoints = [NSMutableArray array];
+    self.discoveredDevices = [NSMutableArray array];
     
     self.watchSyncEnabled = YES;
     if ([[NSUserDefaults standardUserDefaults] objectForKey:@"WatchSyncEnabled"]) {
@@ -161,6 +163,15 @@ static NSString * L(NSString *en, NSString *zh) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             HSBAboutViewController *vc = [[HSBAboutViewController alloc] init];
             [self.navigationController pushViewController:vc animated:NO];
+        });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestRunAppleTVVerification"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [HSBAppleTVDiscoveryVerificationTest runAllTestsWithCompletion:^(BOOL allPassed, NSString * _Nonnull report) {
+                NSLog(@"[AppleTVVerificationTest]\n%@", report);
+                if (allPassed) {
+                    NSLog(@"[AppleTVVerificationTest] ALL_TESTS_PASSED");
+                }
+            }];
         });
     } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenBrowserControl"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -394,10 +405,9 @@ static NSString * L(NSString *en, NSString *zh) {
     self.tvTableView.delegate = self;
     self.tvTableView.dataSource = self;
     self.tvTableView.backgroundColor = [UIColor clearColor];
-    self.tvTableView.rowHeight = 50;
+    self.tvTableView.rowHeight = 58;
     self.tvTableView.layer.masksToBounds = YES;
     self.tvTableView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.tvTableView registerClass:[UITableViewCell class] forCellReuseIdentifier:@"TVCell"];
     
     UILabel *emptyLabel = [[UILabel alloc] init];
     emptyLabel.text = L(@"Scanning for nearby screens...\nTip: Tap the remote icon in the top right for instant offline control.", @"正在扫描局域网大屏设备...\n提示：您可随时点击右上角遥控器图标离线使用全部功能。");
@@ -638,7 +648,10 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)openModernRemoteController {
     UIViewController *modernVC = [HSBModernRemoteBridge createModernRemoteViewController];
-    if (self.currentEndpoint) {
+    if (self.discoveredDevices.count > 0) {
+        HSBDiscoveredAppleTV *firstDevice = self.discoveredDevices.firstObject;
+        [HSBModernRemoteBridge connectToDiscoveredDevice:firstDevice];
+    } else if (self.currentEndpoint) {
         const char *name = nw_endpoint_get_bonjour_service_name(self.currentEndpoint);
         NSString *deviceName = name ? [NSString stringWithUTF8String:name] : @"Apple TV";
         const char *hostname = nw_endpoint_get_hostname(self.currentEndpoint);
@@ -911,11 +924,18 @@ static NSString * L(NSString *en, NSString *zh) {
 #pragma mark - UITableView DataSource & Delegate
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (self.discoveredDevices.count > 0) {
+        return self.discoveredDevices.count;
+    }
     return self.discoveredEndpoints.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"TVCell" forIndexPath:indexPath];
+    static NSString *cellID = @"TVCellSubtitle";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellID];
+    }
     cell.backgroundColor = [UIColor clearColor];
     
     HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
@@ -924,18 +944,47 @@ static NSString * L(NSString *en, NSString *zh) {
     selectedBg.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.15];
     cell.selectedBackgroundView = selectedBg;
     
-    nw_endpoint_t ep = self.discoveredEndpoints[indexPath.row];
-    const char *name = nw_endpoint_get_bonjour_service_name(ep);
-    NSString *nameStr = name ? [NSString stringWithUTF8String:name] : L(@"Unknown TV", @"未命名电视");
-    NSRange range = [nameStr rangeOfString:@" ("];
-    if (range.location != NSNotFound) {
-        nameStr = [nameStr substringToIndex:range.location];
+    if (self.discoveredDevices.count > 0 && indexPath.row < self.discoveredDevices.count) {
+        HSBDiscoveredAppleTV *device = self.discoveredDevices[indexPath.row];
+        cell.textLabel.text = device.name;
+        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+        cell.textLabel.textColor = [UIColor whiteColor];
+        
+        cell.detailTextLabel.text = device.displaySubtitle;
+        cell.detailTextLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.65];
+        
+        if (device.isDualMode) {
+            cell.imageView.image = [UIImage systemImageNamed:@"appletv.fill"];
+            cell.imageView.tintColor = palette.primaryColor;
+        } else if (device.isNativeAppleTV) {
+            cell.imageView.image = [UIImage systemImageNamed:@"appletv.fill"];
+            cell.imageView.tintColor = [UIColor systemIndigoColor];
+        } else if (device.isBrowserApp) {
+            cell.imageView.image = [UIImage systemImageNamed:@"tv.fill"];
+            cell.imageView.tintColor = palette.primaryColor;
+        } else {
+            cell.imageView.image = [UIImage systemImageNamed:@"display"];
+            cell.imageView.tintColor = [UIColor systemGrayColor];
+        }
+    } else if (indexPath.row < self.discoveredEndpoints.count) {
+        nw_endpoint_t ep = self.discoveredEndpoints[indexPath.row];
+        const char *name = nw_endpoint_get_bonjour_service_name(ep);
+        NSString *nameStr = name ? [NSString stringWithUTF8String:name] : L(@"Unknown TV", @"未命名电视");
+        NSRange range = [nameStr rangeOfString:@" ("];
+        if (range.location != NSNotFound) {
+            nameStr = [nameStr substringToIndex:range.location];
+        }
+        cell.textLabel.text = nameStr;
+        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
+        cell.textLabel.textColor = [UIColor whiteColor];
+        cell.detailTextLabel.text = L(@"大屏设备 · 点击连接", @"大屏设备 · 点击连接");
+        cell.detailTextLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
+        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
+        cell.imageView.image = [UIImage systemImageNamed:@"tv.fill"];
+        cell.imageView.tintColor = palette.primaryColor;
     }
-    cell.textLabel.text = nameStr;
-    cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    cell.textLabel.textColor = [UIColor whiteColor];
-    cell.imageView.image = [UIImage systemImageNamed:@"tv.fill"];
-    cell.imageView.tintColor = palette.primaryColor;
+    
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     
@@ -945,9 +994,72 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     
-    if (self.discoveredEndpoints.count == 0) return;
+    UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [hap impactOccurred];
     
     __weak typeof(self) weakSelf = self;
+    
+    if (self.discoveredDevices.count > 0 && indexPath.row < self.discoveredDevices.count) {
+        HSBDiscoveredAppleTV *selectedDevice = self.discoveredDevices[indexPath.row];
+        
+        [self updateUI:^{
+            self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟡 Connecting to %@...", @"🟡 正在连接 %@..."), selectedDevice.name];
+            self.tvStatusLabel.textColor = [UIColor systemYellowColor];
+        }];
+        
+        // 自动绑定连接并执行休眠端口敲门
+        [HSBModernRemoteBridge connectToDiscoveredDevice:selectedDevice];
+        
+        if (selectedDevice.isNativeAppleTV) {
+            // 原生 Apple TV：直接推入智能遥控器（首选 Tab 0 系统遥控器，方向键/确认/菜单/主页原生控制）
+            UIViewController *remoteVC = [HSBModernRemoteBridge createModernRemoteViewController];
+            remoteVC.hidesBottomBarWhenPushed = YES;
+            
+            [self updateUI:^{
+                self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@ (Native Remote)", @"🟢 已连接至 %@ (系统遥控器)"), selectedDevice.name];
+                self.tvStatusLabel.textColor = [UIColor systemGreenColor];
+            }];
+            
+            [self.navigationController pushViewController:remoteVC animated:YES];
+            return;
+        } else {
+            // 纯大屏浏览器设备：展示大屏详情并进入触控板/配置
+            TVDetailViewController *vc = [[TVDetailViewController alloc] init];
+            vc.deviceName = selectedDevice.name;
+            
+            vc.sendPayloadBlock = ^(NSDictionary *payload) {
+                [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+            };
+            vc.sendActionBlock = ^(HSBRemoteSimulateAction action) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:action];
+            };
+            vc.checkConnectionBlock = ^BOOL{
+                return [HSBTVOSConnectionManager sharedManager].isConnected;
+            };
+            
+            vc.editHomeBlock = ^{
+                HomeConfigEditViewController *editVC = [[HomeConfigEditViewController alloc] init];
+                NSString *savedJson = [[NSUserDefaults standardUserDefaults] objectForKey:@"WatchCompanionHomeJSON"];
+                if (!savedJson) {
+                    NSString *filePath = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject]
+                                          stringByAppendingPathComponent:@"home_config.json"];
+                    savedJson = [NSString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:nil];
+                }
+                editVC.initialJson = savedJson ?: @"[]";
+                editVC.onSaveAndSync = ^(NSString *jsonString) {
+                    [[NSUserDefaults standardUserDefaults] setObject:jsonString forKey:@"WatchCompanionHomeJSON"];
+                    [[NSUserDefaults standardUserDefaults] synchronize];
+                    [weakSelf sendJSONToTV:jsonString];
+                };
+                [weakSelf.navigationController pushViewController:editVC animated:YES];
+            };
+            
+            [self.navigationController pushViewController:vc animated:YES];
+            return;
+        }
+    }
+    
+    if (self.discoveredEndpoints.count == 0) return;
     
     nw_endpoint_t selectedEndpoint = self.discoveredEndpoints[indexPath.row];
     
@@ -1119,28 +1231,48 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)startBrowsing {
     if (self.browser) {
         nw_browser_cancel(self.browser);
+        self.browser = nil;
     }
+    [[HSBAppleTVDiscovery shared] stopScanning];
     
+    [self.discoveredDevices removeAllObjects];
     [self.discoveredEndpoints removeAllObjects];
     [self updateUI:^{
         [self.tvTableView reloadData];
+        [self.scanSpinner startAnimating];
+        self.scanSpinner.hidden = NO;
+        self.tvStatusLabel.text = L(@"🟡 Scanning for Apple TV & Screens...", @"🟡 正在扫描局域网 Apple TV 与大屏...");
+        self.tvStatusLabel.textColor = [UIColor whiteColor];
     }];
-    
-    // Use generic parameters for browsing to ensure we catch all network interfaces (Wi-Fi, Ethernet, AWDL)
-    nw_parameters_t browseParameters = nw_parameters_create();
-    nw_parameters_set_include_peer_to_peer(browseParameters, true);
-    
-    nw_browse_descriptor_t descriptor = nw_browse_descriptor_create_bonjour_service(BONJOUR_SERVICE_TYPE, NULL);
-    
-    self.browser = nw_browser_create(descriptor, browseParameters);
     
     __weak typeof(self) weakSelf = self;
     
+    // 🏆 启动参考 itsytv-macos 的 Apple TV 自动发现引擎 (多通道并发扫描 + 0x4000 过滤 + 模型解析)
+    [[HSBAppleTVDiscovery shared] startScanningWithOnChange:^(NSArray<HSBDiscoveredAppleTV *> *devices) {
+        [weakSelf updateUI:^{
+            [weakSelf.discoveredDevices removeAllObjects];
+            [weakSelf.discoveredDevices addObjectsFromArray:devices];
+            [weakSelf.tvTableView reloadData];
+            
+            if (weakSelf.discoveredDevices.count > 0) {
+                [weakSelf.scanSpinner stopAnimating];
+                weakSelf.scanSpinner.hidden = YES;
+                weakSelf.tvTableView.backgroundView.hidden = YES;
+                weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Found %lu Apple TV / Screen(s)", @"🟢 已发现 %lu 台 Apple TV / 大屏设备"), (unsigned long)weakSelf.discoveredDevices.count];
+                weakSelf.tvStatusLabel.textColor = [UIColor systemGreenColor];
+            }
+        }];
+    }];
+    
+    // 兼容原有的 nw_browser_t 扫描（双轨保障）
+    nw_parameters_t browseParameters = nw_parameters_create();
+    nw_parameters_set_include_peer_to_peer(browseParameters, true);
+    nw_browse_descriptor_t descriptor = nw_browse_descriptor_create_bonjour_service(BONJOUR_SERVICE_TYPE, NULL);
+    self.browser = nw_browser_create(descriptor, browseParameters);
+    
     nw_browser_set_state_changed_handler(self.browser, ^(nw_browser_state_t state, nw_error_t error) {
         if (state == nw_browser_state_ready) {
-            NSLog(@"[BonjourBridge] Browser ready, scanning...");
-        } else if (state == nw_browser_state_failed) {
-            NSLog(@"[BonjourBridge] Browser failed: %@", error);
+            NSLog(@"[BonjourBridge] Legacy browser ready, scanning...");
         }
     });
     
@@ -1173,11 +1305,14 @@ static NSString * L(NSString *en, NSString *zh) {
     nw_browser_set_queue(self.browser, self.browserQueue);
     nw_browser_start(self.browser);
     
-    // Add Timeout for Empty State
+    // 10 秒超时若仍无设备，停止旋转菊花并展示空视图提示
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (weakSelf.discoveredEndpoints.count == 0) {
+        if (weakSelf.discoveredDevices.count == 0 && weakSelf.discoveredEndpoints.count == 0) {
             [weakSelf.scanSpinner stopAnimating];
+            weakSelf.scanSpinner.hidden = YES;
             weakSelf.tvTableView.backgroundView.hidden = NO;
+            weakSelf.tvStatusLabel.text = L(@"⚪️ Scanning idle (Tap to retry)", @"⚪️ 扫描完成 (未发现可用设备)");
+            weakSelf.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
         }
     });
 }
@@ -1217,6 +1352,8 @@ static NSString * L(NSString *en, NSString *zh) {
             nw_browser_cancel(self.browser);
             self.browser = nil;
         }
+        [[HSBAppleTVDiscovery shared] stopScanning];
+        [self.discoveredDevices removeAllObjects];
         [self.discoveredEndpoints removeAllObjects];
         [self.tvTableView reloadData];
         
@@ -1224,6 +1361,7 @@ static NSString * L(NSString *en, NSString *zh) {
         self.scanSpinner.hidden = YES;
         
         [[HSBTVOSConnectionManager sharedManager] disconnect];
+        [HSBModernRemoteBridge disconnectUnified];
         self.isConnectedToTV = NO;
         self.videoControlCard.hidden = YES;
         
@@ -1308,6 +1446,7 @@ static NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)dealloc {
+    [[HSBAppleTVDiscovery shared] stopScanning];
     [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(dismissAILoadingHUD) object:nil];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }

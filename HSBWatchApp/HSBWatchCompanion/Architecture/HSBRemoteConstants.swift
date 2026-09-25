@@ -71,6 +71,11 @@ extension HSBRemoteMode {
     case volumeDown = 4
     case mute = 5
     case playPause = 6
+    case up = 7
+    case down = 8
+    case left = 9
+    case right = 10
+    case select = 11
     
     public var nativeButtonCode: Int64 {
         switch self {
@@ -81,6 +86,11 @@ extension HSBRemoteMode {
         case .volumeDown: return 9
         case .power: return 15
         case .mute: return 102
+        case .select: return 8
+        case .up: return 88
+        case .down: return 89
+        case .left: return 90
+        case .right: return 91
         }
     }
 }

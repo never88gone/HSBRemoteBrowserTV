@@ -152,30 +152,52 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         case .nativeOnly:
             let sysKey: SystemKey = {
                 switch direction {
-                case .up: return .volumeUp
-                case .down: return .volumeDown
-                case .left: return .menu
-                case .right: return .home
+                case .up: return .up
+                case .down: return .down
+                case .left: return .left
+                case .right: return .right
                 }
             }()
             nativeClient.sendSystemKey(sysKey, action: action)
+            // 辅以 1000x1000 虚拟空间微滑触控手势，确保无论是按键还是触控焦点引擎都能 100% 响应
+            let touchDelta: (dx: CGFloat, dy: CGFloat) = {
+                switch direction {
+                case .up: return (0, -120)
+                case .down: return (0, 120)
+                case .left: return (-120, 0)
+                case .right: return (120, 0)
+                }
+            }()
+            nativeClient.sendTouchEvent(phase: 1, point: CGPoint(x: 500, y: 500))
+            nativeClient.sendTouchEvent(phase: 2, point: CGPoint(x: 500 + touchDelta.dx, y: 500 + touchDelta.dy))
+            nativeClient.sendTouchEvent(phase: 3, point: CGPoint(x: 500 + touchDelta.dx, y: 500 + touchDelta.dy))
         case .dual:
             if screenClient.isConnected {
                 screenClient.send(command: .button(action: direction.actionName))
             } else {
-                nativeClient.sendSystemKey(.menu, action: action)
+                let sysKey: SystemKey = {
+                    switch direction {
+                    case .up: return .up
+                    case .down: return .down
+                    case .left: return .left
+                    case .right: return .right
+                    }
+                }()
+                nativeClient.sendSystemKey(sysKey, action: action)
             }
         }
     }
     
     public func sendSelect(action: KeyAction = .tap) {
         if currentMode == .nativeOnly {
-            nativeClient.sendSystemKey(.playPause, action: action)
+            nativeClient.sendSystemKey(.select, action: action)
+            nativeClient.sendTouchEvent(phase: 1, point: CGPoint(x: 500, y: 500))
+            nativeClient.sendTouchEvent(phase: 3, point: CGPoint(x: 500, y: 500))
         } else {
             if screenClient.isConnected {
                 screenClient.send(command: .button(action: "select"))
             } else if currentMode == .dual {
-                nativeClient.sendSystemKey(.playPause, action: action)
+                nativeClient.sendSystemKey(.select, action: action)
             }
         }
     }
@@ -282,6 +304,36 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
                 screenClient.send(command: .media(action: .play, value: nil))
             } else {
                 nativeClient.sendSystemKey(.playPause)
+            }
+        case .up:
+            if currentMode == .screenOnly {
+                sendDPad(direction: .up, action: .tap)
+            } else {
+                nativeClient.sendSystemKey(.up)
+            }
+        case .down:
+            if currentMode == .screenOnly {
+                sendDPad(direction: .down, action: .tap)
+            } else {
+                nativeClient.sendSystemKey(.down)
+            }
+        case .left:
+            if currentMode == .screenOnly {
+                sendDPad(direction: .left, action: .tap)
+            } else {
+                nativeClient.sendSystemKey(.left)
+            }
+        case .right:
+            if currentMode == .screenOnly {
+                sendDPad(direction: .right, action: .tap)
+            } else {
+                nativeClient.sendSystemKey(.right)
+            }
+        case .select:
+            if currentMode == .screenOnly {
+                sendSelect(action: .tap)
+            } else {
+                nativeClient.sendSystemKey(.select)
             }
         }
     }
