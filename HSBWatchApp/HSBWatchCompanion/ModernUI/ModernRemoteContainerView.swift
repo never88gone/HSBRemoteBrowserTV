@@ -23,7 +23,7 @@ public struct ModernRemoteContainerView: View {
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     
     private var isBrowserRemoteVisible: Bool {
-        coordinatorObserver.isHSBBrowserConnected || UserDefaults.standard.bool(forKey: "UITestForceShowBrowserTab")
+        true
     }
     
     public init() {}
@@ -57,27 +57,16 @@ public struct ModernRemoteContainerView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
                 
-                // 2. 遥控场景 Tab 切换栏 (未连接 hsbtvbrowser 真实大屏时仅展示系统、IPTV、演讲)
+                // 2. 遥控场景 Tab 切换栏 (全面开放四大核心遥控场景：系统、触控、IPTV、演讲)
                 Picker("遥控场景", selection: $selectedControlTab) {
                     Text("系统").tag(0)
-                    if isBrowserRemoteVisible {
-                        Text("触控").tag(1)
-                    }
+                    Text("触控").tag(1)
                     Text("IPTV").tag(2)
                     Text("演讲").tag(3)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal, 16)
-                .onChange(of: isBrowserRemoteVisible) { visible in
-                    if !visible && selectedControlTab == 1 {
-                        selectedControlTab = 0
-                    }
-                }
-                .onAppear {
-                    if !isBrowserRemoteVisible && selectedControlTab == 1 {
-                        selectedControlTab = 0
-                    }
-                }
+
                 
                 // 3. 核心场景交互面板
                 ZStack {
