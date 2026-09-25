@@ -14,17 +14,17 @@
 
 ## 📸 精选界面展示 (Screenshots)
 
-### 🌐 板块一：大屏 TV 浏览器深度交互与触控中枢 (Browser Interaction)
-| 1. 局域网大屏设备发现与配对 | 2. 浏览器触控中枢与导航微操 | 3. 大屏软键盘实时输入同步抽屉 |
-| :---: | :---: | :---: |
-| <img src="screenshot/1_device_discovery.png" width="260" /> | <img src="screenshot/2_browser_control.png" width="260" /> | <img src="screenshot/3_video_control.png" width="260" /> |
-| **Bonjour 无感直连 / 状态监听** | **5.5x 触控板 / 网页悬浮导航岛** | **全尺寸原生软键盘 / 毫秒级字符流同步** |
+### 🌐 板块一：大屏 TV 浏览器深度交互与触控中枢 (Browser Interaction & Touch Control)
+| 1. 局域网大屏设备发现与配对 | 2. 浏览器 5.5x 触控板微操 | 3. 大屏软键盘实时输入同步抽屉 | 4. 统一设置中枢与端侧模型入口 |
+| :---: | :---: | :---: | :---: |
+| <img src="screenshot/1_device_discovery.png" width="220" /> | <img src="screenshot/2_browser_control.png" width="220" /> | <img src="screenshot/3_video_control.png" width="220" /> | <img src="screenshot/4_settings_hub.png" width="220" /> |
+| **Bonjour 无感直连 / 状态监听** | **5.5x 触控板 / 网页悬浮导航岛** | **全尺寸原生软键盘 / 毫秒级字符流** | **端侧模型中心 / 多语言与系统设置** |
 
 ### 🤖 板块二：客厅原生生态与端侧 AI 矩阵 (System Remote & Edge AI)
-| 4. 系统级双模遥控 | 5. IPTV 直播流控制 | 6. PDF 大屏演说投屏 |
+| 5. 系统级双模遥控 | 6. IPTV 直播流控制 | 7. PDF 大屏演说投屏 |
 | :---: | :---: | :---: |
 | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/1_system_remote.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/2_iptv_remote.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/3_pdf_presentation.png" width="260" /> |
-| **7. AI 模型管理中心** | **8. AI 智能助手调用** | **9. 糖葫芦全生态矩阵** |
+| **8. AI 模型管理中心** | **9. AI 智能助手调用** | **10. 糖葫芦全生态矩阵** |
 | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/5_ai_model_center.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/6_ai_assistant.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/4_ecosystem_about.png" width="260" /> |
 
 
@@ -74,6 +74,15 @@
 * **📺 IPTV 直播流多频道路由**：提供客厅电视直播流频道快捷切换、电子节目单 (EPG) 浏览与媒体全屏控制；
 * **📄 糖葫芦 PDF 大屏演说神器**：会议与课堂汇报利器，手机化身为激光笔与无线翻页器，支持极速跳页与大屏批注；
 * **⌚ watchOS 独立随身主控**：配备独立的 Apple Watch 应用，抬腕即可调控电视播放、音量与导航。
+
+---
+
+### 🎛️ 5. 四大专属遥控场景常驻常开 (Four Specialized Remote Scenarios)
+顶部 Segment 选项卡支持随时一键无缝自由切换，未连接外置大屏时亦支持离线微操与体验：
+* **【系统】(System Remote)**：配备 270pt 黄金比例 Apple TV 原生质感 D-pad 轮盘与一体化控制岛（快退10s / 播放暂停 / 快进10s / 桌面 / 返回 / 静音 / 待机 / 硬件音量+/-）；
+* **【触控】(Browser Touchpad)**：专为大屏 WebKit 浏览器定制的 5.5x 微操触控板、网页悬浮操作岛（后退/前进/刷新/主页/放大）与 RTI 实时软键盘同步抽屉；
+* **【IPTV】(IPTV Live Stream)**：客厅电视直播流快捷换台塔（CH+/-）、数字键快速输入选台与音量控制；
+* **【演讲】(PDF Presentation)**：商务演讲幻灯片极速翻页大板、首尾页跳转、激光笔指向与屏幕荧光笔涂鸦批注。
 
 ---
 
@@ -260,20 +269,27 @@ xcodebuild -project HSBWatchApp/HSBWatchApp.xcodeproj \
            build
 ```
 
-### 3. 在模拟器中快速运行自动化测试套件
+### 3. 在模拟器中快速运行自动化测试与场景直达
 ```bash
-# 启动 iPhone 模拟器并执行内置大模型全生命周期自检套件
+# 1. 启动 iPhone 模拟器并执行内置大模型全生命周期自检套件
 xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestRunLLMVerification YES
-
-# 查看输出的测试报告
 cat /tmp/llm_test_report.txt
+
+# 2. 直达大屏浏览器触控板与导航微操中枢
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenModernRemote YES -UITestRemoteTab 1
+
+# 3. 直达大屏软键盘实时输入同步抽屉 (RTI)
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenModernRemote YES -UITestRemoteTab 1 -UITestShowKeyboard YES
+
+# 4. 直达统一设置中枢与端侧 AI 模型中心
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenSettings YES
 ```
 
 ---
 
-## 🛡️ App Store 审核规范与纯净保护 (App Store Compliance)
+## 🛡️ App Store 审核规范与全场景离线保护 (App Store Compliance & Offline Resilience)
 
-- **纯净遥控保护机制**：未连接真实局域网电视大屏前，应用自动折叠专有浏览器标签与特殊敏感调试面板，呈现标准规范的电视遥控界面，确保完全符合 App Store 审核指南；
+- **全场景常驻开放与离线体验保障**：应用常驻提供系统遥控、浏览器触控、IPTV 直播流与 PDF 演讲四大核心交互场景。在未连接局域网真实大屏或处于审核网络隔离环境中，手机端依然支持全功能触控微操离线体验、虚拟光标移动与多点手势模拟，彻底杜绝白屏或按钮失效风险，确保审核人员与用户能即时直观体验到核心功能；
 - **完备的隐私权限说明**：
   - `NSLocalNetworkUsageDescription`：清楚阐述局域网 Bonjour 协议自动发现 Apple TV 的必要性；
   - `NSSpeechRecognitionUsageDescription`：合规声明语音搜索与大屏文字听写用途；
