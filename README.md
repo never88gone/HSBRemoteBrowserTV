@@ -14,17 +14,25 @@
 
 ## 📸 精选界面展示 (Screenshots)
 
-### 🌐 板块一：电视遥控中枢与浏览器深度交互 (TV Remote Hub & Browser Interaction)
-| 1. 局域网大屏设备发现与配对 | 2. 遥控中枢：浏览器控制与 JS 脚本 | 3. 遥控中枢：视频控制与播放倍速 | 4. 统一设置中枢与端侧模型入口 |
-| :---: | :---: | :---: | :---: |
-| <img src="screenshot/1_device_discovery.png" width="220" /> | <img src="screenshot/2_browser_control.png" width="220" /> | <img src="screenshot/3_video_control.png" width="220" /> | <img src="screenshot/4_settings_hub.png" width="220" /> |
-| **Bonjour 无感直连 / 状态监听** | **JS 快捷芯片 / 全屏触控 / URL投送 / AI助手** | **0.5x~2.0x 倍速 / 10s快进退 / 音量调控** | **端侧模型中心 / 多语言与系统设置** |
+### 🌟 跨端旗舰协同：手机遥控中枢 × Apple TV 大屏浏览器实操全景
+<p align="center">
+  <img src="screenshot/browser_dual_interaction.png" width="96%" alt="糖葫芦遥控器与 Apple TV 大屏浏览器双端毫秒级协同实操全景" />
+</p>
+<p align="center">
+  <em>图：左侧为 Apple TV 4K 大屏真实 WebKit 网页渲染与虚拟光标交互实景；右侧为 iPhone 电视遥控中枢（全新改版浏览器模式）微操控制台</em>
+</p>
+
+### 🌐 板块一：电视遥控中枢与大屏浏览器深度交互 (TV Remote Hub & Browser Interaction)
+| 1. 局域网大屏设备发现与配对 | 2. 遥控中枢：手机端浏览器控制 | 3. 大屏端：Apple TV 真实网页与光标 | 4. 遥控中枢：视频控制与播放倍速 | 5. 统一设置中枢与端侧模型入口 |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="screenshot/1_device_discovery.png" width="180" /> | <img src="screenshot/2_browser_control.png" width="180" /> | <img src="screenshot/tv_browser_web.png" width="320" /> | <img src="screenshot/3_video_control.png" width="180" /> | <img src="screenshot/4_settings_hub.png" width="180" /> |
+| **Bonjour 无感直连 / 状态监听** | **JS 快捷芯片 / 触控板 / URL投送 / AI助手** | **4K WebKit 真实加载 / 虚拟光标 60FPS 移动** | **0.5x~2.0x 倍速 / 10s快进退 / 音量调控** | **端侧模型中心 / 多语言与系统设置** |
 
 ### 🤖 板块二：客厅原生生态与端侧 AI 矩阵 (System Remote & Edge AI)
-| 5. 系统级双模遥控 | 6. IPTV 直播流控制 | 7. PDF 大屏演说投屏 |
+| 6. 系统级双模遥控 | 7. IPTV 直播流控制 | 8. PDF 大屏演说投屏 |
 | :---: | :---: | :---: |
 | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/1_system_remote.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/2_iptv_remote.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/3_pdf_presentation.png" width="260" /> |
-| **8. AI 模型管理中心** | **9. AI 智能助手调用** | **10. 糖葫芦全生态矩阵** |
+| **9. AI 模型管理中心** | **10. AI 智能助手调用** | **11. 糖葫芦全生态矩阵** |
 | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/5_ai_model_center.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/6_ai_assistant.png" width="260" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/4_ecosystem_about.png" width="260" /> |
 
 
@@ -107,9 +115,20 @@
 ---
 
 ### 🖐️ 2. 电视遥控中枢：浏览器控制与常用 JS 脚本芯片 (Browser Remote & JS Chips)
+
+#### 🌐 双端毫秒级协同操作全景 (Dual-Screen Interactive Panoramic)
 <p align="center">
-  <img src="screenshot/2_browser_control.png" width="320" alt="电视遥控中枢 - 浏览器控制模式" />
+  <img src="screenshot/browser_dual_interaction.png" width="96%" alt="手机与 TV 浏览器双端实时联动交互实景" />
 </p>
+<p align="center">
+  <em>图：左侧为 Apple TV 4K 大屏真实加载 WebKit 网页与虚拟光标交互实景；右侧为 iPhone 电视遥控中枢（全新改版浏览器模式）微操控制台</em>
+</p>
+
+#### 📱 手机操控台 与 📺 TV 大屏浏览器实操对照 (Side-by-Side Comparison)
+| 📱 手机端：电视遥控中枢（浏览器模式） | 📺 TV 大屏端：真实网页加载与虚拟光标交互 |
+| :---: | :---: |
+| <img src="screenshot/2_browser_control.png" width="340" alt="电视遥控中枢 - 浏览器控制模式" /> | <img src="screenshot/tv_browser_web.png" width="580" alt="Apple TV 浏览器真实网页与光标操作实景" /> |
+| **手机操控面板**：5.5x 微操触控板 / 快捷 JS 芯片 / URL 投送 / 播放器控制 / AI 魔法岛 | **TV 大屏实景**：Apple 官网 4K 极清渲染 / 虚拟鼠标指针精准 Hover / DOM 响应 |
 
 通过首页点击已发现的大屏设备，即可进入全新改版的**「电视遥控中枢」**，切换至【浏览器】模式，尽享一体化大屏冲浪体验：
 * **常用快捷 JS 芯片 (Quick Action Chips)**：顶部横向滚动栏常驻常用脚本，轻触即刻通过 TCP 专有长连接秒级注入大屏 WebKit：
@@ -120,7 +139,8 @@
 * **5.5x 微操触控板 (5.5x Precision Trackpad)**：
   - 独创 **1000×1000 相对虚拟空间坐标重置算法** 与 **8 阶二次缓出 60FPS 衰减阻尼**，操控大屏虚拟光标顺滑精准；
   - **手势体系**：单指平移光标、双指上下阻尼滚动、双指轻点模拟鼠标左键、三指轻点唤出上下文菜单、四指按下锁定拖动；
-* **一键 URL 地址栏投送 (Instant URL Bar)**：手机端直接输入或粘贴网址，轻触蓝色箭头按钮瞬间推送至 Apple TV 大屏加载；
+  - **大屏视觉反馈**：如图中大屏所示，虚拟鼠标光标（白色黑边大箭头）实时跟随手指滑动，精准悬停在网页链接、按钮或视频元素上；
+* **一键 URL 地址栏投送 (Instant URL Bar)**：手机端直接输入或粘贴网址（如 `https://www.apple.com`），轻触蓝色箭头按钮瞬间推送至 Apple TV 大屏秒级加载；
 * **流媒体播放器即时控制 (Player Control)**：
   - 提供「打开播放器」与「关闭播放器」专属按键；
   - 配备横向高精度播放进度/音量调节滑块，支持毫秒级精准拉动；
