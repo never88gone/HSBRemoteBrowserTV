@@ -433,7 +433,7 @@ static NSString * L(NSString *en, NSString *zh) {
 
         
         // Scripts Scroll View
-        [self.scriptsScrollView.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:8],
+        [self.scriptsScrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
         [self.scriptsScrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.scriptsScrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.scriptsScrollView.heightAnchor constraintEqualToConstant:36],

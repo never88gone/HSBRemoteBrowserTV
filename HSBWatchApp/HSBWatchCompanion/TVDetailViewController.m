@@ -53,9 +53,10 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [self.containerView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
     
-    // 默认展示动态加载出的第 0 个选项卡页面
+    // 默认展示动态加载出的第 0 个选项卡页面，支持 UI 测试指定初始 Tab
+    NSInteger initialTab = [[NSUserDefaults standardUserDefaults] integerForKey:@"UITestInitialTab"];
     self.currentIndex = -1;
-    [self switchToIndex:0];
+    [self switchToIndex:initialTab];
     
     [self applyThemeStyle];
 }
@@ -180,6 +181,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [newVC didMoveToParentViewController:self];
     
     self.currentIndex = index;
+    if (self.segmentControl && self.segmentControl.selectedSegmentIndex != index) {
+        self.segmentControl.selectedSegmentIndex = index;
+    }
 }
 
 - (void)segmentChanged:(UISegmentedControl *)seg {

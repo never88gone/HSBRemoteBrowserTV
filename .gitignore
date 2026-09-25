@@ -39,3 +39,5 @@ ORIGINAL_REQUEST.md
 # CI & Archive Artifacts
 Artifacts/
 .thlbrowser-ci-derived/
+build_derived_data/
+

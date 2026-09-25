@@ -162,6 +162,17 @@ static NSString * L(NSString *en, NSString *zh) {
             HSBAboutViewController *vc = [[HSBAboutViewController alloc] init];
             [self.navigationController pushViewController:vc animated:NO];
         });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenBrowserControl"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            BrowserControlViewController *vc = [[BrowserControlViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:NO];
+        });
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenTVDetail"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            TVDetailViewController *vc = [[TVDetailViewController alloc] init];
+            vc.deviceName = @"糖葫芦浏览器";
+            [self.navigationController pushViewController:vc animated:NO];
+        });
     }
 }
 

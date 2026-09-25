@@ -14,11 +14,11 @@
 
 ## 📸 精选界面展示 (Screenshots)
 
-### 🌐 板块一：大屏 TV 浏览器深度交互与触控中枢 (Browser Interaction & Touch Control)
-| 1. 局域网大屏设备发现与配对 | 2. 浏览器 5.5x 触控板微操 | 3. 大屏软键盘实时输入同步抽屉 | 4. 统一设置中枢与端侧模型入口 |
+### 🌐 板块一：电视遥控中枢与浏览器深度交互 (TV Remote Hub & Browser Interaction)
+| 1. 局域网大屏设备发现与配对 | 2. 遥控中枢：浏览器控制与 JS 脚本 | 3. 遥控中枢：视频控制与播放倍速 | 4. 统一设置中枢与端侧模型入口 |
 | :---: | :---: | :---: | :---: |
 | <img src="screenshot/1_device_discovery.png" width="220" /> | <img src="screenshot/2_browser_control.png" width="220" /> | <img src="screenshot/3_video_control.png" width="220" /> | <img src="screenshot/4_settings_hub.png" width="220" /> |
-| **Bonjour 无感直连 / 状态监听** | **5.5x 触控板 / 网页悬浮导航岛** | **全尺寸原生软键盘 / 毫秒级字符流** | **端侧模型中心 / 多语言与系统设置** |
+| **Bonjour 无感直连 / 状态监听** | **JS 快捷芯片 / 全屏触控 / URL投送 / AI助手** | **0.5x~2.0x 倍速 / 10s快进退 / 音量调控** | **端侧模型中心 / 多语言与系统设置** |
 
 ### 🤖 板块二：客厅原生生态与端侧 AI 矩阵 (System Remote & Edge AI)
 | 5. 系统级双模遥控 | 6. IPTV 直播流控制 | 7. PDF 大屏演说投屏 |
@@ -106,55 +106,46 @@
 
 ---
 
-### 🖐️ 2. 5.5x 超高灵敏度大屏虚拟触控板微操手势规范 (Trackpad Gestures)
+### 🖐️ 2. 电视遥控中枢：浏览器控制与常用 JS 脚本芯片 (Browser Remote & JS Chips)
 <p align="center">
   <img src="screenshot/2_browser_control.png" width="320" alt="电视遥控中枢 - 浏览器控制模式" />
 </p>
 
-独创 **1000×1000 相对虚拟空间坐标重置算法**，结合 **8 阶二次缓出 (Quad Ease-Out) 60FPS 衰减阻尼曲线**，带来媲美 Mac 物理触控板的顺滑手感：
-
-| 手势类型 | 操作方式 | 对应大屏动作 | 核心场景与体验说明 |
-| :--- | :--- | :--- | :--- |
-| **单指移动** | 单指在大触控板区域平移 | **大屏鼠标光标平滑移动** | 精准悬停至大屏超链接、网页导航栏或任意交互元素之上 |
-| **双指平滑滚动** | 双指在触控板上下同时滑动 | **大屏网页垂直阻尼滚动** | 采用 60FPS 物理阻尼衰减，长图文、瀑布流与资讯文章丝滑顺畅 |
-| **双指触控轻点** | 双指快速并拢轻点触控板 | **模拟鼠标左键单击** | 毫秒级触发网页超链接跳转、按钮激活与媒体控件响应 |
-| **三指强力点击** | 三指同时轻点触控板 | **模拟鼠标右键 / 菜单拾取** | 深度拾取目标 DOM 元素，唤出大屏网页右键上下文菜单 |
-| **四指拖动手势** | 四指全部按下并持续移动 | **全选 / 文本划选 / 元素拖拽** | 无需等待位移阈值，四指按下即进入锁定拖拽，支持文本选区与滑块拖动 |
+通过首页点击已发现的大屏设备，即可进入全新改版的**「电视遥控中枢」**，切换至【浏览器】模式，尽享一体化大屏冲浪体验：
+* **常用快捷 JS 芯片 (Quick Action Chips)**：顶部横向滚动栏常驻常用脚本，轻触即刻通过 TCP 专有长连接秒级注入大屏 WebKit：
+  - `抖音_全屏`：消除网页版侧边与上下边框，短视频直接全屏无黑边沉浸呈现；
+  - `抖音_启动跳转`：自动跳过开屏弹窗与引导页，直达视频推荐流；
+  - `抖音_自动登录`：协助跨端完成安全鉴权；
+  - `抖音_连播点击`：开启大屏短视频无缝自动连播体验；
+* **5.5x 微操触控板 (5.5x Precision Trackpad)**：
+  - 独创 **1000×1000 相对虚拟空间坐标重置算法** 与 **8 阶二次缓出 60FPS 衰减阻尼**，操控大屏虚拟光标顺滑精准；
+  - **手势体系**：单指平移光标、双指上下阻尼滚动、双指轻点模拟鼠标左键、三指轻点唤出上下文菜单、四指按下锁定拖动；
+* **一键 URL 地址栏投送 (Instant URL Bar)**：手机端直接输入或粘贴网址，轻触蓝色箭头按钮瞬间推送至 Apple TV 大屏加载；
+* **流媒体播放器即时控制 (Player Control)**：
+  - 提供「打开播放器」与「关闭播放器」专属按键；
+  - 配备横向高精度播放进度/音量调节滑块，支持毫秒级精准拉动；
+* **AI 智能助手悬浮岛 (Edge AI Floating Island)**：
+  - 右下角常驻紫色发光 AI 魔法按钮，轻触即可唤起端侧纯血 MLX 大模型；
+  - 支持自然语言对话、网页脚本实时生成（如夜间护眼模式、字体放大、广告过滤），并支持一键将生成脚本下发注入大屏；
+* **底部 Web 导航控制坞 (Navigation Dock)**：
+  - 后退 (`<`) / 前进 (`>`) / 刷新 (`⟳`) / 主页 (`⌂`) / 脚本管理 (`✎`)。
 
 ---
 
-### 🧭 3. 大屏专属 Web 导航控制工具栏 (Navigation Control Dock)
-在浏览器控制中心底部，配备专属的大屏 WebKit 网页导航坞，随时一键调度：
-* **后退 (`<`)**：驱动底层 WebKit 历史栈回退上一页；
-* **前进 (`>`)**：驱动底层 WebKit 历史栈前进下一页；
-* **刷新 (`⟳`)**：强制重载大屏当前页面；
-* **主页 (`⌂`)**：瞬时返回糖葫芦大屏浏览器预设导航主页与书签中心；
-* **放大 (`🔍+`)**：页面视口按 1.25x 梯度缩放，看清小字号排版与网页细节。
-
----
-
-### ⌨️ 4. RTI 实时软键盘大屏输入同步与文本投送 (Real-Time Text Input & Keyboard Drawer)
+### 🎬 3. 电视遥控中枢：视频控制与播放速率调节 (Video Remote & Playback Rate)
 <p align="center">
-  <img src="screenshot/3_video_control.png" width="320" alt="大屏实时软键盘同步抽屉" />
+  <img src="screenshot/3_video_control.png" width="320" alt="电视遥控中枢 - 视频控制模式" />
 </p>
 
-智能电视最痛苦的痛点莫过于“用遥控器在屏幕九宫格上逐字移动光标输入”，糖葫芦遥控器全面引入 **RTI (Real-Time Input) 实时软键盘同步机制**：
-* **一键呼出同步抽屉**：轻触右上角键盘图标，底部自动升起半透明毛玻璃「电视实时文本同步」卡片并自动聚焦输入框；
-* **原生 iOS 输入法全支持**：原生中文九宫格、全键盘、英文、Emoji 表情及语音听写输入全面支持；
-* **毫秒级字符双向同步**：键入内容通过 Bonjour TCP 信道毫秒级推送到大屏当前激活的网页输入框（如百度搜索、B站搜索框等）；
-* **一键清除与回车提交**：配备快速清空按键与大号发送箭头，回车即刻触发大屏检索或表单提交。
+在「电视遥控中枢」顶部轻触【视频】选项卡，即可无缝切换为专业级大屏影音播放调控面板：
+* **0.5x ~ 2.0x 六档极速倍速调节**：预置 `0.5x`、`0.75x`、`1.0x`、`1.25x`、`1.5x`、`2.0x` 快捷倍速切换，适应不同观影与学习节奏；
+* **10 秒高精度快进快退**：大尺寸实体质感按键，毫秒级响应，轻松跳过片头广告或重看精彩镜头；
+* **大屏音量实时滑块**：可视化横向滑块与当前电视音量双向同步联动；
+* **双模平滑切换**：无需退出当前页面，在【视频】与【浏览器】之间一键无感流转，兼得影音享受与深度交互。
 
 ---
 
-### 🎬 5. 网页流媒体与一体化系统遥控协同 (Media & System Playback Controls)
-在「系统遥控」与「一体化控制岛」中，针对网页内嵌流媒体与 Apple TV 原生播放器提供双向协同调控：
-* **【快退 10 秒 / 播放暂停 / 快进 10 秒】**：大尺寸实体化手感按键，毫秒级响应，轻松跳过片头或复看关键镜头；
-* **【硬件级音量调控与静音】**：支持音量加减与一键静音，机身侧边物理按键同步联动；
-* **【桌面与返回直达】**：随时一键返回 Apple TV 系统主屏幕或返回上级菜单。
-
----
-
-### ⚙️ 6. 统一设置中枢与端侧 AI 模型入口 (Settings & Edge AI Hub)
+### ⚙️ 4. 统一设置中枢与端侧 AI 模型入口 (Settings & Edge AI Hub)
 <p align="center">
   <img src="screenshot/4_settings_hub.png" width="320" alt="统一设置中枢与模型中心" />
 </p>
@@ -162,22 +153,6 @@
 * **模块化管理**：轻触首页右上角齿轮图标，即可呼出全新现代设计的设置中枢；
 * **AI 核心直达**：快捷进入「AI 模型中心」管理端侧物理大模型下载与权重沙盒，或进入「AI 智能助手」执行同声传译与大屏控制脚本生成；
 * **多语言与生态**：支持中英文翻译源/目标语言切换、第三方开源协议查看与关于糖葫芦生态矩阵。
-
----
-
-### 🧩 7. 预置快捷 JS 芯片与端侧 AI 自动化控制脚本注入 (Scripts & Edge AI)
-* **横向滑动预置控制芯片**：在触控板上方内置高频一键大屏优化脚本：
-  - `抖音_全屏`：消除网页版多余空白与侧边栏，短视频直接全屏铺满大屏；
-  - `抖音_启动跳转`：自动越过网页开屏引导，直达推荐流；
-  - `抖音_自动登录`：协助跨端免密安全鉴权；
-  - `抖音_连播点击`：开启大屏短视频无缝循环轮播体验；
-  - `抖音_高分辨率`：强制锁定并拉取 1080P/4K 高画质大屏媒体流；
-  - `腾讯视频_全屏`：一键去除网页边框，开启影院级宽屏播放。
-* **端侧纯血 MLX 大模型智能协同注入**：
-  - 长按右下角紫色 **AI 魔法浮动按钮** 调起高精度语音听写；
-  - 直接说出自然语言指令（例如：“*把页面背景调成护眼夜间深色，隐藏右侧悬浮浮窗，并将主要字体放大 20%*”）；
-  - 手机本地运行的 **MLX 大模型**（SmolLM-135M / Qwen1.5-0.5B）将在毫秒级内自动推理出标准的 JavaScript 代码；
-  - 脚本即刻通过专有长连接推送到大屏 WebKit 运行时中安全执行，真正实现**“动动嘴皮子，大屏网页随心定制”**！
 
 ---
 
@@ -241,7 +216,7 @@ flowchart TD
 
 ### 1. 开发环境要求
 - **macOS**: 14.0+ (Sonoma 或更高版本，建议 Apple Silicon M 系列芯片)
-- **Xcode**: 15.0+ / 16.0+
+- **Xcode**: 15.0+ / 16.0+ / 27.0+ (在 Xcode 27 中 Simulator 已整合为 DeviceHub)
 - **SDK 要求**: iOS 17.0+ / watchOS 10.0+ / tvOS 17.0+
 - **依赖管理**: Swift Package Manager (SPM，内置自动解析 `mlx-swift`, `swift-transformers` 等)
 
@@ -275,13 +250,16 @@ xcodebuild -project HSBWatchApp/HSBWatchApp.xcodeproj \
 xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestRunLLMVerification YES
 cat /tmp/llm_test_report.txt
 
-# 2. 直达大屏浏览器触控板与导航微操中枢
-xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenModernRemote YES -UITestRemoteTab 1
+# 2. 直达改版后的电视遥控中枢：浏览器控制与常用 JS 脚本芯片模式
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenTVDetail YES -UITestInitialTab 1
 
-# 3. 直达大屏软键盘实时输入同步抽屉 (RTI)
-xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenModernRemote YES -UITestRemoteTab 1 -UITestShowKeyboard YES
+# 3. 直达电视遥控中枢：视频控制与播放速率调节模式
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenTVDetail YES -UITestInitialTab 0
 
-# 4. 直达统一设置中枢与端侧 AI 模型中心
+# 4. 直达全屏触控板与 JS 控制界面
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenBrowserControl YES
+
+# 5. 直达统一设置中枢与端侧 AI 模型中心
 xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenSettings YES
 ```
 
