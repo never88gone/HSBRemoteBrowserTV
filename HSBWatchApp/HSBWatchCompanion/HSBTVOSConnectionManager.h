@@ -12,6 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 extern NSString * const HSBTVOSConnectionStateNotification;
 extern NSString * const HSBTVOSStateUpdatedNotification;
 extern NSString * const HSBIPTVFavoritesUpdatedNotification;
+extern NSString * const HSBIPTVCatalogUpdatedNotification;
+extern NSString * const HSBIPTVStateUpdatedNotification;
 
 typedef NSString * HSBRemoteSimulateAction NS_TYPED_ENUM;
 

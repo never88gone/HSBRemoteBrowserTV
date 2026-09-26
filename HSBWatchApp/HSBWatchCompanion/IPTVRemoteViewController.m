@@ -595,13 +595,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.currentDigits appendString:digit];
     self.keypadDisplayLabel.text = [NSString stringWithFormat:L(@"Channel: %@", @"频道: %@"), self.currentDigits];
     
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{
-            HSBRemotePayloadKeyAction: HSBRemoteSimulateActionDigit,
-            HSBRemotePayloadKeyDigit: digit
-        });
-    }
-    
     [self.autoCommitTimer invalidate];
     self.autoCommitTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 target:self selector:@selector(keypadOK) userInfo:nil repeats:NO];
 }
@@ -655,17 +648,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 #pragma mark - Favorites Control
 
-- (NSArray<NSDictionary *> *)defaultFavorites {
-    return @[
-        @{HSBRemotePayloadKeyName: L(@"CCTV-1 General", @"CCTV-1 综合"), HSBRemotePayloadKeyId: @"cctv1"},
-        @{HSBRemotePayloadKeyName: L(@"CCTV-5 Sports", @"CCTV-5 体育"), HSBRemotePayloadKeyId: @"cctv5"},
-        @{HSBRemotePayloadKeyName: L(@"CCTV-13 News", @"CCTV-13 新闻"), HSBRemotePayloadKeyId: @"cctv13"},
-        @{HSBRemotePayloadKeyName: L(@"Hunan TV", @"湖南卫视"), HSBRemotePayloadKeyId: @"hunantv"},
-        @{HSBRemotePayloadKeyName: L(@"Dragon TV", @"东方卫视"), HSBRemotePayloadKeyId: @"dongfangtv"},
-        @{HSBRemotePayloadKeyName: L(@"Zhejiang TV", @"浙江卫视"), HSBRemotePayloadKeyId: @"zhejiangtv"}
-    ];
-}
-
 - (void)handleFavoritesUpdated:(NSNotification *)note {
     dispatch_async(dispatch_get_main_queue(), ^{
         [self reloadFavoritesUI];
@@ -680,25 +662,26 @@ static inline NSString * L(NSString *en, NSString *zh) {
     }
     
     NSArray *channels = [[NSUserDefaults standardUserDefaults] objectForKey:@"HSBIPTVFavorites"];
-    if (!channels || ![channels isKindOfClass:[NSArray class]] || channels.count == 0) {
-        channels = [self defaultFavorites];
-    }
+    if (![channels isKindOfClass:[NSArray class]]) channels = @[];
     
-    NSMutableArray *filtered = [NSMutableArray array];
-    for (NSDictionary *dict in channels) {
+    // 按原始收藏索引过滤，按钮 tag 必须仍指向原始数组。
+    NSMutableArray<NSNumber *> *filteredIndices = [NSMutableArray array];
+    for (NSUInteger index = 0; index < channels.count; index++) {
+        NSDictionary *dict = channels[index];
+        if (![dict isKindOfClass:[NSDictionary class]]) continue;
         NSString *name = dict[HSBRemotePayloadKeyName] ?: dict[@"name"] ?: @"";
         if (self.filterKeyword.length > 0) {
             if ([name localizedCaseInsensitiveContainsString:self.filterKeyword]) {
-                [filtered addObject:dict];
+                [filteredIndices addObject:@(index)];
             }
         } else {
-            [filtered addObject:dict];
+            [filteredIndices addObject:@(index)];
         }
     }
     
     UIView *lastView = nil;
-    for (int i = 0; i < filtered.count; i++) {
-        NSDictionary *dict = filtered[i];
+    for (NSNumber *originalIndex in filteredIndices) {
+        NSDictionary *dict = channels[originalIndex.unsignedIntegerValue];
         NSString *name = dict[HSBRemotePayloadKeyName] ?: dict[@"name"];
         
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -708,7 +691,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [btn setTitle:name forState:UIControlStateNormal];
         btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
         btn.contentEdgeInsets = UIEdgeInsetsMake(6, 12, 6, 12);
-        btn.tag = i;
+        btn.tag = originalIndex.integerValue;
         [btn addTarget:self action:@selector(channelPressed:) forControlEvents:UIControlEventTouchUpInside];
         
         UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleChannelLongPress:)];
@@ -736,12 +719,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)channelPressed:(UIButton *)sender {
     NSArray *channels = [[NSUserDefaults standardUserDefaults] objectForKey:@"HSBIPTVFavorites"];
-    if (!channels || ![channels isKindOfClass:[NSArray class]] || channels.count == 0) {
-        channels = [self defaultFavorites];
-    }
+    if (![channels isKindOfClass:[NSArray class]]) return;
     
-    if (sender.tag < channels.count) {
+    if (sender.tag >= 0 && sender.tag < channels.count) {
         NSDictionary *dict = channels[sender.tag];
+        if (![dict isKindOfClass:[NSDictionary class]]) return;
         NSString *name = dict[HSBRemotePayloadKeyName] ?: dict[@"name"];
         NSString *chanId = dict[HSBRemotePayloadKeyId] ?: dict[@"id"];
         
@@ -782,12 +764,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
         NSInteger index = btn.tag;
         
         NSArray *channels = [[NSUserDefaults standardUserDefaults] objectForKey:@"HSBIPTVFavorites"];
-        if (!channels || ![channels isKindOfClass:[NSArray class]] || channels.count == 0) {
-            channels = [self defaultFavorites];
-        }
+        if (![channels isKindOfClass:[NSArray class]]) return;
         
-        if (index < channels.count) {
+        if (index >= 0 && index < channels.count) {
             NSDictionary *dict = channels[index];
+            if (![dict isKindOfClass:[NSDictionary class]]) return;
             NSString *name = dict[HSBRemotePayloadKeyName] ?: dict[@"name"];
             NSString *chanId = dict[HSBRemotePayloadKeyId] ?: dict[@"id"];
             

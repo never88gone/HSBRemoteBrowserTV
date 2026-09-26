@@ -79,6 +79,7 @@ public struct ModernRemoteContainerView: View {
                     } else if selectedControlTab == 2 {
                         // Tab 3: IPTV 遥控 (经典 CH+/- 换台、音量塔、频道快捷直达与数字选台)
                         ModernIPTVControlView(
+                            isConnected: coordinatorObserver.isHSBBrowserConnected,
                             onAction: { action in
                                 HSBTVOSConnectionManager.shared().sendSimulateAction(action)
                             },
@@ -89,11 +90,24 @@ public struct ModernRemoteContainerView: View {
                                     HSBRemotePayloadKeyId: channelId
                                 ])
                             },
-                            onDigit: { digit in
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(
-                                    .digit,
-                                    withParams: [HSBRemotePayloadKeyDigit: digit]
-                                )
+                            onRequestCatalog: { query, group, offset, limit, requestId in
+                                HSBTVOSConnectionManager.shared().sendPayload([
+                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvChannels.rawValue,
+                                    "request": "catalog",
+                                    "query": query,
+                                    "group": group,
+                                    "offset": offset,
+                                    "limit": limit,
+                                    HSBRemotePayloadKeyRequestId: requestId
+                                ])
+                            },
+                            onFavoriteChange: { channelId, shouldFavorite in
+                                HSBTVOSConnectionManager.shared().sendPayload([
+                                    HSBRemotePayloadKeyAction: shouldFavorite
+                                        ? HSBRemoteSimulateAction.iptvAddFavorite.rawValue
+                                        : HSBRemoteSimulateAction.iptvDeleteFavorite.rawValue,
+                                    HSBRemotePayloadKeyId: channelId
+                                ])
                             }
                         )
                     } else {

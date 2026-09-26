@@ -16,7 +16,7 @@ public final class HSBBrowserProtocolClient {
     
     private var connection: nw_connection_t?
     private let queue = DispatchQueue(label: "com.tanghulu.browser.client.queue", qos: .userInitiated)
-    private let parser = HSBJSONMessageParser()
+    private let parser = HSBJSONMessageParser(maxBufferSize: 1024 * 1024)
     private let reconnectionPolicy = HSBReconnectionPolicy()
     
     private(set) var currentEndpoint: nw_endpoint_t?
@@ -148,6 +148,11 @@ public final class HSBBrowserProtocolClient {
             
             if let content = content {
                 let receivedData = Data(content as DispatchData)
+                if self.parser.pendingByteCount + receivedData.count > 1024 * 1024 {
+                    print("[BrowserClient] Inbound JSON exceeded size limit; closing connection.")
+                    self.disconnect()
+                    return
+                }
                 let completeMessages = self.parser.append(data: receivedData)
                 
                 for msgData in completeMessages {

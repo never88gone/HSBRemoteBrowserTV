@@ -9,6 +9,9 @@
 NSString * const HSBTVOSConnectionStateNotification = @"HSBTVOSConnectionStateNotification";
 NSString * const HSBTVOSStateUpdatedNotification = @"HSBTVOSStateUpdatedNotification";
 NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdatedNotification";
+NSString * const HSBIPTVCatalogUpdatedNotification = @"HSBIPTVCatalogUpdatedNotification";
+NSString * const HSBIPTVStateUpdatedNotification = @"HSBIPTVStateUpdatedNotification";
+static NSUInteger const HSBMaxIncomingJSONBytes = 1024 * 1024;
 
 // Network.framework 的 TCP receive 返回任意字节块，不对应 send 边界。
 // 从持久缓冲区中提取一个或多个完整 JSON，兼容拆包和粘包。
@@ -361,6 +364,14 @@ NSString * const HSBConnectionStateKeyState = @"state";
             dispatch_data_t contiguousContent = dispatch_data_create_map(content, &buffer, &size);
             if (contiguousContent && buffer && size > 0) {
                 NSData *chunk = [NSData dataWithBytes:buffer length:size];
+                if (chunk.length > HSBMaxIncomingJSONBytes ||
+                    receiveBuffer.length > HSBMaxIncomingJSONBytes - chunk.length) {
+                    NSLog(@"[BonjourBridge] Inbound JSON exceeded size limit; closing connection.");
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (weakSelf.connection == connection) [weakSelf disconnect];
+                    });
+                    return;
+                }
                 [receiveBuffer appendData:chunk];
                 for (NSData *messageData in HSBExtractJSONMessages(receiveBuffer)) {
                     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:messageData options:0 error:nil];
@@ -395,6 +406,19 @@ NSString * const HSBConnectionStateKeyState = @"state";
                                                                                   userInfo:@{HSBRemotePayloadKeyChannels: favorites}];
                             });
                         }
+                    } else if ([action isEqualToString:@"iptv_catalog"] &&
+                               [json[HSBRemotePayloadKeyChannels] isKindOfClass:[NSArray class]]) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVCatalogUpdatedNotification
+                                                                                object:weakSelf
+                                                                              userInfo:json];
+                        });
+                    } else if ([action isEqualToString:@"iptv_state"]) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVStateUpdatedNotification
+                                                                                object:weakSelf
+                                                                              userInfo:json];
+                        });
                     } else if ([action isEqualToString:HSBRemoteSimulateActionTranslate]) {
                         NSString *requestId = json[HSBRemotePayloadKeyRequestId];
                         NSString *text = json[HSBRemotePayloadKeyText];
