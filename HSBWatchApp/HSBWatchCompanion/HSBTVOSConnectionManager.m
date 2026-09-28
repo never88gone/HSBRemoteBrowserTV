@@ -5,12 +5,84 @@
 
 #import "HSBTVOSConnectionManager.h"
 #import "HSBLocalLLMManager.h"
+#import <UIKit/UIKit.h>
+#import <Security/Security.h>
+
+static NSString * const HSBRemotePairedTVKeychainService = @"com.nevergone.hsbtvremote.paired-tvs.v1";
+static NSString * const HSBRemotePairedTVKeychainAccount = @"paired-devices";
+static NSString * const HSBRemoteDeviceIDDefaultsKey = @"HSBRemote.DeviceIdentity.v1";
+
+static dispatch_data_t HSBRemoteDispatchData(NSData *data) {
+    NSData *stableData = [data copy];
+    return dispatch_data_create(stableData.bytes, stableData.length, dispatch_get_main_queue(), ^{
+        (void)stableData;
+    });
+}
+
+static NSString *HSBRemoteBase64URLString(NSData *data) {
+    NSString *value = [[data base64EncodedStringWithOptions:0]
+        stringByReplacingOccurrencesOfString:@"+" withString:@"-"];
+    value = [value stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
+    return [value stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"="]];
+}
+
+static NSData *HSBRemoteDataFromBase64URLString(NSString *value) {
+    NSString *base64 = [[value stringByReplacingOccurrencesOfString:@"-" withString:@"+"]
+        stringByReplacingOccurrencesOfString:@"_" withString:@"/"];
+    NSUInteger remainder = base64.length % 4;
+    if (remainder > 0) base64 = [base64 stringByPaddingToLength:base64.length + (4 - remainder)
+                                                    withString:@"=" startingAtIndex:0];
+    return [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+}
+
+static NSArray<NSDictionary<NSString *, NSString *> *> *HSBRemotePairedTVRecords(void) {
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: HSBRemotePairedTVKeychainService,
+        (__bridge id)kSecAttrAccount: HSBRemotePairedTVKeychainAccount,
+        (__bridge id)kSecReturnData: @YES,
+        (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
+    };
+    CFTypeRef result = NULL;
+    if (SecItemCopyMatching((__bridge CFDictionaryRef)query, &result) != errSecSuccess || !result) return @[];
+    NSData *data = CFBridgingRelease(result);
+    id decoded = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [decoded isKindOfClass:[NSArray class]] ? decoded : @[];
+}
+
+static BOOL HSBRemoteSavePairedTVRecords(NSArray<NSDictionary<NSString *, NSString *> *> *records) {
+    NSData *data = [NSJSONSerialization dataWithJSONObject:records options:0 error:nil];
+    if (!data) return NO;
+    NSDictionary *query = @{
+        (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+        (__bridge id)kSecAttrService: HSBRemotePairedTVKeychainService,
+        (__bridge id)kSecAttrAccount: HSBRemotePairedTVKeychainAccount
+    };
+    NSDictionary *attributes = @{
+        (__bridge id)kSecValueData: data,
+        (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    };
+    OSStatus status = SecItemUpdate((__bridge CFDictionaryRef)query, (__bridge CFDictionaryRef)attributes);
+    if (status == errSecItemNotFound) {
+        NSMutableDictionary *add = [query mutableCopy];
+        [add addEntriesFromDictionary:attributes];
+        status = SecItemAdd((__bridge CFDictionaryRef)add, NULL);
+    }
+    if (status != errSecSuccess) {
+        NSLog(@"[BonjourBridge] Keychain could not save paired-TV credentials (OSStatus %d).", (int)status);
+    }
+    return status == errSecSuccess;
+}
 
 NSString * const HSBTVOSConnectionStateNotification = @"HSBTVOSConnectionStateNotification";
 NSString * const HSBTVOSStateUpdatedNotification = @"HSBTVOSStateUpdatedNotification";
 NSString * const HSBIPTVFavoritesUpdatedNotification = @"HSBIPTVFavoritesUpdatedNotification";
 NSString * const HSBIPTVCatalogUpdatedNotification = @"HSBIPTVCatalogUpdatedNotification";
 NSString * const HSBIPTVStateUpdatedNotification = @"HSBIPTVStateUpdatedNotification";
+NSString * const HSBIPTVImportResultUpdatedNotification = @"HSBIPTVImportResultUpdatedNotification";
+NSString * const HSBIPTVSourcesUpdatedNotification = @"HSBIPTVSourcesUpdatedNotification";
+NSString * const HSBIPTVEPGBindingsUpdatedNotification = @"HSBIPTVEPGBindingsUpdatedNotification";
+NSString * const HSBIPTVEPGCandidatesUpdatedNotification = @"HSBIPTVEPGCandidatesUpdatedNotification";
 static NSUInteger const HSBMaxIncomingJSONBytes = 1024 * 1024;
 
 // Network.framework 的 TCP receive 返回任意字节块，不对应 send 边界。
@@ -78,6 +150,16 @@ static NSArray<NSData *> *HSBExtractJSONMessages(NSMutableData *buffer) {
 @property (nonatomic, copy, nullable) NSString *deviceName;
 @property (nonatomic, strong, nullable) nw_endpoint_t currentEndpoint;
 @property (nonatomic, strong) dispatch_queue_t queue;
+@property (nonatomic, copy, nullable) NSString *pairingToken;
+@property (nonatomic, copy, nullable) NSString *pairingTVID;
+@property (nonatomic, copy, nullable) NSString *pairingHost;
+@property (nonatomic, copy, nullable) NSString *pairingName;
+@property (nonatomic, strong, nullable) NSDate *pairingExpirationDate;
+@property (nonatomic, copy, nullable) NSString *deviceID;
+@property (nonatomic, copy, nullable) NSString *deviceKey;
+@property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *pairedTVRecord;
+@property (nonatomic, assign) BOOL isAuthenticating;
+@property (nonatomic, assign) NSUInteger connectionGeneration;
 
 - (void)startReceivingFromConnection:(nw_connection_t)connection buffer:(NSMutableData *)receiveBuffer;
 
@@ -128,6 +210,12 @@ HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteFavorite = @"dele
 HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVEpg = @"iptv_epg";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVChannels = @"iptv_channels";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefresh = @"iptv_refresh";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVImportSource = @"iptv_import_source";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVImportEPG = @"iptv_import_epg";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVFileChunk = @"iptv_file_chunk";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVGetSources = @"iptv_get_sources";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteSource = @"iptv_delete_source";
+HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefreshSource = @"iptv_refresh_source";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelUp = @"channel_up";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelDown = @"channel_down";
 HSBRemoteSimulateAction const HSBRemoteSimulateActionDigit = @"digit";
@@ -223,7 +311,17 @@ NSString * const HSBConnectionStateKeyState = @"state";
 }
 
 - (nw_parameters_t)createTCPParameters {
-    nw_parameters_t parameters = nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+    NSString *keyString = self.pairingToken ?: self.pairedTVRecord[@"key"];
+    NSData *key = keyString ? HSBRemoteDataFromBase64URLString(keyString) : nil;
+    NSString *identity = self.pairingToken ? @"pairing" : self.pairedTVRecord[@"deviceID"];
+    nw_parameters_t parameters = nw_parameters_create_secure_tcp(^(nw_protocol_options_t tlsOptions) {
+        sec_protocol_options_t securityOptions = nw_tls_copy_sec_protocol_options(tlsOptions);
+        sec_protocol_options_set_min_tls_protocol_version(securityOptions, tls_protocol_version_TLSv12);
+        if (key.length == 32 && identity.length > 0) {
+            sec_protocol_options_add_pre_shared_key(securityOptions,
+                HSBRemoteDispatchData(key), HSBRemoteDispatchData([identity dataUsingEncoding:NSUTF8StringEncoding]));
+        }
+    }, NW_PARAMETERS_DEFAULT_CONFIGURATION);
     nw_parameters_set_include_peer_to_peer(parameters, true);
     return parameters;
 }
@@ -231,6 +329,24 @@ NSString * const HSBConnectionStateKeyState = @"state";
 - (void)connectToEndpoint:(nw_endpoint_t)endpoint deviceName:(NSString *)deviceName {
     self.currentEndpoint = endpoint;
     self.deviceName = deviceName;
+
+    if (!self.pairingToken) {
+        NSDictionary *record = nil;
+        for (NSDictionary *candidate in HSBRemotePairedTVRecords()) {
+            if ([candidate[@"name"] isEqualToString:deviceName]) { record = candidate; break; }
+        }
+        self.pairedTVRecord = record;
+        if (!record || HSBRemoteDataFromBase64URLString(record[@"key"] ?: @"").length != 32) {
+            self.isConnected = NO;
+            [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
+                                                                object:self
+                                                              userInfo:@{HSBConnectionStateKeyState: @(-1),
+                                                                         HSBConnectionStateKeyMessage: @"Scan the TV pairing QR code to connect securely."}];
+            return;
+        }
+        self.deviceID = record[@"deviceID"];
+        self.deviceKey = record[@"key"];
+    }
     
     if (self.connection) {
         nw_connection_cancel(self.connection);
@@ -240,34 +356,48 @@ NSString * const HSBConnectionStateKeyState = @"state";
     nw_parameters_t parameters = [self createTCPParameters];
     nw_connection_t connection = nw_connection_create(endpoint, parameters);
     self.connection = connection;
+    NSUInteger generation = ++self.connectionGeneration;
     
     __weak typeof(self) weakSelf = self;
     nw_connection_set_state_changed_handler(connection, ^(nw_connection_state_t state, nw_error_t error) {
         // 被替换或主动断开的旧连接仍可能回调 cancelled/failed，不能让它
         // 覆盖当前新连接的在线状态，也不能触发额外重连。
-        if (weakSelf.connection != connection) return;
+        if (weakSelf.connection != connection || generation != weakSelf.connectionGeneration) return;
 
         switch (state) {
             case nw_connection_state_ready: {
-                NSLog(@"[BonjourBridge] Connected to TVOS Display!");
-                weakSelf.isConnected = YES;
-                [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
-                                                                    object:weakSelf 
-                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🟢 Connected to Display"}];
+                NSLog(@"[BonjourBridge] TLS ready; authenticating the paired device.");
+                weakSelf.isAuthenticating = YES;
                 [weakSelf startReceivingFromConnection:connection buffer:[NSMutableData data]];
+                [weakSelf sendRemoteHelloOnConnection:connection];
                 break;
             }
             case nw_connection_state_failed: {
                 NSLog(@"[BonjourBridge] TVOS Connection failed: %@. Reconnecting in 2s...", error);
                 weakSelf.isConnected = NO;
+                weakSelf.isAuthenticating = NO;
                 weakSelf.connection = nil;
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
                                                                   userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🔴 Error. Reconnecting..."}];
                 // Auto-reconnect after 2 seconds
-                if (weakSelf.currentEndpoint) {
+                BOOL pairingIsCurrent = weakSelf.pairingToken.length > 0 &&
+                    weakSelf.pairingExpirationDate.timeIntervalSinceNow > 0;
+                if (weakSelf.pairingToken.length > 0 && !pairingIsCurrent) {
+                    weakSelf.pairingToken = nil;
+                    weakSelf.pairingExpirationDate = nil;
+                    weakSelf.pairingTVID = nil;
+                    weakSelf.pairingHost = nil;
+                    weakSelf.pairingName = nil;
+                    weakSelf.deviceKey = nil;
+                    weakSelf.currentEndpoint = nil;
+                } else if (weakSelf.currentEndpoint && (pairingIsCurrent || weakSelf.pairedTVRecord)) {
+                    nw_endpoint_t retryEndpoint = weakSelf.currentEndpoint;
+                    NSString *retryName = weakSelf.deviceName;
+                    NSUInteger failedGeneration = generation;
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), weakSelf.queue, ^{
-                        [weakSelf connectToEndpoint:weakSelf.currentEndpoint deviceName:weakSelf.deviceName];
+                        if (weakSelf.connectionGeneration != failedGeneration || weakSelf.currentEndpoint != retryEndpoint) return;
+                        [weakSelf connectToEndpoint:retryEndpoint deviceName:retryName];
                     });
                 }
                 break;
@@ -275,6 +405,7 @@ NSString * const HSBConnectionStateKeyState = @"state";
             case nw_connection_state_cancelled: {
                 NSLog(@"[BonjourBridge] TVOS Connection cancelled.");
                 weakSelf.isConnected = NO;
+                weakSelf.isAuthenticating = NO;
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
                                                                   userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"⚪️ Disconnected"}];
@@ -289,9 +420,178 @@ NSString * const HSBConnectionStateKeyState = @"state";
     nw_connection_start(connection);
 }
 
+- (void)sendRemoteHelloOnConnection:(nw_connection_t)connection {
+    if (!connection || !self.deviceID || !self.deviceKey) return;
+    NSMutableDictionary *hello = [@{
+        HSBRemotePayloadKeyAction: @"remote_hello",
+        @"deviceID": self.deviceID,
+        @"deviceName": UIDevice.currentDevice.name ?: @"iPhone",
+        @"deviceKey": self.deviceKey,
+        @"protocolVersion": @1,
+        @"capabilities": @[@"remote-control", @"iptv", @"epg", @"playback"]
+    } mutableCopy];
+    if (self.pairingToken.length > 0) hello[@"pairingToken"] = self.pairingToken;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:hello options:0 error:nil];
+    if (!data) return;
+    nw_connection_send(connection, HSBRemoteDispatchData(data), NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t error) {
+        if (error) NSLog(@"[BonjourBridge] TLS device hello failed: %@", error);
+    });
+}
+
+- (void)postAuthenticatedConnectionStateForConnection:(nw_connection_t)connection message:(NSString *)message {
+    if (self.connection != connection || self.isConnected) return;
+    self.isAuthenticating = NO;
+    self.isConnected = YES;
+    [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
+                                                        object:self
+                                                      userInfo:@{HSBConnectionStateKeyState: @(nw_connection_state_ready),
+                                                                 HSBConnectionStateKeyMessage: message}];
+}
+
+- (void)connectToPairingURL:(NSURL *)pairingURL {
+    NSURLComponents *components = [NSURLComponents componentsWithURL:pairingURL resolvingAgainstBaseURL:NO];
+    if (![components.scheme isEqualToString:@"hsbremote"] ||
+        ![components.host isEqualToString:@"pair"]) return;
+    NSMutableDictionary<NSString *, NSString *> *values = [NSMutableDictionary dictionary];
+    for (NSURLQueryItem *item in components.queryItems) if (item.name && item.value) values[item.name] = item.value;
+    NSString *tvID = values[@"tv"], *name = values[@"name"], *host = values[@"host"], *token = values[@"token"];
+    NSInteger port = values[@"port"].integerValue;
+    NSTimeInterval expiry = values[@"expires"].doubleValue;
+    if (tvID.length == 0 || name.length == 0 || host.length == 0 || port < 1024 || port > 65535 ||
+        HSBRemoteDataFromBase64URLString(token ?: @"").length != 32 || expiry <= NSDate.date.timeIntervalSince1970 ||
+        expiry > NSDate.date.timeIntervalSince1970 + 180.0) return;
+
+    NSMutableData *randomKey = [NSMutableData dataWithLength:32];
+    if (SecRandomCopyBytes(kSecRandomDefault, randomKey.length, randomKey.mutableBytes) != errSecSuccess) return;
+    NSString *deviceID = [[NSUserDefaults standardUserDefaults] stringForKey:HSBRemoteDeviceIDDefaultsKey];
+    if (deviceID.length == 0) {
+        deviceID = NSUUID.UUID.UUIDString;
+        [[NSUserDefaults standardUserDefaults] setObject:deviceID forKey:HSBRemoteDeviceIDDefaultsKey];
+    }
+    self.pairingTVID = tvID;
+    self.pairingName = name;
+    self.pairingHost = host;
+    self.pairingToken = token;
+    self.pairingExpirationDate = [NSDate dateWithTimeIntervalSince1970:expiry];
+    self.deviceID = deviceID;
+    self.deviceKey = HSBRemoteBase64URLString(randomKey);
+    self.pairedTVRecord = nil;
+    nw_endpoint_t endpoint = nw_endpoint_create_host(host.UTF8String, [@(port) stringValue].UTF8String);
+    [self connectToEndpoint:endpoint deviceName:name];
+}
+
+- (void)completeSecurePairingAndReconnect {
+    NSDictionary *record = @{
+        @"tvID": self.pairingTVID ?: @"",
+        @"name": self.pairingName ?: self.deviceName ?: @"Apple TV",
+        @"host": self.pairingHost ?: @"",
+        @"port": @"56789",
+        @"deviceID": self.deviceID ?: @"",
+        @"key": self.deviceKey ?: @""
+    };
+    NSMutableArray *records = [HSBRemotePairedTVRecords() mutableCopy];
+    NSIndexSet *existing = [records indexesOfObjectsPassingTest:^BOOL(NSDictionary *item, NSUInteger idx, BOOL *stop) {
+        return [item[@"tvID"] isEqualToString:record[@"tvID"]];
+    }];
+    [records removeObjectsAtIndexes:existing];
+    [records addObject:record];
+    if (!HSBRemoteSavePairedTVRecords(records)) {
+        NSLog(@"[BonjourBridge] Could not save paired-TV key in Keychain.");
+        self.pairingToken = nil;
+        self.pairingExpirationDate = nil;
+        self.pairingTVID = nil;
+        self.pairingHost = nil;
+        self.pairingName = nil;
+        self.isAuthenticating = NO;
+        self.isConnected = NO;
+        self.currentEndpoint = nil;
+        if (self.connection) {
+            nw_connection_cancel(self.connection);
+            self.connection = nil;
+        }
+        [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
+                                                            object:self
+                                                          userInfo:@{HSBConnectionStateKeyState: @(-1),
+                                                                     HSBConnectionStateKeyMessage: @"Could not save secure pairing. Scan the TV code again."}];
+        return;
+    }
+    self.pairedTVRecord = record;
+    self.pairingToken = nil;
+    self.pairingExpirationDate = nil;
+    self.isAuthenticating = NO;
+    nw_endpoint_t endpoint = self.currentEndpoint;
+    NSString *name = self.deviceName ?: self.pairingName ?: @"Apple TV";
+    NSUInteger generation = self.connectionGeneration;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), self.queue, ^{
+        if (generation != self.connectionGeneration || !endpoint) return;
+        [self connectToEndpoint:endpoint deviceName:name];
+    });
+}
+
+- (void)handleSecureHandshakeResponse:(NSDictionary *)json fromConnection:(nw_connection_t)connection {
+    if (self.connection != connection) return;
+    NSString *action = [json[HSBRemotePayloadKeyAction] isKindOfClass:[NSString class]] ? json[HSBRemotePayloadKeyAction] : @"";
+    if (([action isEqualToString:@"remote_hello_ack"] || [action isEqualToString:@"remote_pairing_complete"]) &&
+        [json[@"protocolVersion"] integerValue] != 1) {
+        NSLog(@"[BonjourBridge] TV remote protocol version is unsupported.");
+        nw_connection_cancel(connection);
+        self.isAuthenticating = NO;
+        self.isConnected = NO;
+        [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
+                                                            object:self
+                                                          userInfo:@{HSBConnectionStateKeyState: @(-1),
+                                                                     HSBConnectionStateKeyMessage: @"Update the TV app to connect securely."}];
+        return;
+    }
+    if ([action isEqualToString:@"remote_hello_ack"] || [action isEqualToString:@"remote_pairing_complete"]) {
+        NSString *expectedTVID = self.pairingTVID ?: self.pairedTVRecord[@"tvID"];
+        NSString *actualTVID = [json[@"tvID"] isKindOfClass:[NSString class]] ? json[@"tvID"] : @"";
+        NSArray *capabilities = [json[@"capabilities"] isKindOfClass:[NSArray class]] ? json[@"capabilities"] : @[];
+        NSSet *negotiated = [NSSet setWithArray:capabilities];
+        NSMutableSet *missingCapabilities = [NSMutableSet setWithArray:@[@"remote-control", @"iptv", @"epg", @"playback"]];
+        [missingCapabilities minusSet:negotiated];
+        if (expectedTVID.length == 0 || ![expectedTVID isEqualToString:actualTVID] || missingCapabilities.count > 0) {
+            NSLog(@"[BonjourBridge] TV identity or iPTV capabilities do not match the paired remote.");
+            nw_connection_cancel(connection);
+            self.isAuthenticating = NO;
+            self.isConnected = NO;
+            [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
+                                                                object:self
+                                                              userInfo:@{HSBConnectionStateKeyState: @(-1),
+                                                                         HSBConnectionStateKeyMessage: @"Update the TV app to enable secure iPTV control."}];
+            return;
+        }
+    }
+    if ([action isEqualToString:@"remote_hello_ack"]) {
+        [self postAuthenticatedConnectionStateForConnection:connection message:@"🟢 Securely connected to TV"];
+    } else if ([action isEqualToString:@"remote_pairing_complete"]) {
+        [self completeSecurePairingAndReconnect];
+    } else if ([action isEqualToString:@"remote_pairing_failed"]) {
+        self.isAuthenticating = NO;
+        self.isConnected = NO;
+        self.pairingToken = nil;
+        self.pairingExpirationDate = nil;
+        self.pairingTVID = nil;
+        self.pairingHost = nil;
+        self.pairingName = nil;
+        self.currentEndpoint = nil;
+        nw_connection_cancel(connection);
+        [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
+                                                            object:self
+                                                          userInfo:@{HSBConnectionStateKeyState: @(-1),
+                                                                     HSBConnectionStateKeyMessage: @"Pairing expired. Scan the TV QR code again."}];
+    }
+}
+
 - (void)disconnect {
     self.currentEndpoint = nil;
     self.deviceName = nil;
+    self.pairingToken = nil;
+    self.pairingExpirationDate = nil;
+    self.pairingTVID = nil;
+    self.pairingHost = nil;
+    self.pairingName = nil;
+    self.isAuthenticating = NO;
     if (self.connection) {
         nw_connection_cancel(self.connection);
         self.connection = nil;
@@ -377,6 +677,15 @@ NSString * const HSBConnectionStateKeyState = @"state";
                     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:messageData options:0 error:nil];
                     if (json && [json isKindOfClass:[NSDictionary class]]) {
                     NSString *action = json[HSBRemotePayloadKeyAction];
+                    if ([action isEqualToString:@"remote_hello_ack"] ||
+                        [action isEqualToString:@"remote_pairing_complete"] ||
+                        [action isEqualToString:@"remote_pairing_failed"]) {
+                        [weakSelf handleSecureHandshakeResponse:json fromConnection:connection];
+                        continue;
+                    }
+                    // Ignore all TV state and command responses until the TLS PSK
+                    // has been bound to a Keychain device record by the TV.
+                    if (!weakSelf.isConnected) continue;
                     if ([action isEqualToString:HSBRemoteSimulateActionSyncProgress]) {
                         NSNumber *currentTime = json[HSBRemotePayloadKeyCurrentTime];
                         NSNumber *duration = json[HSBRemotePayloadKeyDuration];
@@ -416,6 +725,31 @@ NSString * const HSBConnectionStateKeyState = @"state";
                     } else if ([action isEqualToString:@"iptv_state"]) {
                         dispatch_async(dispatch_get_main_queue(), ^{
                             [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVStateUpdatedNotification
+                                                                                object:weakSelf
+                                                                              userInfo:json];
+                        });
+                    } else if ([action isEqualToString:@"iptv_import_result"]) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVImportResultUpdatedNotification
+                                                                                object:weakSelf
+                                                                              userInfo:json];
+                        });
+                    } else if ([action isEqualToString:@"iptv_sources"] &&
+                               [json[HSBRemotePayloadKeyChannels] isKindOfClass:[NSArray class]]) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVSourcesUpdatedNotification
+                                                                                object:weakSelf
+                                                                              userInfo:json];
+                        });
+                    } else if ([action isEqualToString:@"iptv_epg_bindings"]) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVEPGBindingsUpdatedNotification
+                                                                                object:weakSelf
+                                                                              userInfo:json];
+                        });
+                    } else if ([action isEqualToString:@"iptv_epg_candidates"]) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [[NSNotificationCenter defaultCenter] postNotificationName:HSBIPTVEPGCandidatesUpdatedNotification
                                                                                 object:weakSelf
                                                                               userInfo:json];
                         });

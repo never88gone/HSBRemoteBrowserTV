@@ -14,6 +14,10 @@ extern NSString * const HSBTVOSStateUpdatedNotification;
 extern NSString * const HSBIPTVFavoritesUpdatedNotification;
 extern NSString * const HSBIPTVCatalogUpdatedNotification;
 extern NSString * const HSBIPTVStateUpdatedNotification;
+extern NSString * const HSBIPTVImportResultUpdatedNotification;
+extern NSString * const HSBIPTVSourcesUpdatedNotification;
+extern NSString * const HSBIPTVEPGBindingsUpdatedNotification;
+extern NSString * const HSBIPTVEPGCandidatesUpdatedNotification;
 
 typedef NSString * HSBRemoteSimulateAction NS_TYPED_ENUM;
 
@@ -73,6 +77,12 @@ extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteFavorite;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVEpg;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVChannels;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefresh;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVImportSource;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVImportEPG;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVFileChunk;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVGetSources;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVDeleteSource;
+extern HSBRemoteSimulateAction const HSBRemoteSimulateActionIPTVRefreshSource;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelUp;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionChannelDown;
 extern HSBRemoteSimulateAction const HSBRemoteSimulateActionDigit;
@@ -164,6 +174,7 @@ extern NSString * const HSBConnectionStateKeyState;
 + (instancetype)sharedManager;
 
 - (void)connectToEndpoint:(nw_endpoint_t)endpoint deviceName:(NSString *)deviceName;
+- (void)connectToPairingURL:(NSURL *)pairingURL;
 - (void)disconnect;
 
 - (void)sendAction:(NSString *)action;

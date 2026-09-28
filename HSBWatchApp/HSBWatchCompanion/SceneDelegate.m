@@ -8,6 +8,7 @@
 #import "SceneDelegate.h"
 #import "AppDelegate.h"
 #import "HSBThemeManager.h"
+#import "HSBTVOSConnectionManager.h"
 
 @interface SceneDelegate ()
 
@@ -36,6 +37,22 @@
             }
             self.window.tintColor = [HSBThemeManager tanghuluBrandColor];
         }
+    }
+    for (UIOpenURLContext *context in connectionOptions.URLContexts) {
+        [self handleRemotePairingURL:context.URL];
+    }
+}
+
+- (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts {
+    for (UIOpenURLContext *context in URLContexts) {
+        [self handleRemotePairingURL:context.URL];
+    }
+}
+
+- (void)handleRemotePairingURL:(NSURL *)url {
+    if ([[url.scheme lowercaseString] isEqualToString:@"hsbremote"] &&
+        [[url.host lowercaseString] isEqualToString:@"pair"]) {
+        [[HSBTVOSConnectionManager sharedManager] connectToPairingURL:url];
     }
 }
 

@@ -90,7 +90,7 @@ public struct ModernRemoteContainerView: View {
                                     HSBRemotePayloadKeyId: channelId
                                 ])
                             },
-                            onRequestCatalog: { query, group, offset, limit, requestId in
+                            onRequestCatalog: { query, group, offset, limit, source, requestId in
                                 HSBTVOSConnectionManager.shared().sendPayload([
                                     HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvChannels.rawValue,
                                     "request": "catalog",
@@ -98,6 +98,7 @@ public struct ModernRemoteContainerView: View {
                                     "group": group,
                                     "offset": offset,
                                     "limit": limit,
+                                    "source": source,
                                     HSBRemotePayloadKeyRequestId: requestId
                                 ])
                             },
@@ -107,6 +108,92 @@ public struct ModernRemoteContainerView: View {
                                         ? HSBRemoteSimulateAction.iptvAddFavorite.rawValue
                                         : HSBRemoteSimulateAction.iptvDeleteFavorite.rawValue,
                                     HSBRemotePayloadKeyId: channelId
+                                ])
+                            },
+                            onImportSource: { name, url, epgURL, requestId in
+                                var payload: [String: Any] = [
+                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportSource.rawValue,
+                                    HSBRemotePayloadKeyName: name,
+                                    HSBRemotePayloadKeyUrl: url,
+                                    HSBRemotePayloadKeyRequestId: requestId
+                                ]
+                                if let epgURL, !epgURL.isEmpty { payload["epgURL"] = epgURL }
+                                HSBTVOSConnectionManager.shared().sendPayload(payload)
+                            },
+                            onImportEPG: { sourceName, url, requestId in
+                                HSBTVOSConnectionManager.shared().sendPayload([
+                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportEPG.rawValue,
+                                    HSBRemotePayloadKeyUrl: url,
+                                    "sourceName": sourceName,
+                                    HSBRemotePayloadKeyRequestId: requestId
+                                ])
+                            },
+                            onImportFile: { type, name, data, requestId in
+                                guard !data.isEmpty else { return }
+                                // Keep 32 MiB file imports within the TV's 256-chunk
+                                // reassembly limit while staying well below the
+                                // remote JSON message size limit after Base64 encoding.
+                                let chunkSize = 128 * 1024
+                                let chunkCount = (data.count + chunkSize - 1) / chunkSize
+                                Task.detached(priority: .userInitiated) {
+                                    for index in 0..<chunkCount {
+                                        let lower = index * chunkSize
+                                        let upper = min(lower + chunkSize, data.count)
+                                        let chunk = data.subdata(in: lower..<upper).base64EncodedString()
+                                        HSBTVOSConnectionManager.shared().sendPayload([
+                                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvFileChunk.rawValue,
+                                            HSBRemotePayloadKeyRequestId: requestId,
+                                            "fileType": type,
+                                            HSBRemotePayloadKeyName: name,
+                                            "index": index,
+                                            "chunkCount": chunkCount,
+                                            "data": chunk
+                                        ])
+                                        try? await Task.sleep(for: .milliseconds(12))
+                                    }
+                                }
+                            },
+                            onRequestSources: {
+                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvGetSources)
+                            },
+                            onDeleteSource: { name in
+                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvDeleteSource, withParams: [
+                                    HSBRemotePayloadKeyName: name
+                                ])
+                            },
+                            onRefreshSource: { name, requestId in
+                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvRefreshSource, withParams: [
+                                    HSBRemotePayloadKeyName: name,
+                                    HSBRemotePayloadKeyRequestId: requestId
+                                ])
+                            },
+                            onConfirmSourceRefresh: { requestId, approved in
+                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvRefreshSource, withParams: [
+                                    HSBRemotePayloadKeyRequestId: requestId,
+                                    "confirmRefresh": approved
+                                ])
+                            },
+                            onEPGBindingRequest: { request in
+                                var payload: [String: Any] = [
+                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportEPG.rawValue,
+                                    "operation": request.operation,
+                                    "sourceName": request.sourceName,
+                                    HSBRemotePayloadKeyRequestId: request.requestID,
+                                    "query": request.query,
+                                    "offset": request.offset,
+                                    "limit": request.limit
+                                ]
+                                if let channelID = request.channelID { payload["channelID"] = channelID }
+                                if let epgChannelID = request.epgChannelID { payload["epgChannelID"] = epgChannelID }
+                                if let mode = request.mode { payload["mode"] = mode }
+                                HSBTVOSConnectionManager.shared().sendPayload(payload)
+                            },
+                            onConfirmPlaylistImport: { requestId, approved, includeEPG in
+                                HSBTVOSConnectionManager.shared().sendPayload([
+                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportSource.rawValue,
+                                    HSBRemotePayloadKeyRequestId: requestId,
+                                    "confirmImport": approved,
+                                    "includeEPG": includeEPG
                                 ])
                             }
                         )
