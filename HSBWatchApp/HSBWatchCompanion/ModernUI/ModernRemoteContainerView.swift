@@ -8,6 +8,16 @@ import Network
 
 public struct ModernRemoteContainerView: View {
     @ObservedObject private var coordinatorObserver = CoordinatorObservable(coordinator: DualModeRemoteCoordinator.shared)
+    
+    // 主导航 Tab (沿用 itsytv-macos 经典架构：0=遥控 Remote, 1=应用生态 Apps)
+    @State private var selectedMainTab: Int = {
+        if UserDefaults.standard.object(forKey: "UITestMainTab") != nil {
+            return UserDefaults.standard.integer(forKey: "UITestMainTab")
+        }
+        return 0
+    }()
+    
+    // 遥控器情境微操模式 (0: 系统轮盘, 1: 触控板, 2: IPTV, 3: PDF演讲)
     @State private var selectedControlTab: Int = {
         if UserDefaults.standard.object(forKey: "UITestRemoteTab") != nil {
             return UserDefaults.standard.integer(forKey: "UITestRemoteTab")
@@ -57,187 +67,40 @@ public struct ModernRemoteContainerView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
                 
-                // 2. 遥控场景 Tab 切换栏 (全面开放四大核心遥控场景：系统、触控、IPTV、演讲)
-                Picker("遥控场景", selection: $selectedControlTab) {
-                    Text("系统").tag(0)
-                    Text("触控").tag(1)
-                    Text("IPTV").tag(2)
-                    Text("演讲").tag(3)
+                // 2. 主导航 Tab 切换栏 (沿用 itsytv-macos 经典架构：【遥控】与【应用生态】)
+                Picker("主导航", selection: $selectedMainTab) {
+                    Text("遥控").tag(0)
+                    Text("应用生态").tag(1)
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal, 16)
-
                 
-                // 3. 核心场景交互面板
-                ZStack {
-                    if selectedControlTab == 0 {
-                        // Tab 1: 系统遥控 (Apple TV 原生 D-pad 轮盘与一体化控制岛)
-                        systemRemoteView
-                    } else if selectedControlTab == 1 && isBrowserRemoteVisible {
-                        // Tab 2: 扩展触控板 (仅在连接真实 hsbtvbrowser 时呈现)
-                        webRemoteView
-                    } else if selectedControlTab == 2 {
-                        // Tab 3: IPTV 遥控 (经典 CH+/- 换台、音量塔、频道快捷直达与数字选台)
-                        ModernIPTVControlView(
-                            isConnected: coordinatorObserver.isHSBBrowserConnected,
-                            onAction: { action in
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(action)
-                            },
-                            onPlayChannel: { name, channelId in
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvPlayChannel.rawValue,
-                                    HSBRemotePayloadKeyChannel: name,
-                                    HSBRemotePayloadKeyId: channelId
-                                ])
-                            },
-                            onRequestCatalog: { query, group, offset, limit, source, requestId in
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvChannels.rawValue,
-                                    "request": "catalog",
-                                    "query": query,
-                                    "group": group,
-                                    "offset": offset,
-                                    "limit": limit,
-                                    "source": source,
-                                    HSBRemotePayloadKeyRequestId: requestId
-                                ])
-                            },
-                            onFavoriteChange: { channelId, shouldFavorite in
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: shouldFavorite
-                                        ? HSBRemoteSimulateAction.iptvAddFavorite.rawValue
-                                        : HSBRemoteSimulateAction.iptvDeleteFavorite.rawValue,
-                                    HSBRemotePayloadKeyId: channelId
-                                ])
-                            },
-                            onImportSource: { name, url, epgURL, requestId in
-                                var payload: [String: Any] = [
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportSource.rawValue,
-                                    HSBRemotePayloadKeyName: name,
-                                    HSBRemotePayloadKeyUrl: url,
-                                    HSBRemotePayloadKeyRequestId: requestId
-                                ]
-                                if let epgURL, !epgURL.isEmpty { payload["epgURL"] = epgURL }
-                                HSBTVOSConnectionManager.shared().sendPayload(payload)
-                            },
-                            onImportEPG: { sourceName, url, requestId in
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportEPG.rawValue,
-                                    HSBRemotePayloadKeyUrl: url,
-                                    "sourceName": sourceName,
-                                    HSBRemotePayloadKeyRequestId: requestId
-                                ])
-                            },
-                            onImportFile: { type, name, data, requestId in
-                                guard !data.isEmpty else { return }
-                                // Keep 32 MiB file imports within the TV's 256-chunk
-                                // reassembly limit while staying well below the
-                                // remote JSON message size limit after Base64 encoding.
-                                let chunkSize = 128 * 1024
-                                let chunkCount = (data.count + chunkSize - 1) / chunkSize
-                                Task.detached(priority: .userInitiated) {
-                                    for index in 0..<chunkCount {
-                                        let lower = index * chunkSize
-                                        let upper = min(lower + chunkSize, data.count)
-                                        let chunk = data.subdata(in: lower..<upper).base64EncodedString()
-                                        HSBTVOSConnectionManager.shared().sendPayload([
-                                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvFileChunk.rawValue,
-                                            HSBRemotePayloadKeyRequestId: requestId,
-                                            "fileType": type,
-                                            HSBRemotePayloadKeyName: name,
-                                            "index": index,
-                                            "chunkCount": chunkCount,
-                                            "data": chunk
-                                        ])
-                                        try? await Task.sleep(for: .milliseconds(12))
-                                    }
-                                }
-                            },
-                            onRequestSources: {
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvGetSources)
-                            },
-                            onDeleteSource: { name in
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvDeleteSource, withParams: [
-                                    HSBRemotePayloadKeyName: name
-                                ])
-                            },
-                            onRefreshSource: { name, requestId in
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvRefreshSource, withParams: [
-                                    HSBRemotePayloadKeyName: name,
-                                    HSBRemotePayloadKeyRequestId: requestId
-                                ])
-                            },
-                            onConfirmSourceRefresh: { requestId, approved in
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvRefreshSource, withParams: [
-                                    HSBRemotePayloadKeyRequestId: requestId,
-                                    "confirmRefresh": approved
-                                ])
-                            },
-                            onEPGBindingRequest: { request in
-                                var payload: [String: Any] = [
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportEPG.rawValue,
-                                    "operation": request.operation,
-                                    "sourceName": request.sourceName,
-                                    HSBRemotePayloadKeyRequestId: request.requestID,
-                                    "query": request.query,
-                                    "offset": request.offset,
-                                    "limit": request.limit
-                                ]
-                                if let channelID = request.channelID { payload["channelID"] = channelID }
-                                if let epgChannelID = request.epgChannelID { payload["epgChannelID"] = epgChannelID }
-                                if let mode = request.mode { payload["mode"] = mode }
-                                HSBTVOSConnectionManager.shared().sendPayload(payload)
-                            },
-                            onConfirmPlaylistImport: { requestId, approved, includeEPG in
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportSource.rawValue,
-                                    HSBRemotePayloadKeyRequestId: requestId,
-                                    "confirmImport": approved,
-                                    "includeEPG": includeEPG
-                                ])
-                            }
-                        )
-                    } else {
-                        // Tab 4: PDF 遥控 (商务演讲翻页大板、首尾页跳转、激光笔与屏幕涂鸦)
-                        ModernPDFControlView(
-                            onPageChange: { isNext in
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(
-                                    isNext ? .right : .left
-                                )
-                            },
-                            onJumpPage: { isFirst in
-                                HSBTVOSConnectionManager.shared().sendSimulateAction(
-                                    isFirst ? .pageHome : .stop
-                                )
-                            },
-                            onDrawAction: { type, point, color, width in
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
-                                    HSBRemotePayloadKeyType: type,
-                                    HSBRemotePayloadKeyX: Double(point.x),
-                                    HSBRemotePayloadKeyY: Double(point.y),
-                                    HSBRemotePayloadKeyColor: color,
-                                    HSBRemotePayloadKeyWidth: Double(width)
-                                ])
-                            },
-                            onClear: {
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
-                                    HSBRemotePayloadKeyType: HSBRemoteDrawTypeClear
-                                ])
-                            },
-                            onUndo: {
-                                HSBTVOSConnectionManager.shared().sendPayload([
-                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
-                                    HSBRemotePayloadKeyType: HSBRemoteDrawTypeUndo
-                                ])
-                            }
-                        )
+                // 3. 主体内容区：遥控操作台 vs 应用生态网格
+                if selectedMainTab == 0 {
+                    // 遥控操作台 (含情境微操模式切换与交互面板)
+                    VStack(spacing: 10) {
+                        Picker("遥控形态", selection: $selectedControlTab) {
+                            Text("系统").tag(0)
+                            Text("触控").tag(1)
+                            Text("IPTV").tag(2)
+                            Text("演讲").tag(3)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.horizontal, 16)
+                        
+                        remoteScenarioPanel
+                    }
+                } else {
+                    // 应用生态网格 (一键唤起应用并自动切换对应微操)
+                    ModernAppGridView { app in
+                        DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID)
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            selectedControlTab = app.targetMode
+                            selectedMainTab = 0
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            
             // 键盘输入抽屉
             if isKeyboardPresented {
                 Color.black.opacity(0.3)
@@ -275,6 +138,194 @@ public struct ModernRemoteContainerView: View {
                 isKeyboardPresented.toggle()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBAppLaunchedNotification"))) { note in
+            if let bundleID = note.object as? String {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    if bundleID == "com.never88gone.thlbrowser" {
+                        selectedControlTab = 1
+                        selectedMainTab = 0
+                    } else if bundleID == "com.nevergone.huluge.iptv" {
+                        selectedControlTab = 2
+                        selectedMainTab = 0
+                    } else if bundleID == "com.never88gone.thlpdf" {
+                        selectedControlTab = 3
+                        selectedMainTab = 0
+                    } else {
+                        selectedControlTab = 0
+                        selectedMainTab = 0
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - 核心场景交互面板 (系统、触控、IPTV、演讲)
+    @ViewBuilder
+    private var remoteScenarioPanel: some View {
+        ZStack {
+            if selectedControlTab == 0 {
+                // Tab 1: 系统遥控 (Apple TV 原生 D-pad 轮盘与一体化控制岛)
+                systemRemoteView
+            } else if selectedControlTab == 1 && isBrowserRemoteVisible {
+                // Tab 2: 扩展触控板 (仅在连接真实 hsbtvbrowser 时呈现)
+                webRemoteView
+            } else if selectedControlTab == 2 {
+                // Tab 3: IPTV 遥控 (经典 CH+/- 换台、音量塔、频道快捷直达与数字选台)
+                ModernIPTVControlView(
+                    isConnected: coordinatorObserver.isHSBBrowserConnected,
+                    onAction: { action in
+                        HSBTVOSConnectionManager.shared().sendSimulateAction(action)
+                    },
+                    onPlayChannel: { name, channelId in
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvPlayChannel.rawValue,
+                            HSBRemotePayloadKeyChannel: name,
+                            HSBRemotePayloadKeyId: channelId
+                        ])
+                    },
+                    onRequestCatalog: { query, group, offset, limit, source, requestId in
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvChannels.rawValue,
+                            "request": "catalog",
+                            "query": query,
+                            "group": group,
+                            "offset": offset,
+                            "limit": limit,
+                            "source": source,
+                            HSBRemotePayloadKeyRequestId: requestId
+                        ])
+                    },
+                    onFavoriteChange: { channelId, shouldFavorite in
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: shouldFavorite
+                                ? HSBRemoteSimulateAction.iptvAddFavorite.rawValue
+                                : HSBRemoteSimulateAction.iptvDeleteFavorite.rawValue,
+                            HSBRemotePayloadKeyId: channelId
+                        ])
+                    },
+                    onImportSource: { name, url, epgURL, requestId in
+                        var payload: [String: Any] = [
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportSource.rawValue,
+                            HSBRemotePayloadKeyName: name,
+                            HSBRemotePayloadKeyUrl: url,
+                            HSBRemotePayloadKeyRequestId: requestId
+                        ]
+                        if let epgURL, !epgURL.isEmpty { payload["epgURL"] = epgURL }
+                        HSBTVOSConnectionManager.shared().sendPayload(payload)
+                    },
+                    onImportEPG: { sourceName, url, requestId in
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportEPG.rawValue,
+                            HSBRemotePayloadKeyUrl: url,
+                            "sourceName": sourceName,
+                            HSBRemotePayloadKeyRequestId: requestId
+                        ])
+                    },
+                    onImportFile: { type, name, data, requestId in
+                        guard !data.isEmpty else { return }
+                        let chunkSize = 128 * 1024
+                        let chunkCount = (data.count + chunkSize - 1) / chunkSize
+                        Task.detached(priority: .userInitiated) {
+                            for index in 0..<chunkCount {
+                                let lower = index * chunkSize
+                                let upper = min(lower + chunkSize, data.count)
+                                let chunk = data.subdata(in: lower..<upper).base64EncodedString()
+                                HSBTVOSConnectionManager.shared().sendPayload([
+                                    HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvFileChunk.rawValue,
+                                    HSBRemotePayloadKeyRequestId: requestId,
+                                    "fileType": type,
+                                    HSBRemotePayloadKeyName: name,
+                                    "index": index,
+                                    "chunkCount": chunkCount,
+                                    "data": chunk
+                                ])
+                                try? await Task.sleep(for: .milliseconds(12))
+                            }
+                        }
+                    },
+                    onRequestSources: {
+                        HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvGetSources)
+                    },
+                    onDeleteSource: { name in
+                        HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvDeleteSource, withParams: [
+                            HSBRemotePayloadKeyName: name
+                        ])
+                    },
+                    onRefreshSource: { name, requestId in
+                        HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvRefreshSource, withParams: [
+                            HSBRemotePayloadKeyName: name,
+                            HSBRemotePayloadKeyRequestId: requestId
+                        ])
+                    },
+                    onConfirmSourceRefresh: { requestId, approved in
+                        HSBTVOSConnectionManager.shared().sendSimulateAction(.iptvRefreshSource, withParams: [
+                            HSBRemotePayloadKeyRequestId: requestId,
+                            "confirmRefresh": approved
+                        ])
+                    },
+                    onEPGBindingRequest: { request in
+                        var payload: [String: Any] = [
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportEPG.rawValue,
+                            "operation": request.operation,
+                            "sourceName": request.sourceName,
+                            HSBRemotePayloadKeyRequestId: request.requestID,
+                            "query": request.query,
+                            "offset": request.offset,
+                            "limit": request.limit
+                        ]
+                        if let channelID = request.channelID { payload["channelID"] = channelID }
+                        if let epgChannelID = request.epgChannelID { payload["epgChannelID"] = epgChannelID }
+                        if let mode = request.mode { payload["mode"] = mode }
+                        HSBTVOSConnectionManager.shared().sendPayload(payload)
+                    },
+                    onConfirmPlaylistImport: { requestId, approved, includeEPG in
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvImportSource.rawValue,
+                            HSBRemotePayloadKeyRequestId: requestId,
+                            "confirmImport": approved,
+                            "includeEPG": includeEPG
+                        ])
+                    }
+                )
+            } else {
+                // Tab 4: PDF 遥控 (商务演讲翻页大板、首尾页跳转、激光笔与屏幕涂鸦)
+                ModernPDFControlView(
+                    onPageChange: { isNext in
+                        HSBTVOSConnectionManager.shared().sendSimulateAction(
+                            isNext ? .right : .left
+                        )
+                    },
+                    onJumpPage: { isFirst in
+                        HSBTVOSConnectionManager.shared().sendSimulateAction(
+                            isFirst ? .pageHome : .stop
+                        )
+                    },
+                    onDrawAction: { type, point, color, width in
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
+                            HSBRemotePayloadKeyType: type,
+                            HSBRemotePayloadKeyX: Double(point.x),
+                            HSBRemotePayloadKeyY: Double(point.y),
+                            HSBRemotePayloadKeyColor: color,
+                            HSBRemotePayloadKeyWidth: Double(width)
+                        ])
+                    },
+                    onClear: {
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
+                            HSBRemotePayloadKeyType: HSBRemoteDrawTypeClear
+                        ])
+                    },
+                    onUndo: {
+                        HSBTVOSConnectionManager.shared().sendPayload([
+                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
+                            HSBRemotePayloadKeyType: HSBRemoteDrawTypeUndo
+                        ])
+                    }
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     // MARK: - Tab 1: 系统遥控视图 (黄金比例与一体化控制岛)

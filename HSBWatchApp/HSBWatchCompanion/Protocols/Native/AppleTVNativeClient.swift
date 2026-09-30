@@ -169,6 +169,15 @@ public final class AppleTVNativeClient {
         sendCompanionPayload(payload, completion: completion)
     }
     
+    // MARK: - App Launching (itsytv-macos _launchApp 协议)
+    public func launchApp(bundleID: String, completion: ((Bool) -> Void)? = nil) {
+        let payload: [String: Any] = [
+            "_eventName": "_launchApp",
+            "_bundleID": bundleID
+        ]
+        sendCompanionPayload(payload, completion: completion)
+    }
+    
     // MARK: - AirPlay MRP Mute Control (0x00E2)
     public func sendMRPMuteToggle(completion: ((Bool) -> Void)? = nil) {
         let payload: [String: Any] = [

@@ -39,6 +39,9 @@ public protocol DualModeRemoteCoordinatorProtocol: AnyObject {
     func sendPageAction(_ action: PageAction)
     func executeJavaScript(_ script: String, completion: ((Result<String, Error>) -> Void)?)
     func sendMediaControl(_ action: MediaAction, value: Double?)
+    
+    // 应用启动与生态调度 (沿用 itsytv-macos _launchApp)
+    func launchApp(bundleID: String, completion: ((Bool) -> Void)?)
 }
 
 public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinatorProtocol {
@@ -359,6 +362,19 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     
     public func sendMediaControl(_ action: MediaAction, value: Double? = nil) {
         screenClient.send(command: .media(action: action, value: value))
+    }
+    
+    // MARK: - App Launching (Unified itsytv-macos Protocol)
+    public func launchApp(bundleID: String, completion: ((Bool) -> Void)? = nil) {
+        nativeClient.launchApp(bundleID: bundleID) { success in
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: Notification.Name("HSBAppLaunchedNotification"),
+                    object: bundleID
+                )
+                completion?(success)
+            }
+        }
     }
 }
 

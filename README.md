@@ -14,44 +14,41 @@
 
 ## 📸 精选界面展示 (Screenshots)
 
-### 🌟 跨端旗舰协同：手机遥控中枢 × Apple TV 大屏浏览器实操全景
+### 🌟 跨端旗舰协同：手机统一遥控中枢 × Apple TV 大屏全生态
 <p align="center">
   <img src="screenshot/browser_dual_interaction.png" width="96%" alt="糖葫芦遥控器与 Apple TV 大屏浏览器双端毫秒级协同实操全景" />
 </p>
 <p align="center">
-  <em>图：左侧为 Apple TV 4K 大屏真实 WebKit 网页渲染与虚拟光标交互实景；右侧为 iPhone 电视遥控中枢（全新改版浏览器模式）微操控制台</em>
+  <em>图：左侧为 Apple TV 4K 大屏真实 WebKit 网页渲染与虚拟光标交互实景；右侧为 iPhone 电视遥控中枢微操控制台</em>
 </p>
 
-### 🌐 板块一：大屏 WebKit 浏览器深度交互与微操触控 (Browser Interaction & Precision Control)
-| 1. 局域网智能设备发现与配对 | 2. 电视遥控中枢：浏览器控制台 | 3. Apple TV 大屏：真实网页与光标 | 4. 智能遥控：5.5x 微操触控板 | 5. 电视遥控中枢：视频控制与倍速 |
+### 📱 统一操作逻辑：沿用 itsytv-macos 经典架构 (【遥控】+【应用生态】双主轴设计)
+| 1. 【遥控】原生系统轮盘与控制岛 | 2. 【应用生态】糖葫芦专属大屏生态一键唤起 | 3. 【遥控·触控】5.5x 微操触控板 | 4. 局域网智能设备统一发现 | 5. 电视遥控中枢：视频控制与倍速 |
 | :---: | :---: | :---: | :---: | :---: |
-| <img src="screenshot/1_device_discovery.png" width="180" /> | <img src="screenshot/2_browser_control.png" width="180" /> | <img src="screenshot/tv_browser_web.png" width="300" /> | <img src="screenshot/modern_browser_touchpad.png" width="180" /> | <img src="screenshot/3_video_control.png" width="180" /> |
-| **itsytv-macos 架构 / 自动识别** | **JS 快捷芯片 / 触控板 / URL投送** | **4K WebKit 真实加载 / 60FPS 虚拟光标** | **阻尼滑动 / 手势体系 / 网页悬浮导航** | **0.5x~2.0x 极速倍速 / 10s快进退** |
+| <img src="screenshot/unified_remote_tab.png" width="180" /> | <img src="screenshot/unified_apps_grid.png" width="180" /> | <img src="screenshot/unified_touchpad.png" width="180" /> | <img src="screenshot/1_device_discovery.png" width="180" /> | <img src="screenshot/3_video_control.png" width="180" /> |
+| **同一套连接 / 270pt 轮盘 / 一体化控制岛** | **itsytv-macos App Grid / 秒级唤起大屏应用** | **阻尼滑动 / 网页悬浮导航 / 实时软键盘** | **Bonjour 多通道并发 / 硬件精准过滤** | **0.5x~2.0x 极速倍速 / 10s快进退** |
 
-### 🤖 板块二：Apple TV 原生系统遥控与端侧 AI 矩阵 (Native System Remote & Edge AI)
-| 6. Apple TV 原生系统遥控 | 7. IPTV 直播流多频道路由 | 8. PDF 大屏演说投屏神器 | 9. 端侧 MLX 模型管理中心 | 10. 端侧 AI 智能助手与传译 | 11. 统一设置中枢与生态矩阵 |
-| :---: | :---: | :---: | :---: | :---: | :---: |
-| <img src="screenshot/apple_tv_system_remote.png" width="170" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/2_iptv_remote.png" width="170" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/3_pdf_presentation.png" width="170" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/5_ai_model_center.png" width="170" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/6_ai_assistant.png" width="170" /> | <img src="screenshot/4_settings_hub.png" width="170" /> |
-| **270pt D-pad 轮盘 / Home / Menu** | **CH+/- 换台塔 / 选台数字键盘** | **双向极速翻页 / 激光笔 / 荧光批注** | **三大模型断点下载 / 状态机自愈** | **同声传译 / TV JS 生成 / 客厅管家** | **主题色系 / 语言切换 / 生态矩阵** |
+### 🤖 板块二：Apple TV 客厅多场景生态与端侧 AI 矩阵 (Ecosystem Scenarios & Edge AI)
+| 6. IPTV 直播流多频道路由 | 7. PDF 大屏演说投屏神器 | 8. 端侧 MLX 模型管理中心 | 9. 端侧 AI 智能助手与传译 | 10. 统一设置中枢与生态矩阵 |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/2_iptv_remote.png" width="170" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/3_pdf_presentation.png" width="170" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/5_ai_model_center.png" width="170" /> | <img src="HSBWatchApp/fastlane/screenshots/zh-Hans/6_ai_assistant.png" width="170" /> | <img src="screenshot/4_settings_hub.png" width="170" /> |
+| **CH+/- 换台塔 / 选台数字键盘** | **双向极速翻页 / 激光笔 / 荧光批注** | **三大模型断点下载 / 状态机自愈** | **同声传译 / TV JS 生成 / 客厅管家** | **主题色系 / 语言切换 / 生态矩阵** |
 
 
 ---
 
 ## 🔥 核心特性与技术亮点 (Core Features)
 
-### 🔀 1. 双模无线遥控架构 (Dual-Mode Remote Architecture)
-独创双通道协同遥控体系，兼顾系统级实体控制与大屏网页深度交互：
-* **Apple TV 原生系统通道 (Native Channel · 深度参考 itsytv-macos)**：
-  - **多通道并发 Bonjour 自动发现**：彻底攻克传统遥控器仅扫描浏览器协议无法发现原生电视的痛点，创新性深度整合开源参考工程 `itsytv-macos` 的核心探测架构，同时并发监听 `_companion-link._tcp.` 与 `_thltv._tcp.`；
+### 🔀 1. 统一连接与 itsytv-macos 交互哲学 (Unified Connection & Interaction Philosophy)
+彻底终结传统多套繁琐操作逻辑，深度沿用 `itsytv-macos` 的单一统一连接会话与 **【遥控 (Remote)】+【应用生态 (Apps)】** 经典交互哲学：
+* **单一物理连接会话 (Single Unified Connection · 沿用 itsytv-macos)**：
+  - **局域网 Apple TV 自动寻址与休眠唤醒**：全面集成 `itsytv-macos` 经过实战检验的 Companion 协议通道，同时并发监听 `_companion-link._tcp.` 与 `_thltv._tcp.`，自动建立单一物理连接会话；
   - **精准硬件过滤与抗干扰算法**：严格解析 Bonjour TXT 记录中的 `rpFl` 标志位（执行 `flags & 0x4000 != 0` 具备 PIN 配对能力校验）与 `rpMd` 硬件代号（`AppleTV*`），**100% 毫秒级剔除同一局域网下的 Mac 电脑（flags 为 `0x20000`）、iPhone 与 HomePod 等非目标设备**；
-  - **硬件型号智能识别与状态副标题**：自动将局域网原生 Apple TV 硬件代号解析为精确型号（如 `AppleTV14,1` 即 Apple TV 4K 第三代），并在列表中直接标记 `Apple TV (AppleTV14,1) · 系统原生遥控就绪`；
   - **无感端口敲门唤醒 (Port Knocking)**：针对处于待机或轻度休眠的 Apple TV，发起多路并发端口探测 (3689 / 7000 / 49152 / 49153)，毫秒级唤醒网络 Sleep Proxy；
-  - **原生遥控一键直达**：在设备列表轻触 Apple TV 设备，直接进入 270pt 黄金轮盘 D-Pad 系统遥控器，即刻拥有原生级 **Home 键**、**Menu 返回键**、**待机休眠** 与 **实体物理音量键双向静默联动**。
-* **大屏专有浏览器通道 (Screen Channel)**：
-  - 与 tvOS 端「hsbtvbrowser」大屏浏览器基于 Bonjour `_thltv._tcp` 专有协议长链接通信；
-  - **5.5x 超高灵敏度微操触控板**：内置 1000×1000 虚拟空间坐标重置算法，手指滑动无死角；
-  - **丝滑惯性滑动**：采用 8 阶二次缓出 (Quad Ease-Out) 60FPS 衰减曲线，呈现丝滑自然的阻尼滚动手感；
-  - **大屏 WebKit 深度控制**：支持原生 DOM 元素拾取、精准点击、长按选区拖拽与动态 JavaScript 脚本实时注入。
+  - **100% 统一入口**：无论在主设备列表点击哪台 Apple TV，全量统一直达智能遥控器，UI 层绝无分裂连接态。
+* **底座协议与生态通道静默协同**：
+  - 系统基础按键（D-Pad、Home、Menu、播放、硬件音量、软键盘输入）以及应用唤起（`_launchApp`）全走 Apple TV Companion 原生连接；
+  - 针对糖葫芦浏览器 5.5x 触控板、IPTV 换台协议、PDF 激光笔等扩展功能，专有数据通道在底层静默协同，用户零感知。
 
 ---
 
@@ -86,12 +83,15 @@
 
 ---
 
-### 🎛️ 5. 四大专属遥控场景常驻常开 (Four Specialized Remote Scenarios)
-顶部 Segment 选项卡支持随时一键无缝自由切换，未连接外置大屏时亦支持离线微操与体验：
-* **【系统】(System Remote)**：配备 270pt 黄金比例 Apple TV 原生质感 D-pad 轮盘与一体化控制岛（快退10s / 播放暂停 / 快进10s / 桌面 / 返回 / 静音 / 待机 / 硬件音量+/-）；
-* **【触控】(Browser Touchpad)**：专为大屏 WebKit 浏览器定制的 5.5x 微操触控板、网页悬浮操作岛（后退/前进/刷新/主页/放大）与 RTI 实时软键盘同步抽屉；
-* **【IPTV】(IPTV Live Stream)**：客厅电视直播流快捷换台塔（CH+/-）、数字键快速输入选台与音量控制；
-* **【演讲】(PDF Presentation)**：商务演讲幻灯片极速翻页大板、首尾页跳转、激光笔指向与屏幕荧光笔涂鸦批注。
+### 🎛️ 5. 【遥控】与【应用生态】双主轴设计 (Dual-Axis Remote & App Grid Architecture)
+主视图沿用 `itsytv-macos` 经典双主轴设计：
+* **【遥控 (Remote)】**：
+  - **原生系统轮盘**：270pt 黄金比例 Apple TV 原生质感 D-pad 轮盘与一体化控制岛（快退10s / 播放暂停 / 快进10s / 桌面 / 返回 / 静音 / 待机 / 硬件音量+/-）；
+  - **情境微操模式**：支持随时平滑切换为 **触控板 (5.5x 微操 + 网页导航)**、**IPTV 直播换台** 与 **PDF 商务演说翻页**。
+* **【应用生态 (Apps)】**：
+  - **置顶糖葫芦大屏专属生态**：**糖葫芦浏览器** (`com.never88gone.thlbrowser`)、**糖葫芦 TV** (`com.nevergone.huluge.iptv`)、**糖葫芦 PDF** (`com.never88gone.thlpdf`)；
+  - **Apple TV 系统与热门应用网格**：设置、App Store、Apple TV、YouTube、哔哩哔哩等；
+  - **一键唤起与自动切微操**：点击任意 App 立即通过 Companion 通道向 Apple TV 发送 `_launchApp`，并自动平滑切回【遥控】对应的微操形态！
 
 ---
 

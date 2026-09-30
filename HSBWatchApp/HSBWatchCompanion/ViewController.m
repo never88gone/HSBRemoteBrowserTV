@@ -1010,53 +1010,17 @@ static NSString * L(NSString *en, NSString *zh) {
         // 自动绑定连接并执行休眠端口敲门
         [HSBModernRemoteBridge connectToDiscoveredDevice:selectedDevice];
         
-        if (selectedDevice.isNativeAppleTV) {
-            // 原生 Apple TV：直接推入智能遥控器（首选 Tab 0 系统遥控器，方向键/确认/菜单/主页原生控制）
-            UIViewController *remoteVC = [HSBModernRemoteBridge createModernRemoteViewController];
-            remoteVC.hidesBottomBarWhenPushed = YES;
-            
-            [self updateUI:^{
-                self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@ (Native Remote)", @"🟢 已连接至 %@ (系统遥控器)"), selectedDevice.name];
-                self.tvStatusLabel.textColor = [UIColor systemGreenColor];
-            }];
-            
-            [self.navigationController pushViewController:remoteVC animated:YES];
-            return;
-        } else {
-            // 纯大屏浏览器设备：展示大屏详情并进入触控板/配置
-            TVDetailViewController *vc = [[TVDetailViewController alloc] init];
-            vc.deviceName = selectedDevice.name;
-            
-            vc.sendPayloadBlock = ^(NSDictionary *payload) {
-                [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
-            };
-            vc.sendActionBlock = ^(HSBRemoteSimulateAction action) {
-                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:action];
-            };
-            vc.checkConnectionBlock = ^BOOL{
-                return [HSBTVOSConnectionManager sharedManager].isConnected;
-            };
-            
-            vc.editHomeBlock = ^{
-                HomeConfigEditViewController *editVC = [[HomeConfigEditViewController alloc] init];
-                NSString *savedJson = [[NSUserDefaults standardUserDefaults] objectForKey:@"WatchCompanionHomeJSON"];
-                if (!savedJson) {
-                    NSString *filePath = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject]
-                                          stringByAppendingPathComponent:@"home_config.json"];
-                    savedJson = [NSString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:nil];
-                }
-                editVC.initialJson = savedJson ?: @"[]";
-                editVC.onSaveAndSync = ^(NSString *jsonString) {
-                    [[NSUserDefaults standardUserDefaults] setObject:jsonString forKey:@"WatchCompanionHomeJSON"];
-                    [[NSUserDefaults standardUserDefaults] synchronize];
-                    [weakSelf sendJSONToTV:jsonString];
-                };
-                [weakSelf.navigationController pushViewController:editVC animated:YES];
-            };
-            
-            [self.navigationController pushViewController:vc animated:YES];
-            return;
-        }
+        // 原生与生态设备统一架构：一键直达现代化智能遥控器 (沿用 itsytv-macos 操作哲学)
+        UIViewController *remoteVC = [HSBModernRemoteBridge createModernRemoteViewController];
+        remoteVC.hidesBottomBarWhenPushed = YES;
+        
+        [self updateUI:^{
+            self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@", @"🟢 已连接至 %@"), selectedDevice.name];
+            self.tvStatusLabel.textColor = [UIColor systemGreenColor];
+        }];
+        
+        [self.navigationController pushViewController:remoteVC animated:YES];
+        return;
     }
     
     if (self.discoveredEndpoints.count == 0) return;
@@ -1068,41 +1032,19 @@ static NSString * L(NSString *en, NSString *zh) {
     }];
     
     const char *name = nw_endpoint_get_bonjour_service_name(selectedEndpoint);
-    NSString *nameStr = name ? [NSString stringWithUTF8String:name] : @"";
+    NSString *nameStr = name ? [NSString stringWithUTF8String:name] : @"Apple TV";
     
     [[HSBTVOSConnectionManager sharedManager] connectToEndpoint:selectedEndpoint deviceName:nameStr];
     
-    TVDetailViewController *vc = [[TVDetailViewController alloc] init];
-    vc.deviceName = nameStr;
+    UIViewController *remoteVC = [HSBModernRemoteBridge createModernRemoteViewController];
+    remoteVC.hidesBottomBarWhenPushed = YES;
     
-    vc.sendPayloadBlock = ^(NSDictionary *payload) {
-        [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
-    };
-    vc.sendActionBlock = ^(HSBRemoteSimulateAction action) {
-        [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:action];
-    };
-    vc.checkConnectionBlock = ^BOOL{
-        return [HSBTVOSConnectionManager sharedManager].isConnected;
-    };
+    [self updateUI:^{
+        self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@", @"🟢 已连接至 %@"), nameStr];
+        self.tvStatusLabel.textColor = [UIColor systemGreenColor];
+    }];
     
-    vc.editHomeBlock = ^{
-        HomeConfigEditViewController *editVC = [[HomeConfigEditViewController alloc] init];
-        NSString *savedJson = [[NSUserDefaults standardUserDefaults] objectForKey:@"WatchCompanionHomeJSON"];
-        if (!savedJson) {
-            NSString *filePath = [[NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject]
-                                  stringByAppendingPathComponent:@"home_config.json"];
-            savedJson = [NSString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:nil];
-        }
-        editVC.initialJson = savedJson ?: @"[]";
-        editVC.onSaveAndSync = ^(NSString *jsonString) {
-            [[NSUserDefaults standardUserDefaults] setObject:jsonString forKey:@"WatchCompanionHomeJSON"];
-            [[NSUserDefaults standardUserDefaults] synchronize];
-            [weakSelf sendJSONToTV:jsonString];
-        };
-        [weakSelf.navigationController pushViewController:editVC animated:YES];
-    };
-    
-    [self.navigationController pushViewController:vc animated:YES];
+    [self.navigationController pushViewController:remoteVC animated:YES];
 }
 
 #pragma mark - Bridge Lifecycle
