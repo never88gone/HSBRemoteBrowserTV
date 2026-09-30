@@ -228,6 +228,16 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+#if DEBUG
+    if (getenv("AUTO_OPEN_REMOTE")) {
+        static dispatch_once_t autoOpenToken;
+        dispatch_once(&autoOpenToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self openModernRemoteController];
+            });
+        });
+    }
+#endif
 }
 
 
