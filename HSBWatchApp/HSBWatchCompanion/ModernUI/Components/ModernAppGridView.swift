@@ -130,12 +130,12 @@ public struct ModernAppGridView: View {
             targetMode: 0
         ),
         TanghuluAppItem(
-            id: "bilibili",
-            name: "哔哩哔哩",
-            subtitle: "客厅弹幕与番剧",
-            bundleID: "tv.danmaku.bilianime",
-            iconName: "tv.inset.filled",
-            accentColor: Color(red: 0.95, green: 0.45, blue: 0.65),
+            id: "photos",
+            name: "照片",
+            subtitle: "4K 幻灯片与家庭影集",
+            bundleID: "com.apple.TVPhotos",
+            iconName: "photo.on.rectangle.angled",
+            accentColor: Color(red: 0.2, green: 0.7, blue: 0.9),
             targetMode: 0
         )
     ]

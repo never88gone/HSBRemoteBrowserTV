@@ -114,6 +114,17 @@ public final class AppleTVNativeClient {
             }
             
             nw_connection_start(conn)
+            
+            // 5 秒待机或无响应超时保护，避免由于真机休眠导致界面死锁挂起在“正在连接”
+            self.queue.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                guard let self = self, !self.isConnected, self.activeConnection === conn else { return }
+                nw_connection_cancel(conn)
+                self.activeConnection = nil
+                self.isConnected = false
+                DispatchQueue.main.async {
+                    self.delegate?.nativeClient(self, didChangeState: .failed(error: "设备待机或未响应"))
+                }
+            }
         }
     }
     

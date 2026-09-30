@@ -48,20 +48,28 @@ public struct ModernRemoteContainerView: View {
                 // 1. 顶部紧凑流线型状态栏 (居中平衡排布)
                 HStack {
                     Spacer()
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 7, height: 7)
-                        Text(statusText)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundColor(.secondary)
+                    Button(action: {
+                        lightHaptic.impactOccurred()
+                        if let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost {
+                            DualModeRemoteCoordinator.shared.wakeDevice(host: host) { _ in }
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 7, height: 7)
+                            Text(statusText)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 12)
+                        .background(
+                            Capsule()
+                                .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                        )
                     }
-                    .padding(.vertical, 5)
-                    .padding(.horizontal, 12)
-                    .background(
-                        Capsule()
-                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                    )
+                    .buttonStyle(PlainButtonStyle())
                     Spacer()
                 }
                 .padding(.horizontal, 16)
@@ -669,8 +677,11 @@ public struct ModernRemoteContainerView: View {
             return "正在配对 \(name)..."
         case .scanning:
             return "正在扫描局域网..."
-        case .failed:
-            return "连接异常"
+        case .failed(let err):
+            if err.contains("待机") {
+                return "设备待机 · 点击唤醒"
+            }
+            return "待机或未连接"
         case .disconnected:
             return "未连接"
         }
