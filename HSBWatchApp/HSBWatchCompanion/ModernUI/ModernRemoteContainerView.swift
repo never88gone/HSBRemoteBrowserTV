@@ -45,31 +45,64 @@ public struct ModernRemoteContainerView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 12) {
-                // 1. 顶部紧凑流线型状态栏 (居中平衡排布)
-                HStack {
+                // 1. 顶部紧凑双模流线型状态栏 (居中双胶囊排布：大屏通道 + 系统原生通道)
+                HStack(spacing: 8) {
                     Spacer()
+                    
+                    // 1.1 大屏通道状态 (糖葫芦浏览器/专有控制/双指滚动/高级菜单)
                     Button(action: {
                         lightHaptic.impactOccurred()
-                        if let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost {
-                            DualModeRemoteCoordinator.shared.wakeDevice(host: host) { _ in }
+                        if !coordinatorObserver.isHSBBrowserConnected {
+                            let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost ?? "127.0.0.1"
+                            let endpoint = nw_endpoint_create_host(host, "\(HSBRemoteConstants.screenDefaultPort)")
+                            let deviceName = HSBTVOSConnectionManager.shared().deviceName ?? "糖葫芦浏览器"
+                            HSBTVOSConnectionManager.shared().connect(to: endpoint, deviceName: deviceName)
+                            DualModeRemoteCoordinator.shared.screenClient.connect(to: endpoint, deviceName: deviceName)
                         }
                     }) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Circle()
-                                .fill(statusColor)
-                                .frame(width: 7, height: 7)
-                            Text(statusText)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundColor(.secondary)
+                                .fill(browserStatusColor)
+                                .frame(width: 6, height: 6)
+                            Text(browserStatusText)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundColor(coordinatorObserver.isHSBBrowserConnected ? .primary : .secondary)
                         }
                         .padding(.vertical, 5)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 10)
                         .background(
                             Capsule()
                                 .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
+                    
+                    // 1.2 Apple TV 系统原生通道状态 (Home/电源/全局控制)
+                    Button(action: {
+                        lightHaptic.impactOccurred()
+                        if let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost {
+                            DualModeRemoteCoordinator.shared.wakeDevice(host: host) { _ in }
+                        } else {
+                            DualModeRemoteCoordinator.shared.stateMachine.handle(event: .startScanning)
+                        }
+                    }) {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(systemStatusColor)
+                                .frame(width: 6, height: 6)
+                            Text(systemStatusText)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundColor(coordinatorObserver.isNativeConnected ? .primary : .secondary)
+                        }
+                        .padding(.vertical, 5)
+                        .padding(.horizontal, 10)
+                        .background(
+                            Capsule()
+                                .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
                     Spacer()
                 }
                 .padding(.horizontal, 16)
@@ -139,6 +172,13 @@ public struct ModernRemoteContainerView: View {
         .accentColor(.tanghuluBrandBlue)
         .onAppear {
             setupTextInputManager()
+            if !coordinatorObserver.isHSBBrowserConnected {
+                let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost ?? "127.0.0.1"
+                let endpoint = nw_endpoint_create_host(host, "\(HSBRemoteConstants.screenDefaultPort)")
+                let deviceName = HSBTVOSConnectionManager.shared().deviceName ?? "糖葫芦浏览器"
+                HSBTVOSConnectionManager.shared().connect(to: endpoint, deviceName: deviceName)
+                DualModeRemoteCoordinator.shared.screenClient.connect(to: endpoint, deviceName: deviceName)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBToggleRemoteKeyboardNotification"))) { _ in
             withAnimation(.easeInOut(duration: 0.25)) {
@@ -657,33 +697,57 @@ public struct ModernRemoteContainerView: View {
         textInputManager.delegate = coordinatorObserver
     }
     
-    private var statusColor: Color {
+    // MARK: - Dual Channel Status Displays (大屏通道 & 系统原生通道)
+    private var browserStatusColor: Color {
+        if coordinatorObserver.isHSBBrowserConnected {
+            return .tanghuluBrandBlue
+        } else {
+            return .gray
+        }
+    }
+    
+    private var browserStatusText: String {
+        if coordinatorObserver.isHSBBrowserConnected {
+            let name = coordinatorObserver.browserDeviceName.isEmpty ? "已连接" : coordinatorObserver.browserDeviceName
+            return "大屏: \(name)"
+        } else {
+            return "大屏: 未连接"
+        }
+    }
+    
+    private var systemStatusColor: Color {
+        if coordinatorObserver.isNativeConnected {
+            return .tanghuluBrandBlue
+        }
         switch coordinatorObserver.state {
         case .ready: return .tanghuluBrandBlue
         case .connecting, .pairing: return .orange
         case .scanning: return .tanghuluBrandBlue
-        case .failed: return .red
+        case .failed: return .orange
         case .disconnected: return .gray
         }
     }
     
-    private var statusText: String {
+    private var systemStatusText: String {
+        if coordinatorObserver.isNativeConnected {
+            return "系统: 已连接"
+        }
         switch coordinatorObserver.state {
         case .ready(let name, _):
-            return "\(name) (已连接)"
-        case .connecting(let name, _):
-            return "正在连接 \(name)..."
-        case .pairing(let name, _):
-            return "正在配对 \(name)..."
+            return "系统: \(name)"
+        case .connecting:
+            return "系统: 连接中..."
+        case .pairing:
+            return "系统: 配对中..."
         case .scanning:
-            return "正在扫描局域网..."
+            return "系统: 扫描中..."
         case .failed(let err):
             if err.contains("待机") {
-                return "设备待机 · 点击唤醒"
+                return "系统: 待机唤醒"
             }
-            return "待机或未连接"
+            return "系统: 未连接"
         case .disconnected:
-            return "未连接"
+            return "系统: 未连接"
         }
     }
 }
@@ -692,12 +756,17 @@ public struct ModernRemoteContainerView: View {
 private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDelegate, RemoteTextInputManagerDelegate {
     @Published var state: HSBConnectionState = .disconnected
     @Published var isHSBBrowserConnected: Bool = false
+    @Published var browserDeviceName: String = ""
+    @Published var isNativeConnected: Bool = false
     private let coordinator: DualModeRemoteCoordinator
     
     init(coordinator: DualModeRemoteCoordinator) {
         self.coordinator = coordinator
         self.state = coordinator.currentState
-        self.isHSBBrowserConnected = coordinator.nativeClient.isConnected || HSBTVOSConnectionManager.shared().isConnected
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
+        self.browserDeviceName = legacyMgr.deviceName ?? ""
+        self.isNativeConnected = coordinator.nativeClient.isConnected
         coordinator.delegate = self
         
         NotificationCenter.default.addObserver(
@@ -714,14 +783,19 @@ private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoord
     
     @objc private func handleTVOSConnectionNotification(_ note: Notification) {
         DispatchQueue.main.async {
-            self.isHSBBrowserConnected = self.coordinator.nativeClient.isConnected || HSBTVOSConnectionManager.shared().isConnected
+            let legacyMgr = HSBTVOSConnectionManager.shared()
+            self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
+            self.browserDeviceName = legacyMgr.deviceName ?? ""
         }
     }
     
     func coordinator(_ coordinator: DualModeRemoteCoordinator, didChangeState state: HSBConnectionState) {
         DispatchQueue.main.async {
             self.state = state
-            self.isHSBBrowserConnected = coordinator.nativeClient.isConnected || HSBTVOSConnectionManager.shared().isConnected
+            let legacyMgr = HSBTVOSConnectionManager.shared()
+            self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
+            self.browserDeviceName = legacyMgr.deviceName ?? ""
+            self.isNativeConnected = coordinator.nativeClient.isConnected
         }
     }
     

@@ -64,6 +64,10 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
             DualModeRemoteCoordinator.shared.connectToNative(host: host, deviceName: deviceName)
         }
+        let targetPort: UInt16 = port > 0 ? UInt16(port) : HSBRemoteConstants.screenDefaultPort
+        let screenEndpoint = nw_endpoint_create_host(host, "\(targetPort)")
+        HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: deviceName)
+        DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: deviceName)
     }
     
     @objc public static func connectToDiscoveredDevice(_ device: HSBDiscoveredAppleTV) {

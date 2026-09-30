@@ -335,6 +335,12 @@ NSString * const HSBConnectionStateKeyState = @"state";
         for (NSDictionary *candidate in HSBRemotePairedTVRecords()) {
             if ([candidate[@"name"] isEqualToString:deviceName]) { record = candidate; break; }
         }
+        if (!record && HSBRemotePairedTVRecords().count > 0) {
+            record = HSBRemotePairedTVRecords().firstObject;
+            if (record[@"name"]) {
+                self.deviceName = record[@"name"];
+            }
+        }
         self.pairedTVRecord = record;
         if (!record || HSBRemoteDataFromBase64URLString(record[@"key"] ?: @"").length != 32) {
             self.isConnected = NO;
