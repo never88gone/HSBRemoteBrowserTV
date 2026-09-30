@@ -71,6 +71,16 @@ import Network
         let hidPassed = upCode && downCode && leftCode && rightCode && selectCode && menuCode && homeCode
         record("Test 4: Native HID Button Code Mapping", passed: hidPassed, detail: "Up:88, Down:89, Left:90, Right:91, Select:8, Menu:1, Home:7")
         
+        // Test 6: Two-Finger Smooth Scrolling & mac_scroll Protocol Mapping
+        let scrollCmd = HSBScreenCommand.scroll(dx: 10.0, dy: -20.0)
+        let scrollDict = scrollCmd.toDictionary()
+        let isActionCorrect = (scrollDict["action"] as? String) == "mac_scroll"
+        let isDxCorrect = (scrollDict["dx"] as? Double) == 30.0
+        let isDyCorrect = (scrollDict["dy"] as? Double) == -60.0
+        let isScrollScaleCorrect = HSBRemoteConstants.scrollScale == 3.0
+        let test6Passed = isActionCorrect && isDxCorrect && isDyCorrect && isScrollScaleCorrect
+        record("Test 6: mac_scroll Protocol & 3.0x Scale Mapping", passed: test6Passed, detail: "action: mac_scroll, dx: 30.0, dy: -60.0")
+        
         // Test 5: Port Knocking Async Safety
         HSBAppleTVDiscovery.shared.wakeDevice(host: "127.0.0.1") { _ in
             record("Test 5: Port Knocking Non-blocking Wake Execution", passed: true, detail: "3689, 7000, 49152, 49153 knocked safely")

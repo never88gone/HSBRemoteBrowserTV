@@ -225,12 +225,23 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func sendScroll(dx: CGFloat, dy: CGFloat) {
-        if currentMode == .nativeOnly {
-            // 在纯原生 itsytv 通道下，将垂直滚动转换为微移 touch 事件或系统翻页
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if screenClient.isConnected || legacyMgr.isConnected {
+            // 优先派发像素级无级平滑滚动 (mac_scroll)
+            screenClient.send(command: .scroll(dx: dx, dy: dy))
+            if legacyMgr.isConnected {
+                let scaledDx = dx * HSBRemoteConstants.scrollScale
+                let scaledDy = dy * HSBRemoteConstants.scrollScale
+                legacyMgr.sendPayload([
+                    "action": "mac_scroll",
+                    "dx": scaledDx,
+                    "dy": scaledDy
+                ])
+            }
+        } else {
+            // 降级保护：在未连通大屏辅助链路时，将滚动映射为原生 Touch 微移
             let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
             nativeClient.sendTouchEvent(phase: 2, point: pt)
-        } else {
-            screenClient.send(command: .scroll(dx: dx, dy: dy))
         }
     }
     
