@@ -169,12 +169,16 @@ public final class AppleTVNativeClient {
         sendCompanionPayload(payload, completion: completion)
     }
     
-    // MARK: - App Launching (itsytv-macos _launchApp 协议)
-    public func launchApp(bundleID: String, completion: ((Bool) -> Void)? = nil) {
-        let payload: [String: Any] = [
+    // MARK: - App Launching (itsytv-macos _launchApp 协议，支持 URL 与业务参数透传)
+    public func launchApp(bundleID: String, url: String? = nil, completion: ((Bool) -> Void)? = nil) {
+        var payload: [String: Any] = [
             "_eventName": "_launchApp",
             "_bundleID": bundleID
         ]
+        if let url = url, !url.isEmpty {
+            payload["_url"] = url
+            payload["_launchURL"] = url
+        }
         sendCompanionPayload(payload, completion: completion)
     }
     

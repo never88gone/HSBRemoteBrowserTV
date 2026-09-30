@@ -40,8 +40,8 @@ public protocol DualModeRemoteCoordinatorProtocol: AnyObject {
     func executeJavaScript(_ script: String, completion: ((Result<String, Error>) -> Void)?)
     func sendMediaControl(_ action: MediaAction, value: Double?)
     
-    // 应用启动与生态调度 (沿用 itsytv-macos _launchApp)
-    func launchApp(bundleID: String, completion: ((Bool) -> Void)?)
+    // 应用启动与生态调度 (沿用 itsytv-macos _launchApp，支持 URL Scheme 参数透传)
+    func launchApp(bundleID: String, url: String?, completion: ((Bool) -> Void)?)
 }
 
 public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinatorProtocol {
@@ -53,7 +53,8 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     public let nativeClient = AppleTVNativeClient()
     public let stateMachine = HSBConnectionStateMachine()
     
-    public var currentMode: HSBRemoteMode = .dual
+    // 纯 itsytv 原生通道单连接模式 (Single Unified Native Connection)
+    public var currentMode: HSBRemoteMode = .nativeOnly
     
     public var currentState: HSBConnectionState {
         return stateMachine.currentState
@@ -224,7 +225,11 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func sendScroll(dx: CGFloat, dy: CGFloat) {
-        if currentMode != .nativeOnly {
+        if currentMode == .nativeOnly {
+            // 在纯原生 itsytv 通道下，将垂直滚动转换为微移 touch 事件或系统翻页
+            let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
+            nativeClient.sendTouchEvent(phase: 2, point: pt)
+        } else {
             screenClient.send(command: .scroll(dx: dx, dy: dy))
         }
     }
@@ -254,16 +259,29 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func sendKeyCommand(key: SpecialKey) {
-        switch key {
-        case .backspace:
-            let script = "if (document.activeElement) { document.execCommand('delete'); }"
-            executeJavaScript(script, completion: nil)
-        case .enter:
-            screenClient.send(command: .button(action: "select"))
-        case .escape:
-            screenClient.send(command: .button(action: "menu"))
-        case .space:
-            sendTextInput(text: " ")
+        if currentMode == .nativeOnly {
+            switch key {
+            case .enter:
+                nativeClient.sendSystemKey(.select)
+            case .escape:
+                nativeClient.sendSystemKey(.menu)
+            case .backspace:
+                break
+            case .space:
+                break
+            }
+        } else {
+            switch key {
+            case .backspace:
+                let script = "if (document.activeElement) { document.execCommand('delete'); }"
+                executeJavaScript(script, completion: nil)
+            case .enter:
+                screenClient.send(command: .button(action: "select"))
+            case .escape:
+                screenClient.send(command: .button(action: "menu"))
+            case .space:
+                sendTextInput(text: " ")
+            }
         }
     }
     
@@ -347,7 +365,20 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     
     // MARK: - Screen Browser Actions
     public func sendPageAction(_ action: PageAction) {
-        screenClient.send(command: .pageAction(action: action))
+        if currentMode == .nativeOnly {
+            switch action {
+            case .back:
+                nativeClient.sendSystemKey(.menu)
+            case .forward:
+                sendDPad(direction: .right, action: .tap)
+            case .reload:
+                sendSelect(action: .tap)
+            case .home:
+                nativeClient.sendSystemKey(.home)
+            }
+        } else {
+            screenClient.send(command: .pageAction(action: action))
+        }
     }
     
     public func executeJavaScript(_ script: String, completion: ((Result<String, Error>) -> Void)? = nil) {
@@ -364,9 +395,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         screenClient.send(command: .media(action: action, value: value))
     }
     
-    // MARK: - App Launching (Unified itsytv-macos Protocol)
-    public func launchApp(bundleID: String, completion: ((Bool) -> Void)? = nil) {
-        nativeClient.launchApp(bundleID: bundleID) { success in
+    // MARK: - App Launching (Unified itsytv-macos Protocol with URL Parameter Payload)
+    public func launchApp(bundleID: String, url: String? = nil, completion: ((Bool) -> Void)? = nil) {
+        nativeClient.launchApp(bundleID: bundleID, url: url) { success in
             DispatchQueue.main.async {
                 NotificationCenter.default.post(
                     name: Notification.Name("HSBAppLaunchedNotification"),

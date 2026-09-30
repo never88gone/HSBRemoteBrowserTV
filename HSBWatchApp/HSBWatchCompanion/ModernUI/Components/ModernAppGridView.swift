@@ -14,6 +14,7 @@ public struct TanghuluAppItem: Identifiable {
     public let name: String
     public let subtitle: String
     public let bundleID: String
+    public let url: String?
     public let iconName: String
     public let isSystemSymbol: Bool
     public let accentColor: Color
@@ -24,6 +25,7 @@ public struct TanghuluAppItem: Identifiable {
         name: String,
         subtitle: String,
         bundleID: String,
+        url: String? = nil,
         iconName: String,
         isSystemSymbol: Bool = true,
         accentColor: Color = .blue,
@@ -33,6 +35,7 @@ public struct TanghuluAppItem: Identifiable {
         self.name = name
         self.subtitle = subtitle
         self.bundleID = bundleID
+        self.url = url
         self.iconName = iconName
         self.isSystemSymbol = isSystemSymbol
         self.accentColor = accentColor
@@ -45,13 +48,14 @@ public struct ModernAppGridView: View {
     
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     
-    // 糖葫芦全生态三大旗舰核心应用
+    // 糖葫芦全生态三大旗舰核心应用 (附带 itsytv 协议深度解析 URL Scheme 载荷)
     private let ecosystemApps: [TanghuluAppItem] = [
         TanghuluAppItem(
             id: "browser",
             name: "糖葫芦浏览器",
             subtitle: "4K WebKit 网页极清冲浪 · 5.5x 触控微操",
             bundleID: "com.never88gone.thlbrowser",
+            url: "thlbrowser://web?body={'url':'https://cn.bing.com'}",
             iconName: "safari.fill",
             accentColor: Color(red: 0.15, green: 0.55, blue: 0.98),
             targetMode: 1
@@ -61,6 +65,7 @@ public struct ModernAppGridView: View {
             name: "糖葫芦TV",
             subtitle: "客厅电视直播流 · EPG电子节目单 · 毫秒换台",
             bundleID: "com.nevergone.huluge.iptv",
+            url: "thliptv://home",
             iconName: "tv.fill",
             accentColor: Color(red: 0.2, green: 0.8, blue: 0.45),
             targetMode: 2
@@ -70,6 +75,7 @@ public struct ModernAppGridView: View {
             name: "糖葫芦PDF",
             subtitle: "商务大屏演说 · 无线幻灯片翻页 · 激光笔批注",
             bundleID: "com.never88gone.thlpdf",
+            url: "thlpdf://home",
             iconName: "doc.richtext.fill",
             accentColor: Color(red: 0.98, green: 0.45, blue: 0.2),
             targetMode: 3

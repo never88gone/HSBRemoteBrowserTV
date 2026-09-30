@@ -344,7 +344,7 @@ static NSString * L(NSString *en, NSString *zh) {
     [self.tvScanSwitch addTarget:self action:@selector(tvScanSwitchChanged:) forControlEvents:UIControlEventValueChanged];
     
     UIView *card1 = [self createCard:L(@" WATCH SYNC ENGINE", @" 穿戴设备运动同步引擎") valueLabel:self.watchStatusLabel switchView:self.watchSyncSwitch];
-    UIView *card2 = [self createCard:L(@"💻 EXTERNAL DISPLAY LINK", @"💻 外部扩展大屏直连") valueLabel:self.tvStatusLabel switchView:self.tvScanSwitch];
+    UIView *card2 = [self createCard:L(@" APPLE TV HARDWARE LINK", @" Apple TV 硬件设备直连") valueLabel:self.tvStatusLabel switchView:self.tvScanSwitch];
     UIView *card3 = [self createCard:L(@"LATEST DETECTED ACTION", @"最终判定体感动作") valueLabel:self.logLabel switchView:nil];
     
     // Video Control Card
@@ -356,7 +356,7 @@ static NSString * L(NSString *en, NSString *zh) {
     
     // Status Defaults
     self.watchStatusLabel.text = L(@"🟡 Connecting...", @"🟡 获取 Apple Watch 状态中...");
-    self.tvStatusLabel.text = L(@"⚪️ Link Inactive", @"⚪️ 未连接外置显示器");
+    self.tvStatusLabel.text = L(@"⚪️ Hardware Idle", @"⚪️ 未连接 Apple TV 硬件");
     self.logLabel.text = L(@"Waiting for gestures...", @"等待进行体感动作...");
     self.logLabel.textColor = [UIColor tertiaryLabelColor];
     
@@ -381,7 +381,7 @@ static NSString * L(NSString *en, NSString *zh) {
     [self.view addSubview:tableContainer];
     
     UILabel *tableTitle = [[UILabel alloc] init];
-    tableTitle.text = L(@"EXTERNAL DISPLAYS", @"外部显示单元");
+    tableTitle.text = L(@"APPLE TV HARDWARE UNITS", @"Apple TV 硬件终端");
     tableTitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
     tableTitle.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     tableTitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -410,7 +410,7 @@ static NSString * L(NSString *en, NSString *zh) {
     self.tvTableView.translatesAutoresizingMaskIntoConstraints = NO;
     
     UILabel *emptyLabel = [[UILabel alloc] init];
-    emptyLabel.text = L(@"Scanning for nearby screens...\nTip: Tap the remote icon in the top right for instant offline control.", @"正在扫描局域网大屏设备...\n提示：您可随时点击右上角遥控器图标离线使用全部功能。");
+    emptyLabel.text = L(@"Scanning for nearby Apple TV devices...\nTip: Tap the remote icon in the top right for instant offline control.", @"正在扫描局域网 Apple TV 硬件设备...\n提示：您可随时点击右上角遥控器图标离线使用全部功能。");
     emptyLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
     emptyLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.45];
     emptyLabel.textAlignment = NSTextAlignmentCenter;
@@ -924,10 +924,7 @@ static NSString * L(NSString *en, NSString *zh) {
 #pragma mark - UITableView DataSource & Delegate
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (self.discoveredDevices.count > 0) {
-        return self.discoveredDevices.count;
-    }
-    return self.discoveredEndpoints.count;
+    return self.discoveredDevices.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -944,7 +941,7 @@ static NSString * L(NSString *en, NSString *zh) {
     selectedBg.backgroundColor = [palette.primaryColor colorWithAlphaComponent:0.15];
     cell.selectedBackgroundView = selectedBg;
     
-    if (self.discoveredDevices.count > 0 && indexPath.row < self.discoveredDevices.count) {
+    if (indexPath.row < self.discoveredDevices.count) {
         HSBDiscoveredAppleTV *device = self.discoveredDevices[indexPath.row];
         cell.textLabel.text = device.name;
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
@@ -954,34 +951,7 @@ static NSString * L(NSString *en, NSString *zh) {
         cell.detailTextLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
         cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.65];
         
-        if (device.isDualMode) {
-            cell.imageView.image = [UIImage systemImageNamed:@"appletv.fill"];
-            cell.imageView.tintColor = palette.primaryColor;
-        } else if (device.isNativeAppleTV) {
-            cell.imageView.image = [UIImage systemImageNamed:@"appletv.fill"];
-            cell.imageView.tintColor = [UIColor systemIndigoColor];
-        } else if (device.isBrowserApp) {
-            cell.imageView.image = [UIImage systemImageNamed:@"tv.fill"];
-            cell.imageView.tintColor = palette.primaryColor;
-        } else {
-            cell.imageView.image = [UIImage systemImageNamed:@"display"];
-            cell.imageView.tintColor = [UIColor systemGrayColor];
-        }
-    } else if (indexPath.row < self.discoveredEndpoints.count) {
-        nw_endpoint_t ep = self.discoveredEndpoints[indexPath.row];
-        const char *name = nw_endpoint_get_bonjour_service_name(ep);
-        NSString *nameStr = name ? [NSString stringWithUTF8String:name] : L(@"Unknown TV", @"未命名电视");
-        NSRange range = [nameStr rangeOfString:@" ("];
-        if (range.location != NSNotFound) {
-            nameStr = [nameStr substringToIndex:range.location];
-        }
-        cell.textLabel.text = nameStr;
-        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-        cell.textLabel.textColor = [UIColor whiteColor];
-        cell.detailTextLabel.text = L(@"大屏设备 · 点击连接", @"大屏设备 · 点击连接");
-        cell.detailTextLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
-        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
-        cell.imageView.image = [UIImage systemImageNamed:@"tv.fill"];
+        cell.imageView.image = [UIImage systemImageNamed:@"appletv.fill"];
         cell.imageView.tintColor = palette.primaryColor;
     }
     
@@ -999,18 +969,18 @@ static NSString * L(NSString *en, NSString *zh) {
     
     __weak typeof(self) weakSelf = self;
     
-    if (self.discoveredDevices.count > 0 && indexPath.row < self.discoveredDevices.count) {
+    if (indexPath.row < self.discoveredDevices.count) {
         HSBDiscoveredAppleTV *selectedDevice = self.discoveredDevices[indexPath.row];
         
         [self updateUI:^{
-            self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟡 Connecting to %@...", @"🟡 正在连接 %@..."), selectedDevice.name];
+            self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟡 Connecting to Apple TV %@...", @"🟡 正在连接 Apple TV %@..."), selectedDevice.name];
             self.tvStatusLabel.textColor = [UIColor systemYellowColor];
         }];
         
-        // 自动绑定连接并执行休眠端口敲门
+        // 纯 itsytv 架构：连接目标 Apple TV 物理硬件 (单原生连接会话)
         [HSBModernRemoteBridge connectToDiscoveredDevice:selectedDevice];
         
-        // 原生与生态设备统一架构：一键直达现代化智能遥控器 (沿用 itsytv-macos 操作哲学)
+        // 进入现代化智能遥控器 (在硬件内部再去调度和控制应用软件)
         UIViewController *remoteVC = [HSBModernRemoteBridge createModernRemoteViewController];
         remoteVC.hidesBottomBarWhenPushed = YES;
         
@@ -1020,31 +990,7 @@ static NSString * L(NSString *en, NSString *zh) {
         }];
         
         [self.navigationController pushViewController:remoteVC animated:YES];
-        return;
     }
-    
-    if (self.discoveredEndpoints.count == 0) return;
-    
-    nw_endpoint_t selectedEndpoint = self.discoveredEndpoints[indexPath.row];
-    
-    [self updateUI:^{
-        self.tvStatusLabel.text = L(@"🟡 Connecting to selected TV...", @"🟡 正在连接选中的电视...");
-    }];
-    
-    const char *name = nw_endpoint_get_bonjour_service_name(selectedEndpoint);
-    NSString *nameStr = name ? [NSString stringWithUTF8String:name] : @"Apple TV";
-    
-    [[HSBTVOSConnectionManager sharedManager] connectToEndpoint:selectedEndpoint deviceName:nameStr];
-    
-    UIViewController *remoteVC = [HSBModernRemoteBridge createModernRemoteViewController];
-    remoteVC.hidesBottomBarWhenPushed = YES;
-    
-    [self updateUI:^{
-        self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@", @"🟢 已连接至 %@"), nameStr];
-        self.tvStatusLabel.textColor = [UIColor systemGreenColor];
-    }];
-    
-    [self.navigationController pushViewController:remoteVC animated:YES];
 }
 
 #pragma mark - Bridge Lifecycle
@@ -1183,7 +1129,7 @@ static NSString * L(NSString *en, NSString *zh) {
         [self.tvTableView reloadData];
         [self.scanSpinner startAnimating];
         self.scanSpinner.hidden = NO;
-        self.tvStatusLabel.text = L(@"🟡 Scanning for Apple TV & Screens...", @"🟡 正在扫描局域网 Apple TV 与大屏...");
+        self.tvStatusLabel.text = L(@"🟡 Scanning for Apple TV devices...", @"🟡 正在扫描局域网 Apple TV 硬件设备...");
         self.tvStatusLabel.textColor = [UIColor whiteColor];
     }];
     
@@ -1200,60 +1146,19 @@ static NSString * L(NSString *en, NSString *zh) {
                 [weakSelf.scanSpinner stopAnimating];
                 weakSelf.scanSpinner.hidden = YES;
                 weakSelf.tvTableView.backgroundView.hidden = YES;
-                weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Found %lu Apple TV / Screen(s)", @"🟢 已发现 %lu 台 Apple TV / 大屏设备"), (unsigned long)weakSelf.discoveredDevices.count];
+                weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Found %lu Apple TV Device(s)", @"🟢 已发现 %lu 台 Apple TV 硬件设备"), (unsigned long)weakSelf.discoveredDevices.count];
                 weakSelf.tvStatusLabel.textColor = [UIColor systemGreenColor];
             }
         }];
     }];
     
-    // 兼容原有的 nw_browser_t 扫描（双轨保障）
-    nw_parameters_t browseParameters = nw_parameters_create();
-    nw_parameters_set_include_peer_to_peer(browseParameters, true);
-    nw_browse_descriptor_t descriptor = nw_browse_descriptor_create_bonjour_service(BONJOUR_SERVICE_TYPE, NULL);
-    self.browser = nw_browser_create(descriptor, browseParameters);
-    
-    nw_browser_set_state_changed_handler(self.browser, ^(nw_browser_state_t state, nw_error_t error) {
-        if (state == nw_browser_state_ready) {
-            NSLog(@"[BonjourBridge] Legacy browser ready, scanning...");
-        }
-    });
-    
-    nw_browser_set_browse_results_changed_handler(self.browser, ^(nw_browse_result_t old_result, nw_browse_result_t new_result, bool batch_complete) {
-        if (new_result) {
-            nw_endpoint_t endpoint = nw_browse_result_copy_endpoint(new_result);
-            if (endpoint) {
-                const char *newName = nw_endpoint_get_bonjour_service_name(endpoint);
-                BOOL exists = NO;
-                for (nw_endpoint_t ep in weakSelf.discoveredEndpoints) {
-                    const char *existingName = nw_endpoint_get_bonjour_service_name(ep);
-                    if (newName && existingName && strcmp(newName, existingName) == 0) {
-                        exists = YES;
-                        break;
-                    }
-                }
-                if (!exists) {
-                    [weakSelf.discoveredEndpoints addObject:endpoint];
-                    [weakSelf updateUI:^{
-                        [weakSelf.tvTableView reloadData];
-                    }];
-                }
-            }
-        }
-    });
-    
-    if (!self.browserQueue) {
-        self.browserQueue = dispatch_queue_create("com.tv.browse.queue", DISPATCH_QUEUE_SERIAL);
-    }
-    nw_browser_set_queue(self.browser, self.browserQueue);
-    nw_browser_start(self.browser);
-    
-    // 10 秒超时若仍无设备，停止旋转菊花并展示空视图提示
+    // 10 秒超时若仍无硬件设备，停止旋转菊花并展示空视图提示
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if (weakSelf.discoveredDevices.count == 0 && weakSelf.discoveredEndpoints.count == 0) {
+        if (weakSelf.discoveredDevices.count == 0) {
             [weakSelf.scanSpinner stopAnimating];
             weakSelf.scanSpinner.hidden = YES;
             weakSelf.tvTableView.backgroundView.hidden = NO;
-            weakSelf.tvStatusLabel.text = L(@"⚪️ Scanning idle (Tap to retry)", @"⚪️ 扫描完成 (未发现可用设备)");
+            weakSelf.tvStatusLabel.text = L(@"⚪️ Scanning idle (Tap to retry)", @"⚪️ 扫描完成 (未发现 Apple TV 硬件)");
             weakSelf.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
         }
     });

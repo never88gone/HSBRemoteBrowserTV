@@ -49,18 +49,10 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     }
     
     @objc public var displaySubtitle: String {
-        if isDualMode {
-            return "双模聚合 · Apple TV 系统遥控 + 浏览器"
-        } else if isNativeAppleTV {
-            if let model = modelName, !model.isEmpty {
-                return "Apple TV (\(model)) · 系统原生遥控就绪"
-            }
-            return "Apple TV · 系统原生遥控就绪"
-        } else if isBrowserApp {
-            return "糖葫芦大屏浏览器 · WebKit 触控就绪"
-        } else {
-            return "大屏设备 · 点击连接"
+        if let model = modelName, !model.isEmpty {
+            return "Apple TV (\(model)) · 系统原生硬件就绪"
         }
+        return "Apple TV · 系统原生硬件就绪"
     }
 }
 
@@ -69,7 +61,6 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public static let shared = HSBAppleTVDiscovery()
     
     private var companionBrowser: NetServiceBrowser?
-    private var browserAppBrowser: NetServiceBrowser?
     
     private var services: [String: NetService] = [:]
     private var deviceMap: [String: HSBDiscoveredAppleTV] = [:]
@@ -99,21 +90,14 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         self.services.removeAll()
         discoveryLock.unlock()
         
-        log.info("Starting Apple TV Bonjour discovery (_companion-link, _thltv)...")
+        log.info("Starting Apple TV Bonjour hardware discovery (_companion-link)...")
         
-        // 1. 扫描 Apple TV Companion Link 协议通道 (itsytv-macos 核心扫描服务)
+        // 扫描 Apple TV 硬件 Companion Link 协议通道 (与 itsytv-macos 核心扫描服务完全一致)
         let cBrowser = NetServiceBrowser()
         cBrowser.delegate = self
         cBrowser.schedule(in: .main, forMode: .common)
         cBrowser.searchForServices(ofType: "_companion-link._tcp.", inDomain: "local.")
         self.companionBrowser = cBrowser
-        
-        // 2. 扫描糖葫芦大屏浏览器通道
-        let bBrowser = NetServiceBrowser()
-        bBrowser.delegate = self
-        bBrowser.schedule(in: .main, forMode: .common)
-        bBrowser.searchForServices(ofType: "_thltv._tcp.", inDomain: "local.")
-        self.browserAppBrowser = bBrowser
     }
     
     @objc public func refresh() {
@@ -133,14 +117,11 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         companionBrowser?.stop()
         companionBrowser = nil
         
-        browserAppBrowser?.stop()
-        browserAppBrowser = nil
-        
         discoveryLock.lock()
         isScanning = false
         discoveryLock.unlock()
         
-        log.info("Apple TV Bonjour discovery stopped.")
+        log.info("Apple TV Bonjour hardware discovery stopped.")
     }
     
     // MARK: - Port Knocking Wakeup (itsytv-macos 深度休眠唤醒)
@@ -200,12 +181,9 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         let serviceName = service.name
         NSLog("[BONJOUR_TRACE] didResolve name=%@, type=%@", serviceName, serviceType)
         
-        var modelName: String? = nil
-        var isAppleTV = false
-        var isBrowser = false
-        
-        if serviceType.contains("_thltv") {
-            isBrowser = true
+        // 纯 itsytv 架构：仅扫描与解析真实的 Apple TV 物理硬件设备 (_companion-link)
+        guard serviceType.contains("_companion-link") else {
+            return
         }
         
         var cleanName = serviceName
@@ -213,42 +191,34 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             cleanName = String(cleanName[..<range.lowerBound])
         }
         
-        if serviceType.contains("_companion-link") {
-            guard let txtData = service.txtRecordData(), !txtData.isEmpty else {
-                log.info("No TXT data yet for \(serviceName)")
-                return
+        guard let txtData = service.txtRecordData(), !txtData.isEmpty else {
+            log.info("No TXT data yet for \(serviceName)")
+            return
+        }
+        let txtDict = NetService.dictionary(fromTXTRecord: txtData)
+        var props: [String: String] = [:]
+        for (key, value) in txtDict {
+            if let str = String(data: value, encoding: .utf8) {
+                props[key] = str
             }
-            let txtDict = NetService.dictionary(fromTXTRecord: txtData)
-            var props: [String: String] = [:]
-            for (key, value) in txtDict {
-                if let str = String(data: value, encoding: .utf8) {
-                    props[key] = str
-                }
-            }
-            
-            modelName = props["rpMd"] ?? props["model"]
-            let flagStr = props["rpFl"] ?? "0x0"
-            let flags = UInt64(flagStr.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
-            
-            log.info("Resolved Companion: \(serviceName) model=\(modelName ?? "nil") flags=0x\(String(flags, radix: 16))")
-            NSLog("[BONJOUR_TRACE] Companion flags=0x%llx, model=%@ for %@", flags, modelName ?? "nil", serviceName)
-            
-            // 核心过滤规则 (参考 itsytv-macos DeviceDiscovery.swift:65-72)
-            // 只有 flags & 0x4000 != 0 才是具备 PIN 码原生配对能力的 Apple TV (彻底排除同一局域网的 Mac、iPhone、HomePod)
-            guard (flags & 0x4000 != 0) || (modelName != nil && modelName!.contains("AppleTV")) else {
-                discoveryLock.lock()
-                deviceMap.removeValue(forKey: cleanName)
-                discoveryLock.unlock()
-                notifyChange()
-                log.info("Filtered out non-AppleTV companion device: \(serviceName)")
-                NSLog("[BONJOUR_TRACE] Filtered out non-AppleTV: %@", serviceName)
-                return
-            }
-            isAppleTV = true
         }
         
-        // 若既不是 Apple TV 也不是糖葫芦大屏浏览器，直接忽略
-        guard isAppleTV || isBrowser else {
+        let modelName = props["rpMd"] ?? props["model"]
+        let flagStr = props["rpFl"] ?? "0x0"
+        let flags = UInt64(flagStr.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
+        
+        log.info("Resolved Companion: \(serviceName) model=\(modelName ?? "nil") flags=0x\(String(flags, radix: 16))")
+        NSLog("[BONJOUR_TRACE] Companion flags=0x%llx, model=%@ for %@", flags, modelName ?? "nil", serviceName)
+        
+        // 核心硬件过滤规则 (参考 itsytv-macos DeviceDiscovery.swift:65-72)
+        // 只有 flags & 0x4000 != 0 才是具备 PIN 码原生配对能力的 Apple TV 物理硬件 (彻底排除同一局域网的 Mac、iPhone、HomePod)
+        guard (flags & 0x4000 != 0) || (modelName != nil && modelName!.contains("AppleTV")) else {
+            discoveryLock.lock()
+            deviceMap.removeValue(forKey: cleanName)
+            discoveryLock.unlock()
+            notifyChange()
+            log.info("Filtered out non-AppleTV companion device: \(serviceName)")
+            NSLog("[BONJOUR_TRACE] Filtered out non-AppleTV: %@", serviceName)
             return
         }
         
@@ -257,29 +227,21 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         if host.hasSuffix(".") {
             host = String(host.dropLast())
         }
-        let port = service.port > 0 ? UInt16(service.port) : (isBrowser ? 56789 : 49152)
+        let port = service.port > 0 ? UInt16(service.port) : 49152
         
         discoveryLock.lock()
         defer { discoveryLock.unlock() }
         
-        // 查找或合并已有记录
-        let existing = deviceMap[cleanName]
-        let finalIsNative = isAppleTV || (existing?.isNativeAppleTV ?? false)
-        let finalIsBrowser = isBrowser || (existing?.isBrowserApp ?? false)
-        let finalModel = modelName ?? existing?.modelName
-        let finalPort = (isBrowser && !isAppleTV) ? port : (existing?.port ?? port)
-        let finalHost = !host.isEmpty ? host : (existing?.host ?? "")
-        
-        let endpoint = nw_endpoint_create_host(finalHost, "\(finalPort)")
+        let endpoint = nw_endpoint_create_host(host, "\(port)")
         
         let device = HSBDiscoveredAppleTV(
             id: cleanName,
             name: cleanName,
-            host: finalHost,
-            port: finalPort,
-            modelName: finalModel,
-            isNativeAppleTV: finalIsNative,
-            isBrowserApp: finalIsBrowser,
+            host: host,
+            port: port,
+            modelName: modelName,
+            isNativeAppleTV: true,
+            isBrowserApp: false,
             rawEndpoint: endpoint
         )
         

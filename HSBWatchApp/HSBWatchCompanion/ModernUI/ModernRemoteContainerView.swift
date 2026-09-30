@@ -93,7 +93,7 @@ public struct ModernRemoteContainerView: View {
                 } else {
                     // 应用生态网格 (一键唤起应用并自动切换对应微操)
                     ModernAppGridView { app in
-                        DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID)
+                        DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID, url: app.url)
                         withAnimation(.easeInOut(duration: 0.25)) {
                             selectedControlTab = app.targetMode
                             selectedMainTab = 0
@@ -174,14 +174,49 @@ public struct ModernRemoteContainerView: View {
                 ModernIPTVControlView(
                     isConnected: coordinatorObserver.isHSBBrowserConnected,
                     onAction: { action in
-                        HSBTVOSConnectionManager.shared().sendSimulateAction(action)
+                        // 1. 优先通过 itsytv 原生系统通道向 Apple TV 发送系统级按键 (纯原生通道传参)
+                        switch action {
+                        case .channelUp, .up:
+                            DualModeRemoteCoordinator.shared.sendDPad(direction: .up, action: .tap)
+                        case .channelDown, .down:
+                            DualModeRemoteCoordinator.shared.sendDPad(direction: .down, action: .tap)
+                        case .left:
+                            DualModeRemoteCoordinator.shared.sendDPad(direction: .left, action: .tap)
+                        case .right:
+                            DualModeRemoteCoordinator.shared.sendDPad(direction: .right, action: .tap)
+                        case .select:
+                            DualModeRemoteCoordinator.shared.sendSelect(action: .tap)
+                        case .volumeUp:
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.volumeUp)
+                        case .volumeDown:
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.volumeDown)
+                        case .toggleMute:
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.mute)
+                        case .play, .pause:
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.playPause)
+                        case .iptvEpg, .menu:
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.menu)
+                        default:
+                            break
+                        }
+                        
+                        // 2. 兼容第二通道（若已连接）
+                        if HSBTVOSConnectionManager.shared().isConnected {
+                            HSBTVOSConnectionManager.shared().sendSimulateAction(action)
+                        }
                     },
                     onPlayChannel: { name, channelId in
-                        HSBTVOSConnectionManager.shared().sendPayload([
-                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvPlayChannel.rawValue,
-                            HSBRemotePayloadKeyChannel: name,
-                            HSBRemotePayloadKeyId: channelId
-                        ])
+                        // 纯 itsytv 原生通道传参：通过 _launchApp 协议透传播放参数与频道 Scheme
+                        let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+                        let url = "thliptv://play?id=\(channelId)&name=\(encodedName)"
+                        DualModeRemoteCoordinator.shared.launchApp(bundleID: "com.nevergone.huluge.iptv", url: url)
+                        if HSBTVOSConnectionManager.shared().isConnected {
+                            HSBTVOSConnectionManager.shared().sendPayload([
+                                HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.iptvPlayChannel.rawValue,
+                                HSBRemotePayloadKeyChannel: name,
+                                HSBRemotePayloadKeyId: channelId
+                            ])
+                        }
                     },
                     onRequestCatalog: { query, group, offset, limit, source, requestId in
                         HSBTVOSConnectionManager.shared().sendPayload([
@@ -291,36 +326,57 @@ public struct ModernRemoteContainerView: View {
                 // Tab 4: PDF 遥控 (商务演讲翻页大板、首尾页跳转、激光笔与屏幕涂鸦)
                 ModernPDFControlView(
                     onPageChange: { isNext in
-                        HSBTVOSConnectionManager.shared().sendSimulateAction(
-                            isNext ? .right : .left
+                        // 纯 itsytv 原生通道传参：原生 D-Pad 方向键精准翻页
+                        DualModeRemoteCoordinator.shared.sendDPad(
+                            direction: isNext ? .right : .left,
+                            action: .tap
                         )
+                        if HSBTVOSConnectionManager.shared().isConnected {
+                            HSBTVOSConnectionManager.shared().sendSimulateAction(
+                                isNext ? .right : .left
+                            )
+                        }
                     },
                     onJumpPage: { isFirst in
-                        HSBTVOSConnectionManager.shared().sendSimulateAction(
-                            isFirst ? .pageHome : .stop
+                        // 纯 itsytv 原生通道传参：原生系统按键 (Home / Menu)
+                        DualModeRemoteCoordinator.shared.sendSystemKey(
+                            isFirst ? .home : .menu
                         )
+                        if HSBTVOSConnectionManager.shared().isConnected {
+                            HSBTVOSConnectionManager.shared().sendSimulateAction(
+                                isFirst ? .pageHome : .stop
+                            )
+                        }
                     },
                     onDrawAction: { type, point, color, width in
-                        HSBTVOSConnectionManager.shared().sendPayload([
-                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
-                            HSBRemotePayloadKeyType: type,
-                            HSBRemotePayloadKeyX: Double(point.x),
-                            HSBRemotePayloadKeyY: Double(point.y),
-                            HSBRemotePayloadKeyColor: color,
-                            HSBRemotePayloadKeyWidth: Double(width)
-                        ])
+                        // 纯 itsytv 原生通道传参：原生微移触摸事件
+                        DualModeRemoteCoordinator.shared.nativeClient.sendTouchEvent(phase: 2, point: CGPoint(x: point.x, y: point.y))
+                        if HSBTVOSConnectionManager.shared().isConnected {
+                            HSBTVOSConnectionManager.shared().sendPayload([
+                                HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
+                                HSBRemotePayloadKeyType: type,
+                                HSBRemotePayloadKeyX: Double(point.x),
+                                HSBRemotePayloadKeyY: Double(point.y),
+                                HSBRemotePayloadKeyColor: color,
+                                HSBRemotePayloadKeyWidth: Double(width)
+                            ])
+                        }
                     },
                     onClear: {
-                        HSBTVOSConnectionManager.shared().sendPayload([
-                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
-                            HSBRemotePayloadKeyType: HSBRemoteDrawTypeClear
-                        ])
+                        if HSBTVOSConnectionManager.shared().isConnected {
+                            HSBTVOSConnectionManager.shared().sendPayload([
+                                HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
+                                HSBRemotePayloadKeyType: HSBRemoteDrawTypeClear
+                            ])
+                        }
                     },
                     onUndo: {
-                        HSBTVOSConnectionManager.shared().sendPayload([
-                            HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
-                            HSBRemotePayloadKeyType: HSBRemoteDrawTypeUndo
-                        ])
+                        if HSBTVOSConnectionManager.shared().isConnected {
+                            HSBTVOSConnectionManager.shared().sendPayload([
+                                HSBRemotePayloadKeyAction: HSBRemoteSimulateAction.pdfDraw.rawValue,
+                                HSBRemotePayloadKeyType: HSBRemoteDrawTypeUndo
+                            ])
+                        }
                     }
                 )
             }
@@ -630,7 +686,7 @@ private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoord
     init(coordinator: DualModeRemoteCoordinator) {
         self.coordinator = coordinator
         self.state = coordinator.currentState
-        self.isHSBBrowserConnected = HSBTVOSConnectionManager.shared().isConnected
+        self.isHSBBrowserConnected = coordinator.nativeClient.isConnected || HSBTVOSConnectionManager.shared().isConnected
         coordinator.delegate = self
         
         NotificationCenter.default.addObserver(
@@ -647,14 +703,14 @@ private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoord
     
     @objc private func handleTVOSConnectionNotification(_ note: Notification) {
         DispatchQueue.main.async {
-            self.isHSBBrowserConnected = HSBTVOSConnectionManager.shared().isConnected
+            self.isHSBBrowserConnected = self.coordinator.nativeClient.isConnected || HSBTVOSConnectionManager.shared().isConnected
         }
     }
     
     func coordinator(_ coordinator: DualModeRemoteCoordinator, didChangeState state: HSBConnectionState) {
         DispatchQueue.main.async {
             self.state = state
-            self.isHSBBrowserConnected = HSBTVOSConnectionManager.shared().isConnected
+            self.isHSBBrowserConnected = coordinator.nativeClient.isConnected || HSBTVOSConnectionManager.shared().isConnected
         }
     }
     

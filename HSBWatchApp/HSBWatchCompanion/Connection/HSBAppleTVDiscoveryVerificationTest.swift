@@ -33,7 +33,7 @@ import Network
         let isMacFiltered = (macFlags & 0x4000) == 0
         record("Test 1.2: Filter out Mac / HomePod (0x20300 & 0x4000 == 0)", passed: isMacFiltered)
         
-        // Test 2: Model & Subtitle formatting
+        // Test 2: Model & Subtitle formatting (硬件专属)
         let testDevice = HSBDiscoveredAppleTV(
             id: "HSBTV7",
             name: "HSBTV7",
@@ -43,21 +43,21 @@ import Network
             isNativeAppleTV: true,
             isBrowserApp: false
         )
-        let hasCorrectSubtitle = testDevice.displaySubtitle.contains("AppleTV14,1") && testDevice.displaySubtitle.contains("系统原生遥控就绪")
-        record("Test 2: Device Subtitle Formatting", passed: hasCorrectSubtitle, detail: testDevice.displaySubtitle)
+        let hasCorrectSubtitle = testDevice.displaySubtitle.contains("AppleTV14,1") && testDevice.displaySubtitle.contains("系统原生硬件就绪")
+        record("Test 2: Device Subtitle Formatting (Hardware)", passed: hasCorrectSubtitle, detail: testDevice.displaySubtitle)
         
-        // Test 3: Dual-mode aggregation
-        let dualDevice = HSBDiscoveredAppleTV(
-            id: "HSBTV7",
-            name: "HSBTV7",
-            host: "HSBTV7.local",
-            port: 56789,
-            modelName: "AppleTV14,1",
+        // Test 3: Dedicated Hardware Device Identification
+        let hardDevice = HSBDiscoveredAppleTV(
+            id: "LivingRoomTV",
+            name: "LivingRoomTV",
+            host: "LivingRoomTV.local",
+            port: 49152,
+            modelName: "AppleTV11,1",
             isNativeAppleTV: true,
-            isBrowserApp: true
+            isBrowserApp: false
         )
-        let isDual = dualDevice.isDualMode && dualDevice.displaySubtitle.contains("双模聚合")
-        record("Test 3: Dual Mode Aggregation (Native + Browser)", passed: isDual, detail: dualDevice.displaySubtitle)
+        let isHardware = hardDevice.isNativeAppleTV && hardDevice.displaySubtitle.contains("系统原生硬件就绪")
+        record("Test 3: Pure Apple TV Hardware Identification", passed: isHardware, detail: hardDevice.displaySubtitle)
         
         // Test 4: Native HID Button Codes (Up, Down, Left, Right, Select, Menu, Home)
         let upCode = SystemKey.up.nativeButtonCode == 88

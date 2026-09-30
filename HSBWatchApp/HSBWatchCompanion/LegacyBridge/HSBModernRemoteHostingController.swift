@@ -60,30 +60,21 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     }
     
     @objc public static func connectWithHost(_ host: String, port: Int, deviceName: String) {
-        if !HSBTVOSConnectionManager.shared().isConnected {
-            let endpoint = nw_endpoint_create_host(host, "\(port)")
-            HSBTVOSConnectionManager.shared().connect(to: endpoint, deviceName: deviceName)
-        }
         if !DualModeRemoteCoordinator.shared.nativeClient.isConnected {
+            DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
             DualModeRemoteCoordinator.shared.connectToNative(host: host, deviceName: deviceName)
         }
     }
     
     @objc public static func connectToDiscoveredDevice(_ device: HSBDiscoveredAppleTV) {
-        if device.isNativeAppleTV {
-            DualModeRemoteCoordinator.shared.currentMode = device.isBrowserApp ? .dual : .nativeOnly
-            DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name)
-            DualModeRemoteCoordinator.shared.wakeDevice(host: device.host, completion: nil)
-        }
-        if device.isBrowserApp {
-            let port = device.isBrowserApp && !device.isNativeAppleTV ? device.port : 56789
-            let endpoint = nw_endpoint_create_host(device.host, "\(port)")
-            HSBTVOSConnectionManager.shared().connect(to: endpoint, deviceName: device.name)
-        }
+        // 纯 itsytv 原生通道传参架构：物理连接永远只有唯一的原生系统会话
+        DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
+        DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name)
+        DualModeRemoteCoordinator.shared.wakeDevice(host: device.host, completion: nil)
     }
     
     @objc public static func isUnifiedConnected() -> Bool {
-        return HSBTVOSConnectionManager.shared().isConnected || DualModeRemoteCoordinator.shared.nativeClient.isConnected
+        return DualModeRemoteCoordinator.shared.nativeClient.isConnected
     }
     
     @objc public static func disconnectUnified() {
