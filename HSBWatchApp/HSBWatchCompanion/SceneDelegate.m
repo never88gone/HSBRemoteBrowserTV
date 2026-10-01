@@ -50,9 +50,21 @@
 }
 
 - (void)handleRemotePairingURL:(NSURL *)url {
-    if ([[url.scheme lowercaseString] isEqualToString:@"hsbremote"] &&
-        [[url.host lowercaseString] isEqualToString:@"pair"]) {
-        [[HSBTVOSConnectionManager sharedManager] connectToPairingURL:url];
+    if ([[url.scheme lowercaseString] isEqualToString:@"hsbremote"]) {
+        if ([[url.host lowercaseString] isEqualToString:@"pair"]) {
+            [[HSBTVOSConnectionManager sharedManager] connectToPairingURL:url];
+        } else if ([[url.host lowercaseString] isEqualToString:@"guide"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *type = @"browser";
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"type"]) {
+                    type = item.value ?: @"browser";
+                }
+            }
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBShowGuideModalNotification"
+                                                                object:nil
+                                                              userInfo:@{@"type": type}];
+        }
     }
 }
 

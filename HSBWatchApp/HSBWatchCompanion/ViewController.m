@@ -136,8 +136,14 @@ static NSString * L(NSString *en, NSString *zh) {
     }
     self.navigationItem.backBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"" style:UIBarButtonItemStylePlain target:nil action:nil];
     
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"]) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    NSArray *args = [NSProcessInfo processInfo].arguments;
+    BOOL shouldOpenModernRemote = [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"] ||
+                                  [args containsObject:@"--open-remote"] ||
+                                  [args containsObject:@"--guide-browser"] ||
+                                  [args containsObject:@"--guide-system"] ||
+                                  [args containsObject:@"--guide-pin"];
+    if (shouldOpenModernRemote) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self openModernRemoteController];
         });
     } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenSettings"]) {
@@ -465,9 +471,11 @@ static NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)showPairingGuideAlert {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"Display Connection Guide", @"📺 大屏连接与配对指引") message:L(@"1. Ensure your iPhone and Apple TV / Mac are connected to the same Wi-Fi network.\n\n2. Launch 'HSBBrowser' on your Apple TV or 'itsytv' on macOS.\n\n3. This app will automatically discover and pair within seconds via Bonjour.\n\n4. You can tap the Remote icon at the top right anytime to test all 4 remote control scenarios offline.", @"1. 确保手机与 Apple TV / Mac 处于同一个局域网 Wi-Fi。\n\n2. 在 Apple TV 上启动《HSBBrowser》或在 Mac 上启动配套应用。\n\n3. 手机端将自动通过 Bonjour 广播秒级发现并连接。\n\n4. 审核测试或未连接大屏时，可随时点击右上角【遥控器】图标离线试用全部四大场景遥控器。") preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:L(@"Understood", @"我知道了") style:UIAlertActionStyleDefault handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:L(@"Open Remote", @"打开遥控器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+    NSString *msg = L(@"1. 电视权限设置（首要且关键）：\n在 Apple TV 上打开【设置】->【隔空播放与“家庭”】，将【允许访问】改为【同一网络上的任何人】，【需要密码】设为【关】。\n\n2. 连接大屏浏览器微操：\n在 Apple TV 桌面用原装遥控器启动【糖葫芦浏览器】App，手机端大屏通道将自动秒级连通，支持光标微操与双指无级滚动。\n\n3. 系统原生通道配对：\n点击下方列表中的 Apple TV 设备。电视屏幕若弹出 4 位数字 PIN 码，输入后即可永久完成系统绑定（控制音量、Home、电源开关）。",
+                      @"1. 电视权限设置（首要且关键）：\n在 Apple TV 上打开【设置】->【隔空播放与“家庭”】，将【允许访问】改为【同一网络上的任何人】，【需要密码】设为【关】。\n\n2. 连接大屏浏览器微操：\n在 Apple TV 桌面用原装遥控器启动【糖葫芦浏览器】App，手机端大屏通道将自动秒级连通，支持光标微操与双指无级滚动。\n\n3. 系统原生通道配对：\n点击下方列表中的 Apple TV 设备。电视屏幕若弹出 4 位数字 PIN 码，输入后即可永久完成系统绑定（控制音量、Home、电源开关）。");
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"📺 电视连接与配对指引", @"📺 电视连接与配对指引") message:msg preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"我知道了", @"我知道了") style:UIAlertActionStyleDefault handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"进入遥控器", @"进入遥控器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         [self openModernRemoteController];
     }]];
     [self presentViewController:alert animated:YES completion:nil];

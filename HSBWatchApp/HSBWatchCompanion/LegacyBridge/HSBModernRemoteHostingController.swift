@@ -73,7 +73,8 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     @objc public static func connectToDiscoveredDevice(_ device: HSBDiscoveredAppleTV) {
         // 纯 itsytv 原生通道架构：物理连接永远只有唯一的原生系统会话
         DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
-        DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name)
+        let nativePort = device.port > 0 ? device.port : 49152
+        DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name, port: nativePort)
         DualModeRemoteCoordinator.shared.wakeDevice(host: device.host, completion: nil)
         
         // 在后台静默尝试连接伴随大屏端服务（透明承载 mac_scroll 像素级平滑滚动与高级操作）

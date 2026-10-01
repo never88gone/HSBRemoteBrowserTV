@@ -134,8 +134,8 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         screenClient.connect(to: endpoint, deviceName: deviceName)
     }
     
-    public func connectToNative(host: String, deviceName: String) {
-        nativeClient.connect(host: host, deviceName: deviceName)
+    public func connectToNative(host: String, deviceName: String, port: UInt16 = 49152) {
+        nativeClient.connect(host: host, deviceName: deviceName, port: port)
     }
     
     public func disconnectAll() {
