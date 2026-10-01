@@ -20,8 +20,9 @@ variables:
     - 'PIPELINE_DATE="$(echo "${CI_PIPELINE_CREATED_AT:-}" | tr -dc "0-9" | cut -c1-12)"'
     - 'export THLBROWSER_BUILD_NUMBER="${PIPELINE_DATE:-$(date +%Y%m%d%H%M)}$(printf "%02d" $((CI_PIPELINE_ID % 100)))"'
     - 'export THLBROWSER_ARCHIVE_ROOT="$CI_PROJECT_DIR/Artifacts/AppStore/$THLBROWSER_BUILD_NUMBER"'
-    - 'export THLBROWSER_DERIVED_DATA_PATH="$CI_PROJECT_DIR/.thlbrowser-ci-derived/shared"'
-    - 'mkdir -p "$CI_PROJECT_DIR/Artifacts/AppStore"'
+    - 'export SPM_SHARED_CACHE="/Users/Shared/thlbrowser-spm-cache"'
+    - 'export THLBROWSER_DERIVED_DATA_PATH="/Users/Shared/thlbrowser-ci-derived/shared"'
+    - 'mkdir -p "$SPM_SHARED_CACHE" "$THLBROWSER_DERIVED_DATA_PATH" "$CI_PROJECT_DIR/Artifacts/AppStore"'
     - 'echo "$THLBROWSER_BUILD_NUMBER" > "$CI_PROJECT_DIR/Artifacts/AppStore/build_number.txt"'
   artifacts:
     name: "HSBRemoteBrowserTV-candidate-$CI_JOB_NAME-$CI_PIPELINE_ID"

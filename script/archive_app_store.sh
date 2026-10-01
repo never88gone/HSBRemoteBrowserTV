@@ -10,13 +10,70 @@ BUILD_NUMBER="${BUILD_NUMBER:-${THLBROWSER_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${THLBROWSER_ARCHIVE_ROOT:-$ROOT_DIR/Artifacts/AppStore/$BUILD_NUMBER}}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${THLBROWSER_DERIVED_DATA_PATH:-$HOME/.thlbrowser-derived}}"
 
-# 网络加速防护：如果本地代理监听 6152 端口（如 Surge/Clash），自动注入代理加速 GitHub SPM 依赖拉取
-if nc -z 127.0.0.1 6152 2>/dev/null; then
-  export http_proxy="http://127.0.0.1:6152"
-  export https_proxy="http://127.0.0.1:6152"
-  export ALL_PROXY="http://127.0.0.1:6152"
-  echo "==> 检测到本地开发代理 (127.0.0.1:6152)，已自动开启 SPM 网络拉取加速"
-fi
+# 全局共享 SPM 缓存路径 (保证本地开发与 CI Runner 跨构建秒级复用，杜绝重复从 GitHub clone mlx-swift 等巨型依赖)
+SPM_SHARED_CACHE="${SPM_SHARED_CACHE:-${THLBROWSER_SPM_CACHE:-/Users/Shared/thlbrowser-spm-cache}}"
+
+# 网络加速防护：多端口探测 (Surge/Clash/V2Ray/Shadowsocks)，自动注入代理加速 GitHub SPM 依赖拉取
+detect_and_export_proxy() {
+  local candidate_ports=(6152 7890 7897 1087 10808 8888 8889)
+  for port in "${candidate_ports[@]}"; do
+    if nc -z 127.0.0.1 "$port" 2>/dev/null; then
+      export http_proxy="http://127.0.0.1:$port"
+      export https_proxy="http://127.0.0.1:$port"
+      export ALL_PROXY="http://127.0.0.1:$port"
+      echo "==> 检测到本地开发/Runner 代理 (127.0.0.1:$port)，已自动开启网络拉取加速"
+      return 0
+    fi
+  done
+}
+detect_and_export_proxy
+
+# SPM 依赖缓存预热保护 (确保 mlx-swift 等庞大依赖无需网络下载即可秒级就绪)
+prewarm_spm_cache() {
+  mkdir -p "$SPM_SHARED_CACHE"
+  if [[ -d "$SPM_SHARED_CACHE/checkouts/mlx-swift" && -f "$SPM_SHARED_CACHE/workspace-state.json" ]]; then
+    echo "==> SPM 共享缓存已就绪: $SPM_SHARED_CACHE (包含完整 mlx-swift 0.31.3)"
+    return 0
+  fi
+
+  echo "==> SPM 共享缓存未检测到完整 mlx-swift，正在从本地已知缓存源执行快速秒级预热..."
+  local candidate_sources=(
+    "$ROOT_DIR/build_derived_data/SourcePackages"
+    "/Volumes/MacintoshData/Develop/Xcode/DerivedData/HSBWatchApp-fjpxvajjxogfbhdsqyuwmkzjavpb/SourcePackages"
+    "$DERIVED_DATA_PATH/SourcePackages"
+  )
+
+  # 动态补充通配符路径
+  for d in "$HOME/Library/Developer/Xcode/DerivedData"/HSBWatchApp-*/SourcePackages; do
+    if [[ -d "$d" ]]; then
+      candidate_sources+=("$d")
+    fi
+  done
+  for d in "/Volumes/MacintoshData/Develop/Xcode/DerivedData"/HSBWatchApp-*/SourcePackages; do
+    if [[ -d "$d" ]]; then
+      candidate_sources+=("$d")
+    fi
+  done
+
+  local prewarmed=0
+  for src in "${candidate_sources[@]}"; do
+    if [[ -d "$src/checkouts/mlx-swift" ]]; then
+      echo "    发现有效 SPM 依赖源: $src"
+      echo "    正在同步至全局持久缓存 $SPM_SHARED_CACHE ..."
+      cp -R "$src"/* "$SPM_SHARED_CACHE/" 2>/dev/null || rsync -a "$src/" "$SPM_SHARED_CACHE/" 2>/dev/null || true
+      if [[ -d "$SPM_SHARED_CACHE/checkouts/mlx-swift" ]]; then
+        echo "    ✅ SPM 共享缓存预热完成！"
+        prewarmed=1
+        break
+      fi
+    fi
+  done
+
+  if [[ $prewarmed -eq 0 ]]; then
+    echo "    ⚠️ 未找到本地已有 SourcePackages 缓存，将依赖网络和代理克隆。"
+  fi
+}
+prewarm_spm_cache
 
 # 1. 自动装载 Fastlane 目录下的描述文件至系统 Provisioning Profiles 路径 (支持本地与 CI/CD Runner)
 PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
@@ -72,6 +129,7 @@ if [[ "$ACTION" == "--archive-only" || "$ACTION" == "--export" ]]; then
     -configuration Release \
     -destination "$DESTINATION" \
     -derivedDataPath "$DERIVED_DATA_PATH" \
+    -clonedSourcePackagesDirPath "$SPM_SHARED_CACHE" \
     -archivePath "$ARCHIVE_PATH" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     archive
