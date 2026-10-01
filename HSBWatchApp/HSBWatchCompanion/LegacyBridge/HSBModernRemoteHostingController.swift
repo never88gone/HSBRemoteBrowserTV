@@ -22,6 +22,14 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         self.title = "智能遥控器"
         self.view.backgroundColor = .clear
         
+        let backItem = UIBarButtonItem(
+            image: UIImage(systemName: "chevron.left"),
+            style: .plain,
+            target: self,
+            action: #selector(didTapBackButton)
+        )
+        self.navigationItem.leftBarButtonItem = backItem
+        
         let keyboardItem = UIBarButtonItem(
             image: UIImage(systemName: "keyboard"),
             style: .plain,
@@ -29,6 +37,17 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             action: #selector(didTapKeyboardToggle)
         )
         self.navigationItem.rightBarButtonItem = keyboardItem
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didTapBackButton),
+            name: Notification.Name("HSBExitRemotePageNotification"),
+            object: nil
+        )
+    }
+    
+    @objc private func didTapBackButton() {
+        self.navigationController?.popViewController(animated: true)
     }
     
     @objc private func didTapKeyboardToggle() {
@@ -71,20 +90,109 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     }
     
     @objc public static func connectToDiscoveredDevice(_ device: HSBDiscoveredAppleTV) {
-        // 纯 itsytv 原生通道架构：物理连接永远只有唯一的原生系统会话
+        connectToDiscoveredDevice(device, timeout: 6.0, completion: nil)
+    }
+    
+    @objc public static func connectToDiscoveredDevice(
+        _ device: HSBDiscoveredAppleTV,
+        timeout: TimeInterval = 6.0,
+        completion: ((Bool, String?) -> Void)? = nil
+    ) {
+        // 1. 如果已连通当前设备，直接主线程完成
+        let isNative = DualModeRemoteCoordinator.shared.nativeClient.isConnected
+        let isScreen = HSBTVOSConnectionManager.shared().isConnected || DualModeRemoteCoordinator.shared.screenClient.isConnected
+        let currentHost = DualModeRemoteCoordinator.shared.nativeClient.currentHost
+        if (isNative || isScreen), (currentHost == device.host || currentHost == nil) {
+            DispatchQueue.main.async {
+                completion?(true, nil)
+            }
+            return
+        }
+        
+        var hasCompleted = false
+        var observerTokens: [NSObjectProtocol] = []
+        let lock = NSLock()
+        
+        let finish = { (success: Bool, errorMsg: String?) in
+            lock.lock()
+            if hasCompleted {
+                lock.unlock()
+                return
+            }
+            hasCompleted = true
+            lock.unlock()
+            
+            for token in observerTokens {
+                NotificationCenter.default.removeObserver(token)
+            }
+            observerTokens.removeAll()
+            
+            DispatchQueue.main.async {
+                completion?(success, errorMsg)
+            }
+        }
+        
+        // 2. 监听大屏握手成功通知
+        let token1 = NotificationCenter.default.addObserver(
+            forName: .HSBTVOSConnectionState,
+            object: nil,
+            queue: .main
+        ) { _ in
+            if HSBTVOSConnectionManager.shared().isConnected {
+                finish(true, nil)
+            }
+        }
+        observerTokens.append(token1)
+        
+        // 3. 监听原生状态变迁通知
+        let token2 = NotificationCenter.default.addObserver(
+            forName: Notification.Name("HSBConnectionStateDidChangeNotification"),
+            object: nil,
+            queue: .main
+        ) { note in
+            if let state = note.userInfo?["state"] as? HSBConnectionState {
+                switch state {
+                case .ready:
+                    finish(true, nil)
+                case .failed(let err):
+                    if !HSBTVOSConnectionManager.shared().isConnected {
+                        finish(false, "连接失败: \(err)")
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        observerTokens.append(token2)
+        
+        // 4. 超时保底处理
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            let connected = DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+                            HSBTVOSConnectionManager.shared().isConnected ||
+                            DualModeRemoteCoordinator.shared.screenClient.isConnected
+            if connected {
+                finish(true, nil)
+            } else {
+                finish(false, "连接超时：未能连接至 \(device.name)。\n请确认电视已开机亮屏，并在同一 Wi-Fi 网络。")
+            }
+        }
+        
+        // 5. 触发纯 itsytv 原生通道单连接与待机唤醒
         DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
         let nativePort = device.port > 0 ? device.port : 49152
         DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name, port: nativePort)
         DualModeRemoteCoordinator.shared.wakeDevice(host: device.host, completion: nil)
         
-        // 在后台静默尝试连接伴随大屏端服务（透明承载 mac_scroll 像素级平滑滚动与高级操作）
+        // 6. 在后台静默尝试连接伴随大屏端服务 (56789)
         let screenEndpoint = nw_endpoint_create_host(device.host, "\(HSBRemoteConstants.screenDefaultPort)")
         HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
         DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
     }
     
     @objc public static func isUnifiedConnected() -> Bool {
-        return DualModeRemoteCoordinator.shared.nativeClient.isConnected
+        return DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+               HSBTVOSConnectionManager.shared().isConnected ||
+               DualModeRemoteCoordinator.shared.screenClient.isConnected
     }
     
     @objc public static func disconnectUnified() {

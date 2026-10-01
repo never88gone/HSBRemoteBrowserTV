@@ -55,6 +55,7 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) NSMutableArray<HSBDiscoveredAppleTV *> *discoveredDevices;
 @property (nonatomic, strong) NSMutableArray<nw_endpoint_t> *discoveredEndpoints;
 @property (nonatomic, strong) nw_endpoint_t currentEndpoint;
+@property (nonatomic, strong) NSString *connectingDeviceHost;
 
 // Video Control UI
 @property (nonatomic, strong) UIView *videoControlCard;
@@ -189,6 +190,12 @@ static NSString * L(NSString *en, NSString *zh) {
             TVDetailViewController *vc = [[TVDetailViewController alloc] init];
             vc.deviceName = @"糖葫芦浏览器";
             [self.navigationController pushViewController:vc animated:NO];
+        });
+    } else if ([args containsObject:@"--test-connect-device"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (self.discoveredDevices.count > 0) {
+                [self tableView:self.tvTableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+            }
         });
     }
 }
@@ -664,24 +671,12 @@ static NSString * L(NSString *en, NSString *zh) {
     [self openModernRemoteController];
 }
 
-- (void)openModernRemoteController {
+- (void)pushToModernRemoteWithDevice:(HSBDiscoveredAppleTV *)device {
     UIViewController *modernVC = [HSBModernRemoteBridge createModernRemoteViewController];
-    if (self.discoveredDevices.count > 0) {
-        HSBDiscoveredAppleTV *firstDevice = self.discoveredDevices.firstObject;
-        [HSBModernRemoteBridge connectToDiscoveredDevice:firstDevice];
-    } else if (self.currentEndpoint) {
-        const char *name = nw_endpoint_get_bonjour_service_name(self.currentEndpoint);
-        NSString *deviceName = name ? [NSString stringWithUTF8String:name] : @"Apple TV";
-        const char *hostname = nw_endpoint_get_hostname(self.currentEndpoint);
-        NSString *host = hostname ? [NSString stringWithUTF8String:hostname] : @"apple-tv.local";
-        [HSBModernRemoteBridge connectWithHost:host port:56789 deviceName:deviceName];
-    }
     modernVC.hidesBottomBarWhenPushed = YES;
     if (self.navigationController) {
-        // 使用导航栏全屏压栈推入，绝非浮层弹窗，彻底杜绝下拉手势冲突导致页面关闭
         [self.navigationController pushViewController:modernVC animated:YES];
     } else {
-        // 防御性兜底：若不在导航栈中，强制采用 UIModalPresentationFullScreen 并禁用交互式下拉
         UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:modernVC];
         nav.modalPresentationStyle = UIModalPresentationFullScreen;
         if (@available(iOS 13.0, *)) {
@@ -691,6 +686,31 @@ static NSString * L(NSString *en, NSString *zh) {
         modernVC.navigationItem.leftBarButtonItem = closeItem;
         [self presentViewController:nav animated:YES completion:nil];
     }
+}
+
+- (void)openModernRemoteController {
+    // 1. 如果当前已经处于连接状态，直接进入遥控器页面
+    if ([HSBModernRemoteBridge isUnifiedConnected]) {
+        [self pushToModernRemoteWithDevice:nil];
+        return;
+    }
+    
+    // 2. 如果未连接，但存在已发现的电视设备，触发连接首选设备（连接成功后再进）
+    if (self.discoveredDevices.count > 0) {
+        HSBDiscoveredAppleTV *firstDevice = self.discoveredDevices.firstObject;
+        [self connectAndPushToDevice:firstDevice];
+        return;
+    }
+    
+    // 3. 未连接且未扫描到设备，给出温和提示，严禁进入遥控器页面
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"未连接电视", @"未连接电视")
+                                                                   message:L(@"当前尚未连接任何电视设备。请确保 iPhone 与 Apple TV 连接在同一家庭 Wi-Fi，并在下方列表中选择设备进行连接。", @"当前尚未连接任何电视设备。请确保 iPhone 与 Apple TV 连接在同一家庭 Wi-Fi，并在下方列表中选择设备进行连接。")
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"查看设置指引", @"查看设置指引") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self showPairingGuideAlert];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)dismissModernRemoteModal {
@@ -965,18 +985,112 @@ static NSString * L(NSString *en, NSString *zh) {
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
         cell.textLabel.textColor = [UIColor whiteColor];
         
-        cell.detailTextLabel.text = device.displaySubtitle;
-        cell.detailTextLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
-        cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.65];
-        
         cell.imageView.image = [UIImage systemImageNamed:@"appletv.fill"];
         cell.imageView.tintColor = palette.primaryColor;
+        
+        if (self.connectingDeviceHost && [self.connectingDeviceHost isEqualToString:device.host]) {
+            UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+            spinner.color = palette.primaryColor;
+            [spinner startAnimating];
+            cell.accessoryView = spinner;
+            cell.detailTextLabel.text = L(@"Connecting...", @"正在连接...");
+            cell.detailTextLabel.textColor = palette.primaryColor;
+        } else {
+            cell.accessoryView = nil;
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.detailTextLabel.text = device.displaySubtitle;
+            cell.detailTextLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.65];
+        }
+        cell.detailTextLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
     }
     
     cell.selectionStyle = UITableViewCellSelectionStyleDefault;
-    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     
     return cell;
+}
+
+- (void)connectAndPushToDevice:(HSBDiscoveredAppleTV *)device {
+    if (!device) return;
+    
+    // 如果已经处于连接状态，直接进入遥控器页面
+    if ([HSBModernRemoteBridge isUnifiedConnected]) {
+        [self pushToModernRemoteWithDevice:device];
+        return;
+    }
+    
+    // 避免重复对同一设备发起并发连接
+    if (self.connectingDeviceHost && [self.connectingDeviceHost isEqualToString:device.host]) {
+        return;
+    }
+    
+    self.connectingDeviceHost = device.host;
+    [self.tvTableView reloadData];
+    
+    [self updateUI:^{
+        self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟡 Connecting to Apple TV %@...", @"🟡 正在连接 Apple TV %@..."), device.name];
+        self.tvStatusLabel.textColor = [UIColor systemYellowColor];
+    }];
+    
+    // 居中呈现连接中加载等待弹窗（支持用户随时取消）
+    UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:L(@"正在连接电视", @"正在连接电视")
+                                                                          message:[NSString stringWithFormat:L(@"正在尝试连接 “%@”，建立安全通信通道...", @"正在尝试连接 “%@”，建立安全通信通道..."), device.name]
+                                                                   preferredStyle:UIAlertControllerStyleAlert];
+    
+    __block BOOL isCancelled = NO;
+    __weak typeof(self) weakSelf = self;
+    [loadingAlert addAction:[UIAlertAction actionWithTitle:L(@"取消", @"取消") style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+        isCancelled = YES;
+        weakSelf.connectingDeviceHost = nil;
+        [weakSelf.tvTableView reloadData];
+        [weakSelf updateUI:^{
+            weakSelf.tvStatusLabel.text = L(@"⚪️ Connection Cancelled", @"⚪️ 已取消连接");
+            weakSelf.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        }];
+    }]];
+    
+    [self presentViewController:loadingAlert animated:YES completion:nil];
+    
+    // 异步执行双模探测、待机唤醒与通道建立
+    [HSBModernRemoteBridge connectToDiscoveredDevice:device timeout:6.0 completion:^(BOOL success, NSString * _Nullable errorMsg) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (isCancelled) return;
+            
+            weakSelf.connectingDeviceHost = nil;
+            [weakSelf.tvTableView reloadData];
+            
+            [loadingAlert dismissViewControllerAnimated:YES completion:^{
+                if (success) {
+                    // 连接成功：更新状态并平滑推进遥控器页面！
+                    [weakSelf updateUI:^{
+                        weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@", @"🟢 已连接至 %@"), device.name];
+                        weakSelf.tvStatusLabel.textColor = [UIColor systemGreenColor];
+                    }];
+                    [weakSelf pushToModernRemoteWithDevice:device];
+                } else {
+                    // 连接失败：绝对不进入遥控器页面，停留在设备列表并呈现排查建议！
+                    [weakSelf updateUI:^{
+                        weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🔴 Failed to connect to %@", @"🔴 连接 %@ 失败"), device.name];
+                        weakSelf.tvStatusLabel.textColor = [UIColor systemRedColor];
+                    }];
+                    
+                    NSString *msg = errorMsg ?: [NSString stringWithFormat:L(@"未能与 “%@” 建立连接。\n\n排查建议：\n1. 请使用电视原装遥控器唤醒 Apple TV 并开机；\n2. 确保 iPhone 与 Apple TV 连接在同一家庭 Wi-Fi；\n3. 在 Apple TV【设置】->【隔空播放与“家庭”】中，将【允许访问】改为【同一网络上的任何人】。",
+                                                                             @"未能与 “%@” 建立连接。\n\n排查建议：\n1. 请使用电视原装遥控器唤醒 Apple TV 并开机；\n2. 确保 iPhone 与 Apple TV 连接在同一家庭 Wi-Fi；\n3. 在 Apple TV【设置】->【隔空播放与“家庭”】中，将【允许访问】改为【同一网络上的任何人】。"), device.name];
+                    
+                    UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"未能连接到电视", @"未能连接到电视")
+                                                                                       message:msg
+                                                                                preferredStyle:UIAlertControllerStyleAlert];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"重试连接", @"重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        [weakSelf connectAndPushToDevice:device];
+                    }]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"查看设置指引", @"查看设置指引") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        [weakSelf showPairingGuideAlert];
+                    }]];
+                    [weakSelf presentViewController:failAlert animated:YES completion:nil];
+                }
+            }];
+        });
+    }];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -985,29 +1099,9 @@ static NSString * L(NSString *en, NSString *zh) {
     UIImpactFeedbackGenerator *hap = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
     [hap impactOccurred];
     
-    __weak typeof(self) weakSelf = self;
-    
     if (indexPath.row < self.discoveredDevices.count) {
         HSBDiscoveredAppleTV *selectedDevice = self.discoveredDevices[indexPath.row];
-        
-        [self updateUI:^{
-            self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟡 Connecting to Apple TV %@...", @"🟡 正在连接 Apple TV %@..."), selectedDevice.name];
-            self.tvStatusLabel.textColor = [UIColor systemYellowColor];
-        }];
-        
-        // 纯 itsytv 架构：连接目标 Apple TV 物理硬件 (单原生连接会话)
-        [HSBModernRemoteBridge connectToDiscoveredDevice:selectedDevice];
-        
-        // 进入现代化智能遥控器 (在硬件内部再去调度和控制应用软件)
-        UIViewController *remoteVC = [HSBModernRemoteBridge createModernRemoteViewController];
-        remoteVC.hidesBottomBarWhenPushed = YES;
-        
-        [self updateUI:^{
-            self.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@", @"🟢 已连接至 %@"), selectedDevice.name];
-            self.tvStatusLabel.textColor = [UIColor systemGreenColor];
-        }];
-        
-        [self.navigationController pushViewController:remoteVC animated:YES];
+        [self connectAndPushToDevice:selectedDevice];
     }
 }
 

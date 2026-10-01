@@ -130,21 +130,26 @@ public struct ModernRemoteContainerView: View {
                         if !coordinatorObserver.isHSBBrowserConnected || !coordinatorObserver.isNativeConnected {
                             Button(action: {
                                 lightHaptic.impactOccurred()
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    if !coordinatorObserver.isHSBBrowserConnected {
-                                        showingBrowserGuide = true
-                                    } else {
-                                        showingSystemGuide = true
+                                if !coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected {
+                                    // 彻底断开时，点击一键返回设备列表重新连接
+                                    NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
+                                } else {
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        if !coordinatorObserver.isHSBBrowserConnected {
+                                            showingBrowserGuide = true
+                                        } else {
+                                            showingSystemGuide = true
+                                        }
                                     }
                                 }
                             }) {
                                 HStack(spacing: 6) {
-                                    Image(systemName: "questionmark.circle.fill")
-                                        .foregroundColor(.tanghuluBrandBlue)
+                                    Image(systemName: (!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? "exclamationmark.triangle.fill" : "questionmark.circle.fill")
+                                        .foregroundColor((!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? .orange : .tanghuluBrandBlue)
                                         .font(.system(size: 13))
-                                    Text(!coordinatorObserver.isHSBBrowserConnected ? "尚未连接大屏应用？点此查看连接指引" : "Apple TV 系统未配对？点此查看电视设置")
+                                    Text((!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? "与电视的连接已断开，点击返回设备列表" : (!coordinatorObserver.isHSBBrowserConnected ? "尚未连接大屏应用？点此查看连接指引" : "Apple TV 系统未配对？点此查看电视设置"))
                                         .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor((!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? .primary : .secondary)
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 10, weight: .semibold))

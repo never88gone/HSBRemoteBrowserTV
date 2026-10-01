@@ -468,5 +468,10 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
 extension DualModeRemoteCoordinator: HSBConnectionStateMachineDelegate {
     public func stateMachine(_ sm: HSBConnectionStateMachine, didTransitionTo state: HSBConnectionState) {
         delegate?.coordinator(self, didChangeState: state)
+        NotificationCenter.default.post(
+            name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+            object: self,
+            userInfo: ["state": state]
+        )
     }
 }
