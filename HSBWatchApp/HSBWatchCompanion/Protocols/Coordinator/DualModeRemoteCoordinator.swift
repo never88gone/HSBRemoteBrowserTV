@@ -92,6 +92,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         let deviceName = legacyMgr.deviceName ?? "Apple TV"
         
         if legacyMgr.isConnected {
+            if !self.nativeClient.isConnected {
+                self.currentMode = .dual
+            }
             self.stateMachine.handle(event: .requestConnect(deviceName: deviceName, mode: self.currentMode))
             self.stateMachine.handle(event: .socketConnected(deviceName: deviceName, mode: self.currentMode))
             
@@ -150,6 +153,17 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     
     // MARK: - D-pad & Select
     public func sendDPad(direction: DPadDirection, action: KeyAction = .tap) {
+        if HSBTVOSConnectionManager.shared().isConnected {
+            let simAction: HSBRemoteSimulateAction = {
+                switch direction {
+                case .up: return .up
+                case .down: return .down
+                case .left: return .left
+                case .right: return .right
+                }
+            }()
+            HSBTVOSConnectionManager.shared().sendSimulateAction(simAction)
+        }
         switch currentMode {
         case .screenOnly:
             screenClient.send(command: .button(action: direction.actionName))
@@ -193,6 +207,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func sendSelect(action: KeyAction = .tap) {
+        if HSBTVOSConnectionManager.shared().isConnected {
+            HSBTVOSConnectionManager.shared().sendSimulateAction(.select)
+        }
         if currentMode == .nativeOnly {
             nativeClient.sendSystemKey(.select, action: action)
             nativeClient.sendTouchEvent(phase: 1, point: CGPoint(x: 500, y: 500))
@@ -298,6 +315,24 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     
     // MARK: - System Keys
     public func sendSystemKey(_ key: SystemKey) {
+        if HSBTVOSConnectionManager.shared().isConnected {
+            switch key {
+            case .home:
+                HSBTVOSConnectionManager.shared().sendSimulateAction(.pageHome)
+            case .menu:
+                HSBTVOSConnectionManager.shared().sendSimulateAction(.menu)
+            case .volumeUp:
+                HSBTVOSConnectionManager.shared().sendSimulateAction(.volumeUp)
+            case .volumeDown:
+                HSBTVOSConnectionManager.shared().sendSimulateAction(.volumeDown)
+            case .mute:
+                HSBTVOSConnectionManager.shared().sendSimulateAction(.toggleMute)
+            case .playPause:
+                HSBTVOSConnectionManager.shared().sendSimulateAction(.play)
+            default:
+                break
+            }
+        }
         switch key {
         case .home:
             if currentMode == .screenOnly {

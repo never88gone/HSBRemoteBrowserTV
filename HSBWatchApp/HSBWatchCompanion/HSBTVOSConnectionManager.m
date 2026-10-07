@@ -44,13 +44,21 @@ static NSArray<NSDictionary<NSString *, NSString *> *> *HSBRemotePairedTVRecords
         (__bridge id)kSecMatchLimit: (__bridge id)kSecMatchLimitOne
     };
     CFTypeRef result = NULL;
-    if (SecItemCopyMatching((__bridge CFDictionaryRef)query, &result) != errSecSuccess || !result) return @[];
-    NSData *data = CFBridgingRelease(result);
-    id decoded = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+    id decoded = nil;
+    if (status == errSecSuccess && result) {
+        NSData *data = CFBridgingRelease(result);
+        decoded = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    }
+    if (![decoded isKindOfClass:[NSArray class]]) {
+        decoded = [[NSUserDefaults standardUserDefaults] arrayForKey:@"HSBPairedTVRecordsBackup"];
+    }
     return [decoded isKindOfClass:[NSArray class]] ? decoded : @[];
 }
 
 static BOOL HSBRemoteSavePairedTVRecords(NSArray<NSDictionary<NSString *, NSString *> *> *records) {
+    [[NSUserDefaults standardUserDefaults] setObject:records forKey:@"HSBPairedTVRecordsBackup"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
     NSData *data = [NSJSONSerialization dataWithJSONObject:records options:0 error:nil];
     if (!data) return NO;
     NSDictionary *query = @{
@@ -69,9 +77,9 @@ static BOOL HSBRemoteSavePairedTVRecords(NSArray<NSDictionary<NSString *, NSStri
         status = SecItemAdd((__bridge CFDictionaryRef)add, NULL);
     }
     if (status != errSecSuccess) {
-        NSLog(@"[BonjourBridge] Keychain could not save paired-TV credentials (OSStatus %d).", (int)status);
+        NSLog(@"[BonjourBridge] Keychain could not save paired-TV credentials (OSStatus %d). Using UserDefaults fallback.", (int)status);
     }
-    return status == errSecSuccess;
+    return YES;
 }
 
 NSString * const HSBTVOSConnectionStateNotification = @"HSBTVOSConnectionStateNotification";
@@ -153,6 +161,7 @@ static NSArray<NSData *> *HSBExtractJSONMessages(NSMutableData *buffer) {
 @property (nonatomic, copy, nullable) NSString *pairingToken;
 @property (nonatomic, copy, nullable) NSString *pairingTVID;
 @property (nonatomic, copy, nullable) NSString *pairingHost;
+@property (nonatomic, copy, nullable) NSString *pairingPort;
 @property (nonatomic, copy, nullable) NSString *pairingName;
 @property (nonatomic, strong, nullable) NSDate *pairingExpirationDate;
 @property (nonatomic, copy, nullable) NSString *deviceID;
@@ -301,6 +310,30 @@ NSString * const HSBConnectionStateKeyState = @"state";
     return instance;
 }
 
++ (NSArray<NSDictionary<NSString *, NSString *> *> *)pairedTVRecords {
+    return HSBRemotePairedTVRecords();
+}
+
+- (BOOL)connectToLastPairedTV {
+    NSArray *records = HSBRemotePairedTVRecords();
+    if (records.count == 0) {
+        NSLog(@"[BonjourBridge] No paired TV records in Keychain to reconnect.");
+        return NO;
+    }
+    NSDictionary *record = records.lastObject ?: records.firstObject;
+    self.pairingToken = nil;
+    self.pairingExpirationDate = nil;
+    self.pairedTVRecord = record;
+    NSString *host = record[@"host"];
+    NSString *portStr = record[@"port"] ?: @"56789";
+    NSString *name = record[@"name"] ?: @"Apple TV";
+    if (host.length == 0) return NO;
+    NSLog(@"[BonjourBridge] Auto-connecting to last paired TV: %@ (%@:%@)", name, host, portStr);
+    nw_endpoint_t endpoint = nw_endpoint_create_host(host.UTF8String, portStr.UTF8String);
+    [self connectToEndpoint:endpoint deviceName:name];
+    return YES;
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
@@ -311,9 +344,10 @@ NSString * const HSBConnectionStateKeyState = @"state";
 }
 
 - (nw_parameters_t)createTCPParameters {
-    NSString *keyString = self.pairingToken ?: self.pairedTVRecord[@"key"];
+    BOOL isPairingFlow = (self.pairingToken.length > 0 && self.pairingExpirationDate.timeIntervalSinceNow > 0 && !self.pairedTVRecord);
+    NSString *keyString = isPairingFlow ? self.pairingToken : self.pairedTVRecord[@"key"];
     NSData *key = keyString ? HSBRemoteDataFromBase64URLString(keyString) : nil;
-    NSString *identity = self.pairingToken ? @"pairing" : self.pairedTVRecord[@"deviceID"];
+    NSString *identity = isPairingFlow ? @"pairing" : self.pairedTVRecord[@"deviceID"];
     nw_parameters_t parameters = nw_parameters_create_secure_tcp(^(nw_protocol_options_t tlsOptions) {
         sec_protocol_options_t securityOptions = nw_tls_copy_sec_protocol_options(tlsOptions);
         sec_protocol_options_set_min_tls_protocol_version(securityOptions, tls_protocol_version_TLSv12);
@@ -330,16 +364,44 @@ NSString * const HSBConnectionStateKeyState = @"state";
     self.currentEndpoint = endpoint;
     self.deviceName = deviceName;
 
-    if (!self.pairingToken) {
-        NSDictionary *record = nil;
-        for (NSDictionary *candidate in HSBRemotePairedTVRecords()) {
-            if ([candidate[@"name"] isEqualToString:deviceName]) { record = candidate; break; }
+    if (self.isConnected && self.connection) {
+        if (self.pairingToken.length == 0) {
+            NSLog(@"[BonjourBridge] Already securely connected to %@.", self.deviceName);
+            return;
+        } else {
+            nw_connection_cancel(self.connection);
+            self.connection = nil;
+            self.isConnected = NO;
+            self.isAuthenticating = NO;
         }
-        if (!record && HSBRemotePairedTVRecords().count > 0) {
-            record = HSBRemotePairedTVRecords().firstObject;
-            if (record[@"name"]) {
-                self.deviceName = record[@"name"];
+    }
+
+    if (!self.pairingToken || self.pairedTVRecord) {
+        NSDictionary *record = self.pairedTVRecord;
+        if (!record) {
+            const char *epHost = nw_endpoint_get_hostname(endpoint);
+            NSString *targetHost = epHost ? [NSString stringWithUTF8String:epHost] : nil;
+            NSArray *records = HSBRemotePairedTVRecords();
+            for (NSDictionary *candidate in [records reverseObjectEnumerator]) {
+                if (targetHost.length > 0 && [candidate[@"host"] isEqualToString:targetHost]) {
+                    record = candidate;
+                    break;
+                }
             }
+            if (!record) {
+                for (NSDictionary *candidate in [records reverseObjectEnumerator]) {
+                    if ([candidate[@"name"] isEqualToString:deviceName]) {
+                        record = candidate;
+                        break;
+                    }
+                }
+            }
+            if (!record && records.count > 0) {
+                record = records.lastObject;
+            }
+        }
+        if (record && record[@"name"]) {
+            self.deviceName = record[@"name"];
         }
         self.pairedTVRecord = record;
         if (!record || HSBRemoteDataFromBase64URLString(record[@"key"] ?: @"").length != 32) {
@@ -463,9 +525,27 @@ NSString * const HSBConnectionStateKeyState = @"state";
     NSString *tvID = values[@"tv"], *name = values[@"name"], *host = values[@"host"], *token = values[@"token"];
     NSInteger port = values[@"port"].integerValue;
     NSTimeInterval expiry = values[@"expires"].doubleValue;
+    NSTimeInterval now = NSDate.date.timeIntervalSince1970;
+#if DEBUG
+    NSTimeInterval maxWindow = 86400.0;
+#else
+    NSTimeInterval maxWindow = 300.0;
+#endif
     if (tvID.length == 0 || name.length == 0 || host.length == 0 || port < 1024 || port > 65535 ||
-        HSBRemoteDataFromBase64URLString(token ?: @"").length != 32 || expiry <= NSDate.date.timeIntervalSince1970 ||
-        expiry > NSDate.date.timeIntervalSince1970 + 180.0) return;
+        HSBRemoteDataFromBase64URLString(token ?: @"").length != 32 || expiry <= now ||
+        expiry > now + maxWindow) {
+        NSLog(@"[BonjourBridge] Pairing URL validation failed: tvID=%@, host=%@, port=%ld, tokenLen=%lu, expiryDiff=%f (maxWindow=%f)",
+              tvID, host, (long)port, (unsigned long)HSBRemoteDataFromBase64URLString(token ?: @"").length, expiry - now, maxWindow);
+        return;
+    }
+    NSLog(@"[BonjourBridge] Pairing URL validated successfully for TV: %@ (%@:%ld)", name, host, (long)port);
+
+    if (self.connection) {
+        nw_connection_cancel(self.connection);
+        self.connection = nil;
+    }
+    self.isConnected = NO;
+    self.isAuthenticating = NO;
 
     NSMutableData *randomKey = [NSMutableData dataWithLength:32];
     if (SecRandomCopyBytes(kSecRandomDefault, randomKey.length, randomKey.mutableBytes) != errSecSuccess) return;
@@ -477,6 +557,7 @@ NSString * const HSBConnectionStateKeyState = @"state";
     self.pairingTVID = tvID;
     self.pairingName = name;
     self.pairingHost = host;
+    self.pairingPort = values[@"port"] ?: [@(port) stringValue];
     self.pairingToken = token;
     self.pairingExpirationDate = [NSDate dateWithTimeIntervalSince1970:expiry];
     self.deviceID = deviceID;
@@ -491,7 +572,7 @@ NSString * const HSBConnectionStateKeyState = @"state";
         @"tvID": self.pairingTVID ?: @"",
         @"name": self.pairingName ?: self.deviceName ?: @"Apple TV",
         @"host": self.pairingHost ?: @"",
-        @"port": @"56789",
+        @"port": self.pairingPort ?: @"56789",
         @"deviceID": self.deviceID ?: @"",
         @"key": self.deviceKey ?: @""
     };

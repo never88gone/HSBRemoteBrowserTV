@@ -34,7 +34,7 @@ static NSString * L(NSString *en, NSString *zh) {
 
 
 
-@interface ViewController () <UITableViewDelegate, UITableViewDataSource, UIGestureRecognizerDelegate, UITextFieldDelegate>
+@interface ViewController () <UITableViewDelegate, UITableViewDataSource, UIGestureRecognizerDelegate, UITextFieldDelegate, HSBQRCodeScannerDelegate>
 
 @property (nonatomic, strong) nw_browser_t browser;
 @property (nonatomic, strong) dispatch_queue_t browserQueue;
@@ -145,7 +145,7 @@ static NSString * L(NSString *en, NSString *zh) {
                                   [args containsObject:@"--guide-pin"];
     if (shouldOpenModernRemote) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self openModernRemoteController];
+            [self pushToModernRemoteWithDevice:nil];
         });
     } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenSettings"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -242,7 +242,7 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
 #if DEBUG
-    if (getenv("AUTO_OPEN_REMOTE")) {
+    if (getenv("AUTO_OPEN_REMOTE") || [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenRemote"]) {
         static dispatch_once_t autoOpenToken;
         dispatch_once(&autoOpenToken, ^{
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -341,7 +341,10 @@ static NSString * L(NSString *en, NSString *zh) {
     UIBarButtonItem *remoteItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"appletvremote.gen4.fill"] style:UIBarButtonItemStylePlain target:self action:@selector(openModernRemoteController)];
     remoteItem.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
     
-    self.navigationItem.rightBarButtonItems = @[settingsItem, remoteItem];
+    UIBarButtonItem *scanItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"qrcode.viewfinder"] style:UIBarButtonItemStylePlain target:self action:@selector(openQRCodeScanner)];
+    scanItem.tintColor = [UIColor systemOrangeColor];
+    
+    self.navigationItem.rightBarButtonItems = @[settingsItem, remoteItem, scanItem];
     
     // Subtitle
     UILabel *subtitleLabel = [[UILabel alloc] init];
@@ -477,14 +480,61 @@ static NSString * L(NSString *en, NSString *zh) {
     ]];
 }
 
+- (void)openQRCodeScanner {
+    HSBQRCodeScannerViewController *scanner = [[HSBQRCodeScannerViewController alloc] init];
+    scanner.delegate = self;
+    scanner.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:scanner animated:YES completion:nil];
+}
+
+- (void)qrCodeScanner:(HSBQRCodeScannerViewController *)scanner didScanPairingURL:(NSURL *)url {
+    NSLog(@"[ViewController] Scanned pairing URL: %@", url);
+    [[HSBTVOSConnectionManager sharedManager] connectToPairingURL:url];
+    
+    UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:L(@"正在安全配对", @"正在安全配对")
+                                                                          message:L(@"正在与 Apple TV 协商双向加密凭证...", @"正在与 Apple TV 协商双向加密凭证...")
+                                                                   preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:loadingAlert animated:YES completion:nil];
+    
+    __weak typeof(self) weakSelf = self;
+    __block id observerToken = [[NSNotificationCenter defaultCenter] addObserverForName:HSBTVOSConnectionStateNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
+        if ([HSBTVOSConnectionManager sharedManager].isConnected) {
+            if (observerToken) {
+                [[NSNotificationCenter defaultCenter] removeObserver:observerToken];
+                observerToken = nil;
+            }
+            [loadingAlert dismissViewControllerAnimated:YES completion:^{
+                [weakSelf pushToModernRemoteWithDevice:nil];
+            }];
+        }
+    }];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(6.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (observerToken) {
+            [[NSNotificationCenter defaultCenter] removeObserver:observerToken];
+            observerToken = nil;
+        }
+        if ([weakSelf presentedViewController] == loadingAlert) {
+            [loadingAlert dismissViewControllerAnimated:YES completion:nil];
+        }
+    });
+}
+
+- (void)qrCodeScannerDidCancel:(HSBQRCodeScannerViewController *)scanner {
+    NSLog(@"[ViewController] QR code scanning cancelled by user.");
+}
+
 - (void)showPairingGuideAlert {
-    NSString *msg = L(@"1. 电视权限设置（首要且关键）：\n在 Apple TV 上打开【设置】->【隔空播放与“家庭”】，将【允许访问】改为【同一网络上的任何人】，【需要密码】设为【关】。\n\n2. 连接大屏浏览器微操：\n在 Apple TV 桌面用原装遥控器启动【糖葫芦浏览器】App，手机端大屏通道将自动秒级连通，支持光标微操与双指无级滚动。\n\n3. 系统原生通道配对：\n点击下方列表中的 Apple TV 设备。电视屏幕若弹出 4 位数字 PIN 码，输入后即可永久完成系统绑定（控制音量、Home、电源开关）。",
-                      @"1. 电视权限设置（首要且关键）：\n在 Apple TV 上打开【设置】->【隔空播放与“家庭”】，将【允许访问】改为【同一网络上的任何人】，【需要密码】设为【关】。\n\n2. 连接大屏浏览器微操：\n在 Apple TV 桌面用原装遥控器启动【糖葫芦浏览器】App，手机端大屏通道将自动秒级连通，支持光标微操与双指无级滚动。\n\n3. 系统原生通道配对：\n点击下方列表中的 Apple TV 设备。电视屏幕若弹出 4 位数字 PIN 码，输入后即可永久完成系统绑定（控制音量、Home、电源开关）。");
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"📺 电视连接与配对指引", @"📺 电视连接与配对指引") message:msg preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:L(@"我知道了", @"我知道了") style:UIAlertActionStyleDefault handler:nil]];
+    NSString *msg = L(@"【三步完成电视配对与绑定】\n\n1. 启动电视 App：\n在 Apple TV 上打开【糖葫芦视界】或【糖葫芦浏览器】；\n\n2. 调出配对二维码：\n在电视主界面，选中顶部的【📱 手机遥控配对】卡片并按遥控器确认，大屏将呈现专属配对二维码；\n\n3. 手机扫码秒连：\n点击下方【📷 立即扫码配对】（或点击主界面右上角扫码图标），扫描电视屏幕上的二维码，即可在 0.5 秒内完成安全配对并永久绑定！",
+                      @"【三步完成电视配对与绑定】\n\n1. 启动电视 App：\n在 Apple TV 上打开【糖葫芦视界】或【糖葫芦浏览器】；\n\n2. 调出配对二维码：\n在电视主界面，选中顶部的【📱 手机遥控配对】卡片并按遥控器确认，大屏将呈现专属配对二维码；\n\n3. 手机扫码秒连：\n点击下方【📷 立即扫码配对】（或点击主界面右上角扫码图标），扫描电视屏幕上的二维码，即可在 0.5 秒内完成安全配对并永久绑定！");
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:L(@"📺 电视遥控配对指引", @"📺 电视遥控配对指引") message:msg preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"📷 立即扫码配对", @"📷 立即扫码配对") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        [self openQRCodeScanner];
+    }]];
     [alert addAction:[UIAlertAction actionWithTitle:L(@"进入遥控器", @"进入遥控器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
         [self openModernRemoteController];
     }]];
+    [alert addAction:[UIAlertAction actionWithTitle:L(@"我知道了", @"我知道了") style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -691,6 +741,13 @@ static NSString * L(NSString *en, NSString *zh) {
 - (void)openModernRemoteController {
     // 1. 如果当前已经处于连接状态，直接进入遥控器页面
     if ([HSBModernRemoteBridge isUnifiedConnected]) {
+        [self pushToModernRemoteWithDevice:nil];
+        return;
+    }
+    
+    // 2. 如果未连接，但存在已配对电视记录，自动发起重连并进入遥控器页面
+    if ([HSBTVOSConnectionManager pairedTVRecords].count > 0) {
+        [[HSBTVOSConnectionManager sharedManager] connectToLastPairedTV];
         [self pushToModernRemoteWithDevice:nil];
         return;
     }
@@ -1073,19 +1130,19 @@ static NSString * L(NSString *en, NSString *zh) {
                         weakSelf.tvStatusLabel.textColor = [UIColor systemRedColor];
                     }];
                     
-                    NSString *msg = errorMsg ?: [NSString stringWithFormat:L(@"未能与 “%@” 建立连接。\n\n排查建议：\n1. 请使用电视原装遥控器唤醒 Apple TV 并开机；\n2. 确保 iPhone 与 Apple TV 连接在同一家庭 Wi-Fi；\n3. 在 Apple TV【设置】->【隔空播放与“家庭”】中，将【允许访问】改为【同一网络上的任何人】。",
-                                                                             @"未能与 “%@” 建立连接。\n\n排查建议：\n1. 请使用电视原装遥控器唤醒 Apple TV 并开机；\n2. 确保 iPhone 与 Apple TV 连接在同一家庭 Wi-Fi；\n3. 在 Apple TV【设置】->【隔空播放与“家庭”】中，将【允许访问】改为【同一网络上的任何人】。"), device.name];
+                    NSString *msg = [NSString stringWithFormat:L(@"未能与 “%@” 建立安全连接。\n\n由于 Apple TV 伴随服务采用加密保护，首次使用请进行扫码配对：\n1. 在 Apple TV 桌面打开【糖葫芦视界】或【糖葫芦浏览器】；\n2. 点击电视首页顶部的【📱 手机遥控配对】；\n3. 点击下方【📷 立即扫码配对】扫描电视二维码，即可永久绑定。",
+                                                                             @"未能与 “%@” 建立安全连接。\n\n由于 Apple TV 伴随服务采用加密保护，首次使用请进行扫码配对：\n1. 在 Apple TV 桌面打开【糖葫芦视界】或【糖葫芦浏览器】；\n2. 点击电视首页顶部的【📱 手机遥控配对】；\n3. 点击下方【📷 立即扫码配对】扫描电视二维码，即可永久绑定。"), device.name];
                     
-                    UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"未能连接到电视", @"未能连接到电视")
+                    UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"需要电视端扫码配对", @"需要电视端扫码配对")
                                                                                        message:msg
                                                                                 preferredStyle:UIAlertControllerStyleAlert];
-                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"📷 立即扫码配对", @"📷 立即扫码配对") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        [weakSelf openQRCodeScanner];
+                    }]];
                     [failAlert addAction:[UIAlertAction actionWithTitle:L(@"重试连接", @"重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
                         [weakSelf connectAndPushToDevice:device];
                     }]];
-                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"查看设置指引", @"查看设置指引") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                        [weakSelf showPairingGuideAlert];
-                    }]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
                     [weakSelf presentViewController:failAlert animated:YES completion:nil];
                 }
             }];

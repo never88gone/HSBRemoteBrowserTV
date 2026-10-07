@@ -30,6 +30,8 @@
 		<string>_appletv-v2._tcp</string>
 		<string>_raop._tcp</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>需要访问您的相机，以便扫描 Apple TV 屏幕上的配对二维码，完成遥控器安全配对绑定。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>需要访问您的本地网络，以便自动发现并连接局域网中的 Apple TV 与糖葫芦大屏浏览器，提供双模无线遥控、光标微操及实时多媒体控制功能。</string>
 	<key>NSMotionUsageDescription</key>

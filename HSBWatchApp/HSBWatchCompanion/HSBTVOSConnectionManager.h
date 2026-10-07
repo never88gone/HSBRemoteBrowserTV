@@ -172,9 +172,11 @@ extern NSString * const HSBConnectionStateKeyState;
 @property (nonatomic, strong, readonly, nullable) nw_endpoint_t currentEndpoint;
 
 + (instancetype)sharedManager;
++ (NSArray<NSDictionary<NSString *, NSString *> *> *)pairedTVRecords;
 
 - (void)connectToEndpoint:(nw_endpoint_t)endpoint deviceName:(NSString *)deviceName;
 - (void)connectToPairingURL:(NSURL *)pairingURL;
+- (BOOL)connectToLastPairedTV;
 - (void)disconnect;
 
 - (void)sendAction:(NSString *)action;

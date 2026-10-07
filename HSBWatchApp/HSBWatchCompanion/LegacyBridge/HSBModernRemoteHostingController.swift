@@ -22,13 +22,18 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         self.title = "智能遥控器"
         self.view.backgroundColor = .clear
         
-        let backItem = UIBarButtonItem(
-            image: UIImage(systemName: "chevron.left"),
-            style: .plain,
-            target: self,
-            action: #selector(didTapBackButton)
-        )
-        self.navigationItem.leftBarButtonItem = backItem
+        // push 场景下系统已提供返回按钮；modal 场景由外部设置关闭按钮。
+        // 仅当两者都不存在时才补充自定义返回，避免出现两个返回按钮。
+        let hasSystemBack = (self.navigationController?.viewControllers.count ?? 0) > 1
+        if !hasSystemBack && self.navigationItem.leftBarButtonItem == nil {
+            let backItem = UIBarButtonItem(
+                image: UIImage(systemName: "chevron.left"),
+                style: .plain,
+                target: self,
+                action: #selector(didTapBackButton)
+            )
+            self.navigationItem.leftBarButtonItem = backItem
+        }
         
         let keyboardItem = UIBarButtonItem(
             image: UIImage(systemName: "keyboard"),

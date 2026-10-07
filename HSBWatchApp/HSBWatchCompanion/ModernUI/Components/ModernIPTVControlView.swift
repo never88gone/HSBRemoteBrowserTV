@@ -163,6 +163,65 @@ private struct IPTVPlaylistImportPreview: Identifiable, Hashable {
     }
 }
 
+public struct PresetIPTVSource: Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let url: String
+    public let epgURL: String?
+    public let author: String
+    public let tag: String
+    public let icon: String
+
+    public init(id: String, name: String, url: String, epgURL: String?, author: String, tag: String, icon: String) {
+        self.id = id
+        self.name = name
+        self.url = url
+        self.epgURL = epgURL
+        self.author = author
+        self.tag = tag
+        self.icon = icon
+    }
+}
+
+public let defaultPresetIPTVSources: [PresetIPTVSource] = [
+    PresetIPTVSource(
+        id: "aptv_cn",
+        name: "国内频道 (APTV)",
+        url: "https://raw.githubusercontent.com/Kimentanm/aptv/master/m3u/iptv.m3u",
+        epgURL: "https://epg.aptv.app/pp.xml.gz",
+        author: "APTV群主",
+        tag: "央视 / 卫视 / 地方台",
+        icon: "tv.fill"
+    ),
+    PresetIPTVSource(
+        id: "yuechan_cn",
+        name: "国内频道 (YueChan)",
+        url: "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/GNTV.m3u",
+        epgURL: nil,
+        author: "YueChan",
+        tag: "央视 / 卫视 / 高清直播",
+        icon: "play.tv.fill"
+    ),
+    PresetIPTVSource(
+        id: "yang_gath",
+        name: "港澳台频道 (YanG)",
+        url: "https://iptv.yang-1989.xyz/playlist.m3u",
+        epgURL: "https://iptv.yang-1989.xyz/epg.xml.gz",
+        author: "YanG",
+        tag: "港澳台精选 / 4K / 附EPG",
+        icon: "antenna.radiowaves.left.and.right"
+    ),
+    PresetIPTVSource(
+        id: "juli_gath",
+        name: "港澳台频道 (Juli)",
+        url: "https://cdn.qd.je/live.m3u",
+        epgURL: nil,
+        author: "Juli",
+        tag: "港澳台 / 海外精选",
+        icon: "globe.asia.australia.fill"
+    )
+]
+
 public struct ModernIPTVControlView: View {
     public let isConnected: Bool
     public var onAction: ((HSBRemoteSimulateAction) -> Void)?
@@ -278,6 +337,13 @@ public struct ModernIPTVControlView: View {
         }
         .scrollIndicators(.hidden)
         .onAppear {
+            #if DEBUG
+            if CommandLine.arguments.contains("--iptv-source-manager") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    isSourceManagerPresented = true
+                }
+            }
+            #endif
             if isConnected {
                 onAction?(.iptvGetFavorites)
                 onRequestSources?()
@@ -463,7 +529,55 @@ public struct ModernIPTVControlView: View {
     private var sourceManagerSheet: some View {
         NavigationStack {
             Form {
-                Section("导入频道源") {
+                Section("精选推荐频道源") {
+                    ForEach(defaultPresetIPTVSources) { preset in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(alignment: .center, spacing: 8) {
+                                Image(systemName: preset.icon)
+                                    .foregroundColor(.accentColor)
+                                    .font(.system(size: 16))
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(preset.name)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("\(preset.author) · \(preset.tag)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Button("填入") {
+                                    importSourceName = preset.name
+                                    playlistURLText = preset.url
+                                    epgURLText = preset.epgURL ?? ""
+                                    lightHaptic.impactOccurred()
+                                }
+                                .font(.caption.weight(.medium))
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                
+                                Button("导入") {
+                                    importSourceName = preset.name
+                                    playlistURLText = preset.url
+                                    epgURLText = preset.epgURL ?? ""
+                                    haptic.impactOccurred()
+                                    submitPlaylistURL()
+                                }
+                                .font(.caption.weight(.semibold))
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(!isConnected)
+                            }
+                            Text(preset.url)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.8))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+
+                Section("导入自定义频道源") {
                     TextField("来源名称", text: $importSourceName)
                         .textInputAutocapitalization(.words)
                     TextField("M3U / M3U8 地址", text: $playlistURLText)
@@ -1025,6 +1139,10 @@ public struct ModernIPTVControlView: View {
 
     private func play(_ channel: IPTVRemoteChannel) {
         haptic.impactOccurred()
+        currentId = channel.id
+        currentName = channel.name
+        isPlaying = true
+        wantsPlayback = true
         onPlayChannel?(channel.name, channel.id)
     }
 
@@ -1274,7 +1392,16 @@ public struct ModernIPTVControlView: View {
         let requestId = UUID().uuidString
         pendingImportRequestID = requestId
         importStatus = "正在电视上验证并导入频道源…"
-        let name = importSourceName.trimmingCharacters(in: .whitespacesAndNewlines)
+        var name = importSourceName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty {
+            if let matched = defaultPresetIPTVSources.first(where: { $0.url == url }) {
+                name = matched.name
+            } else if let host = URL(string: url)?.host {
+                name = host
+            } else {
+                name = "频道源"
+            }
+        }
         onImportSource?(name, url, epgURL.isEmpty ? nil : epgURL, requestId)
     }
 

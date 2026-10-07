@@ -19,6 +19,11 @@ public struct ModernRemoteContainerView: View {
     
     // 遥控器情境微操模式 (0: 系统轮盘, 1: 触控板, 2: IPTV, 3: PDF演讲)
     @State private var selectedControlTab: Int = {
+        #if DEBUG
+        if CommandLine.arguments.contains("--iptv-tab") {
+            return 2
+        }
+        #endif
         if UserDefaults.standard.object(forKey: "UITestRemoteTab") != nil {
             return UserDefaults.standard.integer(forKey: "UITestRemoteTab")
         }
@@ -297,11 +302,13 @@ public struct ModernRemoteContainerView: View {
         .onAppear {
             setupTextInputManager()
             if !coordinatorObserver.isHSBBrowserConnected {
-                let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost ?? "127.0.0.1"
-                let endpoint = nw_endpoint_create_host(host, "\(HSBRemoteConstants.screenDefaultPort)")
-                let deviceName = HSBTVOSConnectionManager.shared().deviceName ?? "糖葫芦浏览器"
-                HSBTVOSConnectionManager.shared().connect(to: endpoint, deviceName: deviceName)
-                DualModeRemoteCoordinator.shared.screenClient.connect(to: endpoint, deviceName: deviceName)
+                if !HSBTVOSConnectionManager.shared().connectToLastPairedTV() {
+                    let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost ?? "127.0.0.1"
+                    let endpoint = nw_endpoint_create_host(host, "\(HSBRemoteConstants.screenDefaultPort)")
+                    let deviceName = HSBTVOSConnectionManager.shared().deviceName ?? "糖葫芦浏览器"
+                    HSBTVOSConnectionManager.shared().connect(to: endpoint, deviceName: deviceName)
+                    DualModeRemoteCoordinator.shared.screenClient.connect(to: endpoint, deviceName: deviceName)
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBToggleRemoteKeyboardNotification"))) { _ in
