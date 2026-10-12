@@ -192,6 +192,7 @@
 
 
 - (void)sceneWillEnterForeground:(UIScene *)scene {
+    [[HSBTVOSConnectionManager sharedManager] handleAppWillEnterForeground];
     NSString *testPairURL = [[NSUserDefaults standardUserDefaults] stringForKey:@"UITestPairingURL"];
     if (testPairURL.length > 0) {
         [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"UITestPairingURL"];
@@ -201,10 +202,7 @@
 
 
 - (void)sceneDidEnterBackground:(UIScene *)scene {
-    // Called as the scene transitions from the foreground to the background.
-    // Use this method to save data, release shared resources, and store enough scene-specific state information
-    // to restore the scene back to its current state.
-
+    [[HSBTVOSConnectionManager sharedManager] handleAppDidEnterBackground];
     // Save changes in the application's managed object context when the application transitions to the background.
     [(AppDelegate *)UIApplication.sharedApplication.delegate saveContext];
 }

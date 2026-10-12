@@ -169,8 +169,21 @@ static NSArray<NSData *> *HSBExtractJSONMessages(NSMutableData *buffer) {
 @property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *pairedTVRecord;
 @property (nonatomic, assign) BOOL isAuthenticating;
 @property (nonatomic, assign) NSUInteger connectionGeneration;
+@property (nonatomic, assign) BOOL isAppInBackground;
+@property (nonatomic, assign) BOOL isReconnecting;
+@property (nonatomic, assign) NSUInteger reconnectAttemptCount;
+@property (nonatomic, strong, nullable) dispatch_source_t reconnectTimer;
+@property (nonatomic, strong, nullable) dispatch_source_t heartbeatTimer;
+@property (nonatomic, strong, nullable) NSDate *lastReceivedMessageDate;
 
 - (void)startReceivingFromConnection:(nw_connection_t)connection buffer:(NSMutableData *)receiveBuffer;
+- (void)handleConnectionInterrupted;
+- (void)scheduleReconnectWithDelay:(NSTimeInterval)delay;
+- (void)performReconnectAttempt;
+- (void)stopReconnectTimer;
+- (void)startHeartbeatTimer;
+- (void)stopHeartbeatTimer;
+- (void)sendPingProbe;
 
 @end
 
@@ -339,8 +352,190 @@ NSString * const HSBConnectionStateKeyState = @"state";
     if (self) {
         _queue = dispatch_queue_create("com.tanghulu.tvosconnection", DISPATCH_QUEUE_SERIAL);
         _isConnected = NO;
+        _isAppInBackground = NO;
+        _isReconnecting = NO;
+        _reconnectAttemptCount = 0;
+        
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAppDidEnterBackground) name:UIApplicationDidEnterBackgroundNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAppWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAppDidBecomeActive) name:UIApplicationDidBecomeActiveNotification object:nil];
     }
     return self;
+}
+
+#pragma mark - Lifecycle & Keepalive
+
+- (void)handleAppDidEnterBackground {
+    NSLog(@"[BonjourBridge] iPhone app entered background. Suspending active timers.");
+    self.isAppInBackground = YES;
+    [self stopHeartbeatTimer];
+    [self stopReconnectTimer];
+}
+
+- (void)handleAppDidBecomeActive {
+    [self handleAppWillEnterForeground];
+}
+
+- (void)handleAppWillEnterForeground {
+    self.isAppInBackground = NO;
+    NSLog(@"[BonjourBridge] iPhone app will enter foreground. Checking TV connection state...");
+    
+    // 如果未连接或连接对象丢失，立即触发一次 0 延迟自动重连
+    if (!self.isConnected || !self.connection) {
+        NSLog(@"[BonjourBridge] Offline on foreground wake. Triggering immediate reconnect...");
+        [self triggerImmediateReconnect];
+        return;
+    }
+    
+    // 如果已有连接，发送心跳探测包检测底层 TCP 是否已被系统挂起切断（自愈防假死）
+    NSLog(@"[BonjourBridge] Probing active connection health with ping...");
+    [self sendPingProbe];
+    [self startHeartbeatTimer];
+}
+
+- (void)triggerImmediateReconnect {
+    [self stopReconnectTimer];
+    self.reconnectAttemptCount = 0;
+    [self performReconnectAttempt];
+}
+
+- (void)scheduleReconnectWithDelay:(NSTimeInterval)delay {
+    [self stopReconnectTimer];
+    if (self.isAppInBackground || self.isConnected) {
+        return;
+    }
+    
+    BOOL hasTarget = (self.currentEndpoint != nil) || (HSBRemotePairedTVRecords().count > 0);
+    if (!hasTarget) {
+        NSLog(@"[BonjourBridge] No paired records or endpoint found. Waiting for user interaction.");
+        return;
+    }
+    
+    self.isReconnecting = YES;
+    self.reconnectAttemptCount++;
+    
+    NSTimeInterval actualDelay = delay;
+    if (actualDelay <= 0) {
+        // 指数退避重试，最大间隔 5 秒
+        actualDelay = MIN(1.0 + (self.reconnectAttemptCount * 0.8), 5.0);
+    }
+    
+    NSLog(@"[BonjourBridge] Scheduling reconnect attempt #%lu in %.1fs...", (unsigned long)self.reconnectAttemptCount, actualDelay);
+    
+    __weak typeof(self) weakSelf = self;
+    self.reconnectTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, self.queue);
+    dispatch_source_set_timer(self.reconnectTimer,
+                              dispatch_time(DISPATCH_TIME_NOW, (int64_t)(actualDelay * NSEC_PER_SEC)),
+                              DISPATCH_TIME_FOREVER,
+                              100 * NSEC_PER_MSEC);
+    dispatch_source_set_event_handler(self.reconnectTimer, ^{
+        [weakSelf stopReconnectTimer];
+        [weakSelf performReconnectAttempt];
+    });
+    dispatch_resume(self.reconnectTimer);
+}
+
+- (void)stopReconnectTimer {
+    if (self.reconnectTimer) {
+        dispatch_source_cancel(self.reconnectTimer);
+        self.reconnectTimer = nil;
+    }
+    self.isReconnecting = NO;
+}
+
+- (void)performReconnectAttempt {
+    if (self.isAppInBackground || self.isConnected) {
+        return;
+    }
+    
+    NSLog(@"[BonjourBridge] Executing reconnect attempt #%lu...", (unsigned long)self.reconnectAttemptCount);
+    
+    BOOL pairingIsCurrent = self.pairingToken.length > 0 &&
+        self.pairingExpirationDate.timeIntervalSinceNow > 0;
+    
+    if (self.currentEndpoint && (pairingIsCurrent || self.pairedTVRecord)) {
+        [self connectToEndpoint:self.currentEndpoint deviceName:self.deviceName ?: @"Apple TV"];
+        return;
+    }
+    
+    BOOL didConnect = [self connectToLastPairedTV];
+    if (!didConnect) {
+        NSLog(@"[BonjourBridge] Auto-reconnect did not find valid TV record.");
+    }
+}
+
+- (void)startHeartbeatTimer {
+    [self stopHeartbeatTimer];
+    if (self.isAppInBackground || !self.isConnected || !self.connection) {
+        return;
+    }
+    
+    __weak typeof(self) weakSelf = self;
+    self.heartbeatTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, self.queue);
+    dispatch_source_set_timer(self.heartbeatTimer,
+                              dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC),
+                              10 * NSEC_PER_SEC,
+                              1 * NSEC_PER_SEC);
+    dispatch_source_set_event_handler(self.heartbeatTimer, ^{
+        [weakSelf sendPingProbe];
+    });
+    dispatch_resume(self.heartbeatTimer);
+}
+
+- (void)stopHeartbeatTimer {
+    if (self.heartbeatTimer) {
+        dispatch_source_cancel(self.heartbeatTimer);
+        self.heartbeatTimer = nil;
+    }
+}
+
+- (void)sendPingProbe {
+    if (!self.connection || !self.isConnected || self.isAppInBackground) {
+        return;
+    }
+    
+    NSDictionary *pingPayload = @{
+        HSBRemotePayloadKeyAction: @"ping",
+        @"timestamp": @((long long)([[NSDate date] timeIntervalSince1970] * 1000))
+    };
+    NSError *error = nil;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:pingPayload options:0 error:&error];
+    if (!data || data.length == 0) return;
+    
+    __weak typeof(self) weakSelf = self;
+    nw_connection_t curConnection = self.connection;
+    NSUInteger curGen = self.connectionGeneration;
+    
+    dispatch_data_t dispatchData = dispatch_data_create(data.bytes, data.length, dispatch_get_main_queue(), ^{ [data self]; });
+    nw_connection_send(curConnection, dispatchData, NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t sendError) {
+        if (sendError) {
+            NSLog(@"[BonjourBridge] Ping probe error: %@. Connection interrupted.", sendError);
+            if (weakSelf.connection == curConnection && weakSelf.connectionGeneration == curGen) {
+                dispatch_async(weakSelf.queue, ^{
+                    [weakSelf handleConnectionInterrupted];
+                });
+            }
+        }
+    });
+}
+
+- (void)handleConnectionInterrupted {
+    if (self.connection) {
+        nw_connection_cancel(self.connection);
+        self.connection = nil;
+    }
+    self.isConnected = NO;
+    self.isAuthenticating = NO;
+    [self stopHeartbeatTimer];
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
+                                                        object:self 
+                                                      userInfo:@{HSBConnectionStateKeyState: @(nw_connection_state_failed),
+                                                                 HSBConnectionStateKeyMessage: @"🔴 Link interrupted. Reconnecting..."}];
+    
+    if (!self.isAppInBackground) {
+        [self scheduleReconnectWithDelay:0.5];
+    }
 }
 
 - (nw_parameters_t)createTCPParameters {
@@ -355,7 +550,12 @@ NSString * const HSBConnectionStateKeyState = @"state";
             sec_protocol_options_add_pre_shared_key(securityOptions,
                 HSBRemoteDispatchData(key), HSBRemoteDispatchData([identity dataUsingEncoding:NSUTF8StringEncoding]));
         }
-    }, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+    }, ^(nw_protocol_options_t tcpOptions) {
+        nw_tcp_options_set_enable_keepalive(tcpOptions, true);
+        nw_tcp_options_set_keepalive_idle_time(tcpOptions, 15);
+        nw_tcp_options_set_keepalive_interval(tcpOptions, 5);
+        nw_tcp_options_set_keepalive_count(tcpOptions, 3);
+    });
     nw_parameters_set_include_peer_to_peer(parameters, true);
     return parameters;
 }
@@ -436,19 +636,21 @@ NSString * const HSBConnectionStateKeyState = @"state";
             case nw_connection_state_ready: {
                 NSLog(@"[BonjourBridge] TLS ready; authenticating the paired device.");
                 weakSelf.isAuthenticating = YES;
+                [weakSelf stopReconnectTimer];
                 [weakSelf startReceivingFromConnection:connection buffer:[NSMutableData data]];
                 [weakSelf sendRemoteHelloOnConnection:connection];
                 break;
             }
             case nw_connection_state_failed: {
-                NSLog(@"[BonjourBridge] TVOS Connection failed: %@. Reconnecting in 2s...", error);
+                NSLog(@"[BonjourBridge] TVOS Connection failed: %@. Scheduling reconnect...", error);
                 weakSelf.isConnected = NO;
                 weakSelf.isAuthenticating = NO;
                 weakSelf.connection = nil;
+                [weakSelf stopHeartbeatTimer];
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
-                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🔴 Error. Reconnecting..."}];
-                // Auto-reconnect after 2 seconds
+                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🔴 Disconnected. Reconnecting..."}];
+                
                 BOOL pairingIsCurrent = weakSelf.pairingToken.length > 0 &&
                     weakSelf.pairingExpirationDate.timeIntervalSinceNow > 0;
                 if (weakSelf.pairingToken.length > 0 && !pairingIsCurrent) {
@@ -459,14 +661,10 @@ NSString * const HSBConnectionStateKeyState = @"state";
                     weakSelf.pairingName = nil;
                     weakSelf.deviceKey = nil;
                     weakSelf.currentEndpoint = nil;
-                } else if (weakSelf.currentEndpoint && (pairingIsCurrent || weakSelf.pairedTVRecord)) {
-                    nw_endpoint_t retryEndpoint = weakSelf.currentEndpoint;
-                    NSString *retryName = weakSelf.deviceName;
-                    NSUInteger failedGeneration = generation;
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), weakSelf.queue, ^{
-                        if (weakSelf.connectionGeneration != failedGeneration || weakSelf.currentEndpoint != retryEndpoint) return;
-                        [weakSelf connectToEndpoint:retryEndpoint deviceName:retryName];
-                    });
+                }
+                
+                if (!weakSelf.isAppInBackground) {
+                    [weakSelf scheduleReconnectWithDelay:0.0];
                 }
                 break;
             }
@@ -474,6 +672,7 @@ NSString * const HSBConnectionStateKeyState = @"state";
                 NSLog(@"[BonjourBridge] TVOS Connection cancelled.");
                 weakSelf.isConnected = NO;
                 weakSelf.isAuthenticating = NO;
+                [weakSelf stopHeartbeatTimer];
                 [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
                                                                     object:weakSelf 
                                                                   userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"⚪️ Disconnected"}];
@@ -510,6 +709,9 @@ NSString * const HSBConnectionStateKeyState = @"state";
     if (self.connection != connection || self.isConnected) return;
     self.isAuthenticating = NO;
     self.isConnected = YES;
+    self.reconnectAttemptCount = 0;
+    [self stopReconnectTimer];
+    [self startHeartbeatTimer];
     [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification
                                                         object:self
                                                       userInfo:@{HSBConnectionStateKeyState: @(nw_connection_state_ready),
@@ -671,6 +873,8 @@ NSString * const HSBConnectionStateKeyState = @"state";
 }
 
 - (void)disconnect {
+    [self stopHeartbeatTimer];
+    [self stopReconnectTimer];
     self.currentEndpoint = nil;
     self.deviceName = nil;
     self.pairingToken = nil;
@@ -718,16 +922,28 @@ NSString * const HSBConnectionStateKeyState = @"state";
 
 - (void)sendPayload:(NSDictionary *)payload {
     if (!self.connection || !self.isConnected) {
+        if (!self.isAppInBackground && !self.isReconnecting) {
+            NSLog(@"[BonjourBridge] Attempted to send payload while offline. Triggering immediate reconnect...");
+            [self triggerImmediateReconnect];
+        }
         return;
     }
     
     NSError *error = nil;
     NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:&error];
     if (data && data.length > 0) {
+        __weak typeof(self) weakSelf = self;
+        nw_connection_t curConn = self.connection;
+        NSUInteger curGen = self.connectionGeneration;
         dispatch_data_t dispatchData = dispatch_data_create(data.bytes, data.length, dispatch_get_main_queue(), ^{ [data self]; });
         nw_connection_send(self.connection, dispatchData, NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, true, ^(nw_error_t error) {
             if (error) {
-                NSLog(@"[BonjourBridge] sendPayload error: %@", error);
+                NSLog(@"[BonjourBridge] sendPayload error: %@. Marking connection interrupted.", error);
+                if (weakSelf.connection == curConn && weakSelf.connectionGeneration == curGen) {
+                    dispatch_async(weakSelf.queue, ^{
+                        [weakSelf handleConnectionInterrupted];
+                    });
+                }
             }
         });
     }
@@ -764,6 +980,10 @@ NSString * const HSBConnectionStateKeyState = @"state";
                     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:messageData options:0 error:nil];
                     if (json && [json isKindOfClass:[NSDictionary class]]) {
                     NSString *action = json[HSBRemotePayloadKeyAction];
+                    weakSelf.lastReceivedMessageDate = [NSDate date];
+                    if ([action isEqualToString:@"pong"]) {
+                        continue;
+                    }
                     if ([action isEqualToString:@"remote_hello_ack"] ||
                         [action isEqualToString:@"remote_pairing_complete"] ||
                         [action isEqualToString:@"remote_pairing_failed"]) {
