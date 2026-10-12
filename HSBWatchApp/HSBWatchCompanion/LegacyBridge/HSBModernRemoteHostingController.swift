@@ -41,12 +41,24 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             target: self,
             action: #selector(didTapKeyboardToggle)
         )
-        self.navigationItem.rightBarButtonItem = keyboardItem
+        let scanItem = UIBarButtonItem(
+            image: UIImage(systemName: "qrcode.viewfinder"),
+            style: .plain,
+            target: self,
+            action: #selector(didTapScanQRCode)
+        )
+        self.navigationItem.rightBarButtonItems = [keyboardItem, scanItem]
         
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(didTapBackButton),
             name: Notification.Name("HSBExitRemotePageNotification"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didTapScanQRCode),
+            name: Notification.Name("HSBOpenQRCodeScannerNotification"),
             object: nil
         )
     }
@@ -57,6 +69,13 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     
     @objc private func didTapKeyboardToggle() {
         NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
+    }
+    
+    @objc private func didTapScanQRCode() {
+        let scanner = HSBQRCodeScannerViewController()
+        scanner.delegate = self
+        scanner.modalPresentationStyle = .fullScreen
+        self.present(scanner, animated: true)
     }
     
     public override func viewWillAppear(_ animated: Bool) {
@@ -208,5 +227,18 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         DualModeRemoteCoordinator.shared.screenClient.send(
             command: .translationResult(requestId: requestId, result: result)
         )
+    }
+}
+
+// MARK: - HSBQRCodeScannerDelegate
+extension HSBModernRemoteHostingController: HSBQRCodeScannerDelegate {
+    public func qrCodeScanner(_ scanner: HSBQRCodeScannerViewController, didScanPairingURL url: URL) {
+        scanner.dismiss(animated: true) {
+            HSBTVOSConnectionManager.shared().connect(toPairingURL: url)
+        }
+    }
+    
+    public func qrCodeScannerDidCancel(_ scanner: HSBQRCodeScannerViewController) {
+        scanner.dismiss(animated: true, completion: nil)
     }
 }

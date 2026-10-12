@@ -35,7 +35,6 @@ public struct ModernRemoteContainerView: View {
     @State private var isKeyboardPresented: Bool = UserDefaults.standard.bool(forKey: "UITestShowKeyboard")
     @State private var showingBrowserGuide: Bool = CommandLine.arguments.contains("--guide-browser")
     @State private var showingSystemGuide: Bool = CommandLine.arguments.contains("--guide-system")
-    @State private var showingPinInputModal: Bool = CommandLine.arguments.contains("--guide-pin")
     
     private let textInputManager = RemoteTextInputManager()
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -131,30 +130,19 @@ public struct ModernRemoteContainerView: View {
                         .pickerStyle(SegmentedPickerStyle())
                         .padding(.horizontal, 16)
                         
-                        // 电视未完全连接时的轻量引导指引条
-                        if !coordinatorObserver.isHSBBrowserConnected || !coordinatorObserver.isNativeConnected {
+                        // 电视未连接大屏时的轻量引导指引条 (大屏已连通时自动隐退，享受全屏沉浸操作)
+                        if !coordinatorObserver.isHSBBrowserConnected {
                             Button(action: {
                                 lightHaptic.impactOccurred()
-                                if !coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected {
-                                    // 彻底断开时，点击一键返回设备列表重新连接
-                                    NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
-                                } else {
-                                    withAnimation(.easeInOut(duration: 0.25)) {
-                                        if !coordinatorObserver.isHSBBrowserConnected {
-                                            showingBrowserGuide = true
-                                        } else {
-                                            showingSystemGuide = true
-                                        }
-                                    }
-                                }
+                                NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
                             }) {
                                 HStack(spacing: 6) {
-                                    Image(systemName: (!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? "exclamationmark.triangle.fill" : "questionmark.circle.fill")
-                                        .foregroundColor((!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? .orange : .tanghuluBrandBlue)
+                                    Image(systemName: "qrcode.viewfinder")
+                                        .foregroundColor(.tanghuluBrandBlue)
                                         .font(.system(size: 13))
-                                    Text((!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? "与电视的连接已断开，点击返回设备列表" : (!coordinatorObserver.isHSBBrowserConnected ? "尚未连接大屏应用？点此查看连接指引" : "Apple TV 系统未配对？点此查看电视设置"))
+                                    Text("尚未连接大屏？点击扫描电视二维码秒级连接")
                                         .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundColor((!coordinatorObserver.isHSBBrowserConnected && !coordinatorObserver.isNativeConnected) ? .primary : .secondary)
+                                        .foregroundColor(.primary)
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 10, weight: .semibold))
@@ -227,13 +215,9 @@ public struct ModernRemoteContainerView: View {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingBrowserGuide = false
                         }
+                        NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
                     },
                     onSecondaryAction: {
-                        let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost ?? "127.0.0.1"
-                        let endpoint = nw_endpoint_create_host(host, "\(HSBRemoteConstants.screenDefaultPort)")
-                        let deviceName = HSBTVOSConnectionManager.shared().deviceName ?? "糖葫芦浏览器"
-                        HSBTVOSConnectionManager.shared().connect(to: endpoint, deviceName: deviceName)
-                        DualModeRemoteCoordinator.shared.screenClient.connect(to: endpoint, deviceName: deviceName)
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingBrowserGuide = false
                         }
@@ -256,39 +240,15 @@ public struct ModernRemoteContainerView: View {
                     type: .system,
                     isPresented: $showingSystemGuide,
                     onPrimaryAction: {
-                        if let host = DualModeRemoteCoordinator.shared.nativeClient.currentHost {
-                            DualModeRemoteCoordinator.shared.wakeDevice(host: host) { _ in }
-                        } else {
-                            DualModeRemoteCoordinator.shared.stateMachine.handle(event: .startScanning)
-                        }
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingSystemGuide = false
                         }
+                        NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
                     },
                     onSecondaryAction: {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showingSystemGuide = false
-                            showingPinInputModal = true
                         }
-                    }
-                )
-                .transition(.scale(scale: 0.9).combined(with: .opacity))
-            }
-            
-            // 4 位 PIN 码输入弹窗
-            if showingPinInputModal {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showingPinInputModal = false
-                        }
-                    }
-                
-                PINInputModalView(
-                    isPresented: $showingPinInputModal,
-                    onSubmit: { pin in
-                        DualModeRemoteCoordinator.shared.stateMachine.handle(event: .submitPin(code: pin))
                     }
                 )
                 .transition(.scale(scale: 0.9).combined(with: .opacity))
@@ -297,7 +257,6 @@ public struct ModernRemoteContainerView: View {
         .animation(.easeInOut(duration: 0.25), value: isKeyboardPresented)
         .animation(.easeInOut(duration: 0.25), value: showingBrowserGuide)
         .animation(.easeInOut(duration: 0.25), value: showingSystemGuide)
-        .animation(.easeInOut(duration: 0.25), value: showingPinInputModal)
         .accentColor(.tanghuluBrandBlue)
         .onAppear {
             setupTextInputManager()
@@ -323,19 +282,12 @@ public struct ModernRemoteContainerView: View {
                     if type == "browser" {
                         showingBrowserGuide = true
                         showingSystemGuide = false
-                        showingPinInputModal = false
                     } else if type == "system" {
                         showingBrowserGuide = false
                         showingSystemGuide = true
-                        showingPinInputModal = false
-                    } else if type == "pin" {
-                        showingBrowserGuide = false
-                        showingSystemGuide = false
-                        showingPinInputModal = true
                     } else if type == "dismiss" {
                         showingBrowserGuide = false
                         showingSystemGuide = false
-                        showingPinInputModal = false
                     }
                 }
             }
@@ -873,6 +825,9 @@ public struct ModernRemoteContainerView: View {
         if coordinatorObserver.isNativeConnected {
             return .tanghuluBrandBlue
         }
+        if coordinatorObserver.isHSBBrowserConnected {
+            return .tanghuluBrandBlue.opacity(0.8)
+        }
         switch coordinatorObserver.state {
         case .ready: return .tanghuluBrandBlue
         case .connecting, .pairing: return .orange
@@ -885,6 +840,9 @@ public struct ModernRemoteContainerView: View {
     private var systemStatusText: String {
         if coordinatorObserver.isNativeConnected {
             return "系统: 已连接"
+        }
+        if coordinatorObserver.isHSBBrowserConnected {
+            return "系统: 协同就绪"
         }
         switch coordinatorObserver.state {
         case .ready(let name, _):
@@ -1022,16 +980,16 @@ public struct ConnectionGuideModalView: View {
             
             // 核心图标与标题
             VStack(spacing: 8) {
-                Image(systemName: type == .browser ? "tv.and.mediabox" : "applelogo")
+                Image(systemName: type == .browser ? "tv.and.mediabox" : "qrcode.viewfinder")
                     .font(.system(size: 40))
                     .foregroundColor(.tanghuluBrandBlue)
                     .padding(.bottom, 4)
                 
-                Text(type == .browser ? "糖葫芦大屏应用连接指引" : "Apple TV 原生系统配对指引")
+                Text(type == .browser ? "糖葫芦大屏应用连接指引" : "电视大屏安全配对指引")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                 
-                Text(type == .browser ? "请按照以下步骤，开启大屏沉浸微操通道" : "请在电视端完成授权，解锁系统按键与待机控制")
+                Text(type == .browser ? "请按照以下步骤，开启大屏沉浸微操通道" : "电视端全面支持大屏二维码即扫即连，无需输入 PIN 码")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -1061,18 +1019,18 @@ public struct ConnectionGuideModalView: View {
                 } else {
                     GuideStepRow(
                         stepNumber: 1,
-                        title: "前往 tvOS【隔空播放】设置",
-                        detail: "在 Apple TV【设置】->【隔空播放与“家庭”】中，将【允许访问】设为【同一网络上的任何人】。"
+                        title: "调出大屏配对二维码",
+                        detail: "在 Apple TV 打开【糖葫芦浏览器】或【糖葫芦视界】，屏幕主界面将呈现专属配对二维码。"
                     )
                     GuideStepRow(
                         stepNumber: 2,
-                        title: "配置密码 / PIN 码权限",
-                        detail: "若开启了【需要密码】，首次配对时电视屏幕会弹出 4 位数字 PIN 码。"
+                        title: "保持同一局域网 Wi-Fi",
+                        detail: "确保 iPhone 与 Apple TV 连接在同一 Wi-Fi 网络，保障毫秒级低延迟操控。"
                     )
                     GuideStepRow(
                         stepNumber: 3,
-                        title: "输入 4 位配对码",
-                        detail: "点击下方【输入配对码】按钮，输入屏幕上的 4 位数字即可秒级绑定。"
+                        title: "手机对准扫码秒连",
+                        detail: "点击下方【扫描电视二维码】，对准大屏二维码即可 0.5 秒完成加密双向配对与永久绑定。"
                     )
                 }
             }
@@ -1081,54 +1039,26 @@ public struct ConnectionGuideModalView: View {
             
             // 操作按钮区
             VStack(spacing: 10) {
-                if type == .browser {
-                    Button(action: onSecondaryAction) {
-                        HStack {
-                            Image(systemName: "arrow.clockwise")
-                            Text("立即尝试重新连接")
-                        }
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color.tanghuluBrandBlue)
-                        .cornerRadius(14)
+                Button(action: onPrimaryAction) {
+                    HStack {
+                        Image(systemName: "qrcode.viewfinder")
+                        Text("扫描电视二维码配对")
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    Button(action: onPrimaryAction) {
-                        Text("我知道了")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                } else {
-                    Button(action: onSecondaryAction) {
-                        HStack {
-                            Image(systemName: "key.fill")
-                            Text("输入电视上的 4 位配对码")
-                        }
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color.tanghuluBrandBlue)
-                        .cornerRadius(14)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    Button(action: onPrimaryAction) {
-                        HStack {
-                            Image(systemName: "bolt.fill")
-                            Text("唤醒待机设备 / 重新扫描")
-                        }
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.primary)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(Color(UIColor.secondarySystemBackground))
-                        .cornerRadius(12)
-                    }
-                    .buttonStyle(PlainButtonStyle())
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Color.tanghuluBrandBlue)
+                    .cornerRadius(14)
                 }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: onSecondaryAction) {
+                    Text("我知道了")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                }
+                .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 20)
@@ -1182,178 +1112,6 @@ public struct GuideStepRow: View {
             Spacer()
         }
         .padding(.vertical, 4)
-    }
-}
-
-// MARK: - 4位 PIN 码输入模态弹窗
-public struct PINInputModalView: View {
-    @Binding public var isPresented: Bool
-    public var onSubmit: (String) -> Void
-    
-    @State private var pinCode: String = ""
-    private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
-    
-    public init(isPresented: Binding<Bool>, onSubmit: @escaping (String) -> Void) {
-        self._isPresented = isPresented
-        self.onSubmit = onSubmit
-    }
-    
-    public var body: some View {
-        VStack(spacing: 0) {
-            // 顶部关闭按钮
-            HStack {
-                Spacer()
-                Button(action: {
-                    isPresented = false
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            
-            // 标题
-            VStack(spacing: 6) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(.tanghuluBrandBlue)
-                
-                Text("输入电视配对码")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                
-                Text("请输入电视屏幕上显示的 4 位数字")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.bottom, 20)
-            
-            // 4 位格子展示
-            HStack(spacing: 12) {
-                ForEach(0..<4, id: \.self) { index in
-                    let char: String = {
-                        if index < pinCode.count {
-                            let strIndex = pinCode.index(pinCode.startIndex, offsetBy: index)
-                            return String(pinCode[strIndex])
-                        }
-                        return ""
-                    }()
-                    
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(UIColor.secondarySystemBackground))
-                            .frame(width: 52, height: 60)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(
-                                        index == pinCode.count ? Color.tanghuluBrandBlue : Color.clear,
-                                        lineWidth: 2
-                                    )
-                            )
-                        
-                        Text(char)
-                            .font(.system(size: 26, weight: .bold, design: .monospaced))
-                            .foregroundColor(.primary)
-                    }
-                }
-            }
-            .padding(.bottom, 24)
-            
-            // 数字软键盘矩阵 (1-9, 清除, 0, 确认)
-            VStack(spacing: 10) {
-                HStack(spacing: 12) {
-                    pinNumberButton("1")
-                    pinNumberButton("2")
-                    pinNumberButton("3")
-                }
-                HStack(spacing: 12) {
-                    pinNumberButton("4")
-                    pinNumberButton("5")
-                    pinNumberButton("6")
-                }
-                HStack(spacing: 12) {
-                    pinNumberButton("7")
-                    pinNumberButton("8")
-                    pinNumberButton("9")
-                }
-                HStack(spacing: 12) {
-                    Button(action: {
-                        lightHaptic.impactOccurred()
-                        if !pinCode.isEmpty {
-                            pinCode.removeLast()
-                        }
-                    }) {
-                        Image(systemName: "delete.left")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 72, height: 48)
-                            .background(Color(UIColor.secondarySystemBackground).opacity(0.6))
-                            .cornerRadius(12)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    pinNumberButton("0")
-                    
-                    Button(action: {
-                        submitPIN()
-                    }) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 72, height: 48)
-                            .background(pinCode.count == 4 ? Color.tanghuluBrandBlue : Color.gray.opacity(0.4))
-                            .cornerRadius(12)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .disabled(pinCode.count != 4)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
-        }
-        .frame(maxWidth: 320)
-        .background(
-            RoundedRectangle(cornerRadius: 24)
-                .fill(Color(UIColor.systemBackground))
-                .shadow(color: Color.black.opacity(0.25), radius: 24, x: 0, y: 12)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    }
-    
-    private func pinNumberButton(_ number: String) -> some View {
-        Button(action: {
-            lightHaptic.impactOccurred()
-            if pinCode.count < 4 {
-                pinCode.append(number)
-                if pinCode.count == 4 {
-                    // 自动提交
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        submitPIN()
-                    }
-                }
-            }
-        }) {
-            Text(number)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-                .frame(width: 72, height: 48)
-                .background(Color(UIColor.secondarySystemBackground))
-                .cornerRadius(12)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    private func submitPIN() {
-        guard pinCode.count == 4 else { return }
-        lightHaptic.impactOccurred()
-        onSubmit(pinCode)
-        isPresented = false
     }
 }
 
