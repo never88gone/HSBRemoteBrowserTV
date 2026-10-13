@@ -147,6 +147,15 @@ static NSString * L(NSString *en, NSString *zh) {
     if (shouldOpenModernRemote) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self pushToModernRemoteWithDevice:nil];
+            if ([args containsObject:@"--guide-browser"]) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBShowGuideModalNotification" object:nil userInfo:@{@"type": @"browser"}];
+                });
+            } else if ([args containsObject:@"--guide-system"]) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBShowGuideModalNotification" object:nil userInfo:@{@"type": @"system"}];
+                });
+            }
         });
     } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenSettings"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -249,6 +258,10 @@ static NSString * L(NSString *en, NSString *zh) {
         NSArray *args = [NSProcessInfo processInfo].arguments;
         BOOL isTestEnv = [args containsObject:@"--run-appletv-tests"] ||
                          [args containsObject:@"--test-connect-device"] ||
+                         [args containsObject:@"--test-pin-alert"] ||
+                         [args containsObject:@"--guide-pin"] ||
+                         [args containsObject:@"--guide-browser"] ||
+                         [args containsObject:@"--guide-system"] ||
                          [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"];
         if (!isTestEnv) {
             [HSBModernRemoteBridge showLaunchEntranceAnimationOn:self];
@@ -264,6 +277,42 @@ static NSString * L(NSString *en, NSString *zh) {
         });
     }
 #endif
+    
+    NSArray *args = [NSProcessInfo processInfo].arguments;
+    if ([args containsObject:@"--test-pin-alert"]) {
+        static dispatch_once_t pinToken;
+        dispatch_once(&pinToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBAppleTVNativePINRequiredNotification"
+                                                                    object:nil
+                                                                  userInfo:@{@"name": @"客厅 Apple TV 4K"}];
+            });
+        });
+    } else if ([args containsObject:@"--guide-browser"] || [args containsObject:@"--guide-pin"]) {
+        static dispatch_once_t guideToken;
+        dispatch_once(&guideToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self openModernRemoteController];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBShowGuideModalNotification"
+                                                                        object:nil
+                                                                      userInfo:@{@"type": @"browser"}];
+                });
+            });
+        });
+    } else if ([args containsObject:@"--guide-system"]) {
+        static dispatch_once_t guideSysToken;
+        dispatch_once(&guideSysToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self openModernRemoteController];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBShowGuideModalNotification"
+                                                                        object:nil
+                                                                      userInfo:@{@"type": @"system"}];
+                });
+            });
+        });
+    }
 }
 
 
@@ -1097,12 +1146,18 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)handleAppleTVNativePINRequired:(NSNotification *)notification {
     dispatch_async(dispatch_get_main_queue(), ^{
-        // 关闭前置加载弹窗
-        if ([self.presentedViewController isKindOfClass:[UIAlertController class]]) {
-            [self.presentedViewController dismissViewControllerAnimated:NO completion:nil];
+        NSLog(@"[NativePIN] Received HSBAppleTVNativePINRequiredNotification");
+        UIViewController *topVC = self;
+        while (topVC.presentedViewController) {
+            topVC = topVC.presentedViewController;
         }
-        
-        void (^completion)(NSString *) = notification.userInfo[@"completion"];
+        if ([topVC isKindOfClass:[UIAlertController class]]) {
+            [topVC dismissViewControllerAnimated:NO completion:nil];
+            topVC = self;
+            while (topVC.presentedViewController) {
+                topVC = topVC.presentedViewController;
+            }
+        }
         
         UIAlertController *pinAlert = [UIAlertController alertControllerWithTitle:L(@" 请输入电视上的 PIN 码", @" 请输入电视上的 PIN 码")
                                                                           message:L(@"Apple TV 已发起原生安全配对。\n请查看电视屏幕上显示的 4 位数字配对码并输入：", @"Apple TV 已发起原生安全配对。\n请查看电视屏幕上显示的 4 位数字配对码并输入：")
@@ -1119,6 +1174,7 @@ static NSString * L(NSString *en, NSString *zh) {
         [pinAlert addAction:[UIAlertAction actionWithTitle:L(@"配对连接", @"配对连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             NSString *pin = pinAlert.textFields.firstObject.text ?: @"";
             pin = [pin stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            void (^completion)(NSString *) = notification.userInfo[@"completion"];
             if (completion) {
                 completion(pin);
             }
@@ -1129,6 +1185,7 @@ static NSString * L(NSString *en, NSString *zh) {
         }]];
         
         [pinAlert addAction:[UIAlertAction actionWithTitle:L(@"取消", @"取消") style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+            void (^completion)(NSString *) = notification.userInfo[@"completion"];
             if (completion) {
                 completion(@"");
             }
@@ -1138,7 +1195,8 @@ static NSString * L(NSString *en, NSString *zh) {
             }];
         }]];
         
-        [self presentViewController:pinAlert animated:YES completion:nil];
+        NSLog(@"[NativePIN] Presenting pinAlert on topVC: %@", topVC);
+        [topVC presentViewController:pinAlert animated:YES completion:nil];
     });
 }
 

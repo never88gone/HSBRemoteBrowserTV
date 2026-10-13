@@ -62,10 +62,11 @@ public struct TanghuluLaunchAnimationView: View {
                 
                 // 3. 糖葫芦小人 / 核心串珠
                 ZStack {
-                    // 竹签中轴（贯穿三球，底端延伸）
+                    // 竹签中轴（贯穿三球，随双脚收回自然延伸到底端 285）
                     Path { path in
                         path.move(to: CGPoint(x: 70, y: 35))
-                        path.addLine(to: CGPoint(x: 70, y: 285))
+                        let bottomY: CGFloat = 252.0 + 33.0 * legsRetracted
+                        path.addLine(to: CGPoint(x: 70, y: bottomY))
                     }
                     .stroke(hawthornRed, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
                     
@@ -88,29 +89,37 @@ public struct TanghuluLaunchAnimationView: View {
                         .offset(x: 2, y: 0)
                         .opacity(playButtonOpacity)
                     
-                    // 底部球（小人臀部/下肢连接点）
+                    // 底部球（小人臀部/下肢连接点，中心在 70, 225，下沿在 70, 257）
                     Circle()
                         .stroke(hawthornRed, lineWidth: 4)
                         .frame(width: 64, height: 64)
                         .offset(y: 65)
                     
-                    // 4. 小人的两条行走小脚（随迈步摆动，之后收起消失）
+                    // 4. 小人的两条行走小脚（从底部球下方迈出，随迈步摆动，站定后收缩消失）
                     if legsRetracted < 1.0 {
-                        let legLength: CGFloat = 26.0 * (1.0 - legsRetracted)
-                        let leftAngle: Double = Double(sin(walkCycle) * 28.0) * Double(1.0 - legsRetracted)
-                        let rightAngle: Double = Double(-sin(walkCycle) * 28.0) * Double(1.0 - legsRetracted)
+                        let legLength: CGFloat = 25.0 * (1.0 - legsRetracted)
+                        let leftRad = Double(sin(walkCycle) * 26.0) * Double(1.0 - legsRetracted) * .pi / 180.0
+                        let rightRad = Double(-sin(walkCycle) * 26.0) * Double(1.0 - legsRetracted) * .pi / 180.0
                         
-                        // 左腿
-                        LegShape(angleDegrees: leftAngle, length: legLength)
-                            .stroke(hawthornRed, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
-                            .position(x: 60, y: 228)
-                            .opacity(Double(1.0 - legsRetracted))
-                        
-                        // 右腿
-                        LegShape(angleDegrees: rightAngle, length: legLength)
-                            .stroke(hawthornRed, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
-                            .position(x: 80, y: 228)
-                            .opacity(Double(1.0 - legsRetracted))
+                        Path { path in
+                            // 左脚
+                            let leftHip = CGPoint(x: 58, y: 252)
+                            let leftFoot = CGPoint(x: leftHip.x + sin(leftRad) * legLength,
+                                                   y: leftHip.y + cos(leftRad) * legLength)
+                            path.move(to: leftHip)
+                            path.addLine(to: leftFoot)
+                            path.addLine(to: CGPoint(x: leftFoot.x + (leftRad >= 0 ? 5.0 : 3.0), y: leftFoot.y))
+                            
+                            // 右脚
+                            let rightHip = CGPoint(x: 82, y: 252)
+                            let rightFoot = CGPoint(x: rightHip.x + sin(rightRad) * legLength,
+                                                    y: rightHip.y + cos(rightRad) * legLength)
+                            path.move(to: rightHip)
+                            path.addLine(to: rightFoot)
+                            path.addLine(to: CGPoint(x: rightFoot.x + (rightRad >= 0 ? 5.0 : 3.0), y: rightFoot.y))
+                        }
+                        .stroke(hawthornRed, style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+                        .opacity(Double(1.0 - legsRetracted))
                     }
                 }
                 .frame(width: 140, height: 320)
@@ -207,28 +216,6 @@ private struct PlayTriangle: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
         path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         path.closeSubpath()
-        return path
-    }
-}
-
-private struct LegShape: Shape {
-    let angleDegrees: Double
-    let length: CGFloat
-    
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        
-        let rad = angleDegrees * .pi / 180.0
-        let endX = rect.midX + sin(rad) * length
-        let endY = rect.minY + cos(rad) * length
-        path.addLine(to: CGPoint(x: endX, y: endY))
-        
-        // 小脚掌
-        let footX = endX + (angleDegrees >= 0 ? 5.0 : 3.0)
-        let footY = endY
-        path.addLine(to: CGPoint(x: footX, y: footY))
-        
         return path
     }
 }
