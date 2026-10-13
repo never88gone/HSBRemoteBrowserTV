@@ -50,21 +50,19 @@ import CryptoKit
             if item.cmd.hidKeycode != item.expectedKeycode {
                 opackKeycodesMatch = false
             }
-            // 验证 encodeHIDCommand 能够输出非空 OPACK 二进制数据
             let encodedData = OPACK.encodeHIDCommand(keycode: item.cmd.hidKeycode, state: 1, txn: 100)
             guard !encodedData.isEmpty else {
                 opackKeycodesMatch = false
                 break
             }
-            // 验证解包还原
             if let decoded = OPACK.decode(encodedData) as? [String: Any] {
                 let action = decoded["_i"] as? String
-                let txn = decoded["_x"] as? UInt32 ?? (decoded["_x"] as? Int).map { UInt32($0) }
+                let txnVal = (decoded["_x"] as? NSNumber)?.uint32Value ?? (decoded["_x"] as? UInt32)
                 let content = decoded["_c"] as? [String: Any]
-                let decodedKeycode = content?["_hidC"] as? Int
-                let decodedState = content?["_hBtS"] as? Int
+                let decodedKeycode = (content?["_hidC"] as? NSNumber)?.intValue ?? (content?["_hidC"] as? Int)
+                let decodedState = (content?["_hBtS"] as? NSNumber)?.intValue ?? (content?["_hBtS"] as? Int)
 
-                if action != "_hidC" || txn != 100 || decodedKeycode != Int(item.expectedKeycode) || decodedState != 1 {
+                if action != "_hidC" || txnVal != 100 || decodedKeycode != Int(item.expectedKeycode) || decodedState != 1 {
                     opackKeycodesMatch = false
                 }
             } else {
@@ -79,13 +77,13 @@ import CryptoKit
         // ==========================================
         let touchData = OPACK.encodeTouchEvent(x: 500.0, y: 350.0, phase: 2, txn: 201, nanoseconds: 12345678)
         var touchVerified = false
-        if let decodedTouch = OPACK.decode(touchData) as? [String: Any] {
-            let action = decodedTouch["_i"] as? String
-            let content = decodedTouch["_c"] as? [String: Any]
-            let cx = content?["_cx"] as? Double
-            let cy = content?["_cy"] as? Double
-            let tPh = content?["_tPh"] as? Int
-            let tFg = content?["_tFg"] as? Int
+        if let decodedTouch = OPACK.decode(touchData) as? [String: Any],
+           let action = decodedTouch["_i"] as? String,
+           let content = decodedTouch["_c"] as? [String: Any] {
+            let cx = (content["_cx"] as? NSNumber)?.doubleValue
+            let cy = (content["_cy"] as? NSNumber)?.doubleValue
+            let tPh = (content["_tPh"] as? NSNumber)?.intValue
+            let tFg = (content["_tFg"] as? NSNumber)?.intValue
             if action == "_touchEvent" && cx == 500.0 && cy == 350.0 && tPh == 2 && tFg == 1 {
                 touchVerified = true
             }
@@ -96,13 +94,13 @@ import CryptoKit
         // 3. CompanionFrame 二进制帧编解码往返
         // ==========================================
         let samplePayload = "TangHuLu-AppleTV-Protocol".data(using: .utf8)!
-        let originalFrame = CompanionFrame(type: .general, flags: 0x01, payload: samplePayload)
-        let frameBytes = originalFrame.encode()
-        let decodedFrame = CompanionFrame.decode(from: frameBytes)
+        let originalFrame = CompanionFrame(type: .eOPACK, payload: samplePayload)
+        let frameBytes = originalFrame.encoded
+        var decodeBuffer = frameBytes
+        let decodedFrame = try? CompanionFrame.read(from: &decodeBuffer)
 
         let framePassed = (decodedFrame != nil &&
-                           decodedFrame?.type == .general &&
-                           decodedFrame?.flags == 0x01 &&
+                           decodedFrame?.type == .eOPACK &&
                            decodedFrame?.payload == samplePayload)
         record("Test 3: CompanionFrame Binary Frame Encode & Decode", passed: framePassed,
                detail: "Total Bytes: \(frameBytes.count), Payload Match: \(decodedFrame?.payload == samplePayload)")
@@ -117,17 +115,17 @@ import CryptoKit
         var cryptoSuccess = false
         let plaintext = "Hello Apple TV tvOS Secure Tunnel".data(using: .utf8)!
         do {
-            let encrypted = try transport.encrypt(plaintext)
-            // 密文长度应为 明文长度 + 16 (Poly1305 Auth Tag)
+            let encrypted = try transport.seal(plaintext)
+            // 密文长度为 明文长度 + 16 (Poly1305 Auth Tag)
             if encrypted.count == plaintext.count + 16 {
-                let decrypted = try transport.decrypt(encrypted)
+                let decrypted = try transport.open(encrypted)
                 cryptoSuccess = (decrypted == plaintext)
             }
         } catch {
             cryptoSuccess = false
         }
         record("Test 4: ChaCha20-Poly1305 Encrypted Channel Roundtrip", passed: cryptoSuccess,
-               detail: "Plaintext (\(plaintext.count) bytes) -> Ciphertext -> Decrypted (\(plaintext.count) bytes)")
+               detail: "Plaintext (\(plaintext.count) bytes) -> Sealed (\(plaintext.count + 16) bytes) -> Opened (\(plaintext.count) bytes)")
 
         // ==========================================
         // 5. BigInt / SRP-6a 认证大数生成与加盐运算
@@ -166,7 +164,6 @@ import CryptoKit
 
         // disconnected -> connecting
         sm.handle(event: .requestConnect(deviceName: "Apple TV 4K", mode: .nativeOnly))
-        // 注意 state 是异步派发的，在专用 queue 中同步查询
         usleep(10_000)
         if case .connecting(let name, let mode) = sm.state {
             if name != "Apple TV 4K" || mode != .nativeOnly { smPassed = false }
