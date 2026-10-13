@@ -85,9 +85,14 @@ import Network
         HSBAppleTVDiscovery.shared.wakeDevice(host: "127.0.0.1") { _ in
             record("Test 5: Port Knocking Non-blocking Wake Execution", passed: true, detail: "3689, 7000, 49152, 49153 knocked safely")
             
-            let report = results.joined(separator: "\n")
             DispatchQueue.main.async {
-                completion(allPassed, report)
+                HSBAppleTVProtocolVerificationTest.runAllTests { protocolPassed, protocolReport in
+                    results.append("\n--- Apple TV Native Protocol Verification ---")
+                    results.append(protocolReport)
+                    let combinedPassed = allPassed && protocolPassed
+                    let report = results.joined(separator: "\n")
+                    completion(combinedPassed, report)
+                }
             }
         }
     }

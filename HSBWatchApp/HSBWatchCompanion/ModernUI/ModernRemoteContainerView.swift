@@ -865,6 +865,7 @@ public struct ModernRemoteContainerView: View {
 }
 
 // MARK: - Observer Class for Coordinator State
+@MainActor
 private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDelegate, RemoteTextInputManagerDelegate {
     @Published var state: HSBConnectionState = .disconnected
     @Published var isHSBBrowserConnected: Bool = false

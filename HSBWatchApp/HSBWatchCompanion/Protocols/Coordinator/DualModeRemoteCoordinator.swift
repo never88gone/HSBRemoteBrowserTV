@@ -12,6 +12,7 @@ public protocol DualModeRemoteCoordinatorDelegate: AnyObject {
     func coordinator(_ coordinator: DualModeRemoteCoordinator, didReceiveScreenMessage message: [String: Any])
 }
 
+@MainActor
 public protocol DualModeRemoteCoordinatorProtocol: AnyObject {
     var currentState: HSBConnectionState { get }
     var currentMode: HSBRemoteMode { get set }
@@ -42,8 +43,12 @@ public protocol DualModeRemoteCoordinatorProtocol: AnyObject {
     
     // 应用启动与生态调度 (沿用 itsytv-macos _launchApp，支持 URL Scheme 参数透传)
     func launchApp(bundleID: String, url: String?, completion: ((Bool) -> Void)?)
+    
+    // 原生 PIN 码配对提交
+    func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)?)
 }
 
+@MainActor
 public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinatorProtocol {
     public static let shared = DualModeRemoteCoordinator()
     
@@ -453,6 +458,14 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
             }
         }
     }
+    public func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)? = nil) {
+        nativeClient.submitPIN(pin) { [weak self] success in
+            if success {
+                self?.stateMachine.handle(event: .pairingSucceeded)
+            }
+            completion?(success)
+        }
+    }
 }
 
 // MARK: - Delegates
@@ -460,11 +473,23 @@ extension DualModeRemoteCoordinator: HSBBrowserProtocolClientDelegate {
     public func browserClient(_ client: HSBBrowserProtocolClient, didChangeState state: HSBConnectionState) {
         switch state {
         case .ready(let name, let mode):
-            stateMachine.handle(event: .socketConnected(deviceName: name, mode: mode))
+            let targetMode = self.nativeClient.isConnected ? .dual : mode
+            stateMachine.handle(event: .socketConnected(deviceName: name, mode: targetMode))
         case .failed(let err):
-            stateMachine.handle(event: .connectionLost(error: err))
+            if currentMode == .dual && nativeClient.isConnected {
+                // 大屏异常断开，自愈降级至原生通道兜底，杜绝假死
+                let name = nativeClient.currentDeviceName ?? "Apple TV"
+                stateMachine.handle(event: .socketConnected(deviceName: name, mode: .nativeOnly))
+            } else {
+                stateMachine.handle(event: .connectionLost(error: err))
+            }
         case .disconnected:
-            stateMachine.handle(event: .requestDisconnect(reason: "Disconnected"))
+            if currentMode == .dual && nativeClient.isConnected {
+                let name = nativeClient.currentDeviceName ?? "Apple TV"
+                stateMachine.handle(event: .socketConnected(deviceName: name, mode: .nativeOnly))
+            } else {
+                stateMachine.handle(event: .requestDisconnect(reason: "Disconnected"))
+            }
         case .connecting(let name, let mode):
             stateMachine.handle(event: .requestConnect(deviceName: name, mode: mode))
         default:
@@ -479,14 +504,21 @@ extension DualModeRemoteCoordinator: HSBBrowserProtocolClientDelegate {
 
 extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
     public func nativeClient(_ client: AppleTVNativeClient, didChangeState state: HSBConnectionState) {
-        if currentMode == .nativeOnly {
+        if currentMode == .nativeOnly || currentMode == .dual {
             switch state {
-            case .ready(let name, let mode):
-                stateMachine.handle(event: .socketConnected(deviceName: name, mode: mode))
+            case .ready(let name, _):
+                let targetMode: HSBRemoteMode = (currentMode == .dual && screenClient.isConnected) ? .dual : .nativeOnly
+                stateMachine.handle(event: .socketConnected(deviceName: name, mode: targetMode))
+            case .pairing(_, let pinNeeded):
+                stateMachine.handle(event: .pairingRequired(pinNeeded: pinNeeded))
             case .failed(let err):
-                stateMachine.handle(event: .connectionLost(error: err))
+                if currentMode == .nativeOnly || !screenClient.isConnected {
+                    stateMachine.handle(event: .connectionLost(error: err))
+                }
             case .disconnected:
-                stateMachine.handle(event: .requestDisconnect(reason: "Native disconnected"))
+                if currentMode == .nativeOnly || !screenClient.isConnected {
+                    stateMachine.handle(event: .requestDisconnect(reason: "Native disconnected"))
+                }
             case .connecting(let name, let mode):
                 stateMachine.handle(event: .requestConnect(deviceName: name, mode: mode))
             default:
@@ -496,7 +528,11 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
     }
     
     public func nativeClient(_ client: AppleTVNativeClient, didRequirePINCompletion completion: @escaping (String) -> Void) {
-        // PIN 配对回调
+        NotificationCenter.default.post(
+            name: Notification.Name("HSBAppleTVNativePINRequiredNotification"),
+            object: self,
+            userInfo: ["completion": completion]
+        )
     }
 }
 

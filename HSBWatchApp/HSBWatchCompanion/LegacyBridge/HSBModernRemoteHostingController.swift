@@ -98,11 +98,11 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
 
 @objc public final class HSBModernRemoteBridge: NSObject {
     
-    @objc public static func createModernRemoteViewController() -> UIViewController {
+    @objc @MainActor public static func createModernRemoteViewController() -> UIViewController {
         return HSBModernRemoteHostingController()
     }
     
-    @objc public static func connectWithHost(_ host: String, port: Int, deviceName: String) {
+    @objc @MainActor public static func connectWithHost(_ host: String, port: Int, deviceName: String) {
         if !DualModeRemoteCoordinator.shared.nativeClient.isConnected {
             DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
             DualModeRemoteCoordinator.shared.connectToNative(host: host, deviceName: deviceName)
@@ -113,11 +113,11 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: deviceName)
     }
     
-    @objc public static func connectToDiscoveredDevice(_ device: HSBDiscoveredAppleTV) {
+    @objc @MainActor public static func connectToDiscoveredDevice(_ device: HSBDiscoveredAppleTV) {
         connectToDiscoveredDevice(device, timeout: 6.0, completion: nil)
     }
     
-    @objc public static func connectToDiscoveredDevice(
+    @objc @MainActor public static func connectToDiscoveredDevice(
         _ device: HSBDiscoveredAppleTV,
         timeout: TimeInterval = 6.0,
         completion: ((Bool, String?) -> Void)? = nil
@@ -213,17 +213,17 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
     }
     
-    @objc public static func isUnifiedConnected() -> Bool {
+    @objc @MainActor public static func isUnifiedConnected() -> Bool {
         return DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
                HSBTVOSConnectionManager.shared().isConnected ||
                DualModeRemoteCoordinator.shared.screenClient.isConnected
     }
     
-    @objc public static func disconnectUnified() {
+    @objc @MainActor public static func disconnectUnified() {
         DualModeRemoteCoordinator.shared.disconnectAll()
     }
     
-    @objc public static func syncLegacyLLMTranslation(requestId: String, result: String) {
+    @objc @MainActor public static func syncLegacyLLMTranslation(requestId: String, result: String) {
         DualModeRemoteCoordinator.shared.screenClient.send(
             command: .translationResult(requestId: requestId, result: result)
         )
