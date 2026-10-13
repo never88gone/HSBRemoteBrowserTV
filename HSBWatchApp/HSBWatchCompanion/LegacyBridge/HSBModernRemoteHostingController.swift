@@ -178,6 +178,9 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
                 switch state {
                 case .ready:
                     finish(true, nil)
+                case .pairing:
+                    // 进入原生 PIN 配对阶段，等待用户在手机上输入电视显示的验证码，不视为失败
+                    Log.companion.report("Bridge: Native pairing initiated, awaiting user PIN input")
                 case .failed(let err):
                     if !HSBTVOSConnectionManager.shared().isConnected {
                         finish(false, "连接失败: \(err)")
@@ -189,8 +192,24 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         }
         observerTokens.append(token2)
         
-        // 4. 超时保底处理
+        // 4. 超时保底处理（常规探测 6 秒，如遇待配对则放宽给用户输入 PIN 码时间）
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            let isPairing = DualModeRemoteCoordinator.shared.nativeClient.isPairing
+            if isPairing {
+                // 如果正在配对，再给 60 秒等待用户输入 PIN 码
+                DispatchQueue.main.asyncAfter(deadline: .now() + 60.0) {
+                    let connected = DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+                                    HSBTVOSConnectionManager.shared().isConnected ||
+                                    DualModeRemoteCoordinator.shared.screenClient.isConnected
+                    if connected {
+                        finish(true, nil)
+                    } else {
+                        finish(false, "配对超时：未在规定时间内输入电视屏幕上的 PIN 码。")
+                    }
+                }
+                return
+            }
+            
             let connected = DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
                             HSBTVOSConnectionManager.shared().isConnected ||
                             DualModeRemoteCoordinator.shared.screenClient.isConnected
@@ -201,7 +220,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             }
         }
         
-        // 5. 触发纯 itsytv 原生通道单连接与待机唤醒
+        // 5. 触发原生通道连接与待机唤醒
         DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
         let nativePort = device.port > 0 ? device.port : 49152
         DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name, port: nativePort)
@@ -211,6 +230,23 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         let screenEndpoint = nw_endpoint_create_host(device.host, "\(HSBRemoteConstants.screenDefaultPort)")
         HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
         DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
+    }
+    
+    @objc @MainActor public static func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)? = nil) {
+        DualModeRemoteCoordinator.shared.submitNativePIN(pin, completion: completion)
+    }
+    
+    @objc @MainActor public static func showLaunchEntranceAnimation(on parent: UIViewController) {
+        weak var weakHosting: UIViewController?
+        let animView = TanghuluLaunchAnimationView {
+            weakHosting?.dismiss(animated: true, completion: nil)
+        }
+        let hosting = UIHostingController(rootView: animView)
+        weakHosting = hosting
+        hosting.view.backgroundColor = UIColor(red: 34.0 / 255.0, green: 34.0 / 255.0, blue: 34.0 / 255.0, alpha: 1.0)
+        hosting.modalPresentationStyle = .overFullScreen
+        hosting.modalTransitionStyle = .crossDissolve
+        parent.present(hosting, animated: false, completion: nil)
     }
     
     @objc @MainActor public static func isUnifiedConnected() -> Bool {

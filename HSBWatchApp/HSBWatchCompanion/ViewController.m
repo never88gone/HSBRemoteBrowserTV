@@ -129,6 +129,7 @@ static NSString * L(NSString *en, NSString *zh) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSConnectionStateChanged:) name:HSBTVOSConnectionStateNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchReachabilityChanged:) name:HSBWatchSessionReachabilityDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchActionReceived:) name:HSBWatchActionReceivedNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAppleTVNativePINRequired:) name:@"HSBAppleTVNativePINRequiredNotification" object:nil];
     [self applyThemeStyle];
     
     // 配置返回按钮仅展示纯图标箭头，隐藏冗余页面标题文字
@@ -171,8 +172,9 @@ static NSString * L(NSString *en, NSString *zh) {
             HSBAboutViewController *vc = [[HSBAboutViewController alloc] init];
             [self.navigationController pushViewController:vc animated:NO];
         });
-    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestRunAppleTVVerification"]) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestRunAppleTVVerification"] ||
+               [args containsObject:@"--run-appletv-tests"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [HSBAppleTVDiscoveryVerificationTest runAllTestsWithCompletion:^(BOOL allPassed, NSString * _Nonnull report) {
                 NSLog(@"[AppleTVVerificationTest]\n%@", report);
                 if (allPassed) {
@@ -241,6 +243,17 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    
+    static dispatch_once_t launchAnimToken;
+    dispatch_once(&launchAnimToken, ^{
+        NSArray *args = [NSProcessInfo processInfo].arguments;
+        BOOL isTestEnv = [args containsObject:@"--run-appletv-tests"] ||
+                         [args containsObject:@"--test-connect-device"] ||
+                         [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"];
+        if (!isTestEnv) {
+            [HSBModernRemoteBridge showLaunchEntranceAnimationOn:self];
+        }
+    });
 #if DEBUG
     if (getenv("AUTO_OPEN_REMOTE") || [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenRemote"]) {
         static dispatch_once_t autoOpenToken;
@@ -567,36 +580,50 @@ static NSString * L(NSString *en, NSString *zh) {
     titleLabel.text = [title uppercaseString];
     titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
     titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+    titleLabel.numberOfLines = 0;
+    titleLabel.lineBreakMode = NSLineBreakByWordWrapping;
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [titleLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    
+    valueLabel.numberOfLines = 0;
+    valueLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    [valueLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
     
     [view addSubview:titleLabel];
     [view addSubview:valueLabel];
     
     if (switchView) {
         [view addSubview:switchView];
+        [switchView setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+        [switchView setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+        
+        NSLayoutConstraint *switchTrailing = [switchView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-16];
+        switchTrailing.priority = UILayoutPriorityRequired;
+        
         [NSLayoutConstraint activateConstraints:@[
-            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:8],
-            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
+            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:10],
+            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
+            [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-12],
             
             [switchView.centerYAnchor constraintEqualToAnchor:view.centerYAnchor],
-            [switchView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
-            [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-8],
+            switchTrailing,
+            [switchView.widthAnchor constraintEqualToConstant:51],
             
             [valueLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
-            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
-            [valueLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-8],
-            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-8]
+            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
+            [valueLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-12],
+            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-10]
         ]];
     } else {
         [NSLayoutConstraint activateConstraints:@[
-            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:8],
-            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
-            [titleLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
+            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:10],
+            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
+            [titleLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-18],
             
             [valueLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
-            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:20],
-            [valueLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-20],
-            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-8]
+            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
+            [valueLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-18],
+            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-10]
         ]];
     }
     
@@ -1066,6 +1093,55 @@ static NSString * L(NSString *en, NSString *zh) {
     return cell;
 }
 
+#pragma mark - Native Apple TV PIN Pairing Handling
+
+- (void)handleAppleTVNativePINRequired:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // 关闭前置加载弹窗
+        if ([self.presentedViewController isKindOfClass:[UIAlertController class]]) {
+            [self.presentedViewController dismissViewControllerAnimated:NO completion:nil];
+        }
+        
+        void (^completion)(NSString *) = notification.userInfo[@"completion"];
+        
+        UIAlertController *pinAlert = [UIAlertController alertControllerWithTitle:L(@" 请输入电视上的 PIN 码", @" 请输入电视上的 PIN 码")
+                                                                          message:L(@"Apple TV 已发起原生安全配对。\n请查看电视屏幕上显示的 4 位数字配对码并输入：", @"Apple TV 已发起原生安全配对。\n请查看电视屏幕上显示的 4 位数字配对码并输入：")
+                                                                   preferredStyle:UIAlertControllerStyleAlert];
+        
+        [pinAlert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+            textField.placeholder = L(@"例如：1234", @"例如：1234");
+            textField.keyboardType = UIKeyboardTypeNumberPad;
+            textField.textAlignment = NSTextAlignmentCenter;
+            textField.font = [UIFont systemFontOfSize:22 weight:UIFontWeightBold];
+        }];
+        
+        __weak typeof(self) weakSelf = self;
+        [pinAlert addAction:[UIAlertAction actionWithTitle:L(@"配对连接", @"配对连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            NSString *pin = pinAlert.textFields.firstObject.text ?: @"";
+            pin = [pin stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (completion) {
+                completion(pin);
+            }
+            [weakSelf updateUI:^{
+                weakSelf.tvStatusLabel.text = L(@"🟡 正在验证 PIN 码并建立加密通道...", @"🟡 正在验证 PIN 码并建立加密通道...");
+                weakSelf.tvStatusLabel.textColor = [UIColor systemYellowColor];
+            }];
+        }]];
+        
+        [pinAlert addAction:[UIAlertAction actionWithTitle:L(@"取消", @"取消") style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+            if (completion) {
+                completion(@"");
+            }
+            [weakSelf updateUI:^{
+                weakSelf.tvStatusLabel.text = L(@"⚪️ 已取消配对", @"⚪️ 已取消配对");
+                weakSelf.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+            }];
+        }]];
+        
+        [self presentViewController:pinAlert animated:YES completion:nil];
+    });
+}
+
 - (void)connectAndPushToDevice:(HSBDiscoveredAppleTV *)device {
     if (!device) return;
     
@@ -1090,7 +1166,7 @@ static NSString * L(NSString *en, NSString *zh) {
     
     // 居中呈现连接中加载等待弹窗（支持用户随时取消）
     UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:L(@"正在连接电视", @"正在连接电视")
-                                                                          message:[NSString stringWithFormat:L(@"正在尝试连接 “%@”，建立安全通信通道...", @"正在尝试连接 “%@”，建立安全通信通道..."), device.name]
+                                                                          message:[NSString stringWithFormat:L(@"正在尝试连接 “%@”，建立安全通信通道...\n若电视屏幕弹出 PIN 码，稍后将自动提示输入", @"正在尝试连接 “%@”，建立安全通信通道...\n若电视屏幕弹出 PIN 码，稍后将自动提示输入"), device.name]
                                                                    preferredStyle:UIAlertControllerStyleAlert];
     
     __block BOOL isCancelled = NO;
@@ -1124,23 +1200,23 @@ static NSString * L(NSString *en, NSString *zh) {
                     }];
                     [weakSelf pushToModernRemoteWithDevice:device];
                 } else {
-                    // 连接失败：绝对不进入遥控器页面，停留在设备列表并呈现排查建议！
+                    // 连接未就绪：呈现详尽指引（清晰区分系统层 PIN 配对与专属浏览器扫码）
                     [weakSelf updateUI:^{
                         weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🔴 Failed to connect to %@", @"🔴 连接 %@ 失败"), device.name];
                         weakSelf.tvStatusLabel.textColor = [UIColor systemRedColor];
                     }];
                     
-                    NSString *msg = [NSString stringWithFormat:L(@"未能与 “%@” 建立安全连接。\n\n由于 Apple TV 伴随服务采用加密保护，首次使用请进行扫码配对：\n1. 在 Apple TV 桌面打开【糖葫芦视界】或【糖葫芦浏览器】；\n2. 点击电视首页顶部的【📱 手机遥控配对】；\n3. 点击下方【📷 立即扫码配对】扫描电视二维码，即可永久绑定。",
-                                                                             @"未能与 “%@” 建立安全连接。\n\n由于 Apple TV 伴随服务采用加密保护，首次使用请进行扫码配对：\n1. 在 Apple TV 桌面打开【糖葫芦视界】或【糖葫芦浏览器】；\n2. 点击电视首页顶部的【📱 手机遥控配对】；\n3. 点击下方【📷 立即扫码配对】扫描电视二维码，即可永久绑定。"), device.name];
+                    NSString *msg = [NSString stringWithFormat:L(@"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。",
+                                                                             @"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。"), device.name];
                     
-                    UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"需要电视端扫码配对", @"需要电视端扫码配对")
+                    UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"电视连接指引", @"电视连接指引")
                                                                                        message:msg
                                                                                 preferredStyle:UIAlertControllerStyleAlert];
-                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"📷 立即扫码配对", @"📷 立即扫码配对") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                        [weakSelf openQRCodeScanner];
-                    }]];
-                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"重试连接", @"重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"🔄 重试连接 (等待电视 PIN 码)", @"🔄 重试连接 (等待电视 PIN 码)") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
                         [weakSelf connectAndPushToDevice:device];
+                    }]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"📷 扫码连接专属浏览器", @"📷 扫码连接专属浏览器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        [weakSelf openQRCodeScanner];
                     }]];
                     [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
                     [weakSelf presentViewController:failAlert animated:YES completion:nil];

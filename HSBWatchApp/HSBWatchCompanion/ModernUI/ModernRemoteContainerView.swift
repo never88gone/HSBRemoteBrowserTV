@@ -926,12 +926,17 @@ private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoord
 }
 
 extension Color {
-    public static let tanghuluBrandBlue = Color(red: 28.0 / 255.0, green: 123.0 / 255.0, blue: 249.0 / 255.0)
+    /// 糖葫芦官方新版图标同源朱砂红 (#E02438)
+    public static let tanghuluAccentRed = Color(red: 224.0 / 255.0, green: 36.0 / 255.0, blue: 56.0 / 255.0)
+    /// 兼容旧命名，映射至新版朱砂红
+    public static let tanghuluBrandBlue = tanghuluAccentRed
+    
+    /// 深炭黑沉浸背景渐变
     public static let auroraBackgroundGradient = LinearGradient(
         gradient: Gradient(colors: [
-            Color(red: 10.0 / 255.0, green: 28.0 / 255.0, blue: 56.0 / 255.0),
-            Color(red: 6.0 / 255.0, green: 15.0 / 255.0, blue: 34.0 / 255.0),
-            Color(red: 2.0 / 255.0, green: 5.0 / 255.0, blue: 14.0 / 255.0)
+            Color(red: 37.0 / 255.0, green: 38.0 / 255.0, blue: 43.0 / 255.0),
+            Color(red: 28.0 / 255.0, green: 29.0 / 255.0, blue: 33.0 / 255.0),
+            Color(red: 20.0 / 255.0, green: 20.0 / 255.0, blue: 22.0 / 255.0)
         ]),
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -981,16 +986,16 @@ public struct ConnectionGuideModalView: View {
             
             // 核心图标与标题
             VStack(spacing: 8) {
-                Image(systemName: type == .browser ? "tv.and.mediabox" : "qrcode.viewfinder")
+                Image(systemName: type == .browser ? "tv.and.mediabox" : "appletvremote.gen4.fill")
                     .font(.system(size: 40))
                     .foregroundColor(.tanghuluBrandBlue)
                     .padding(.bottom, 4)
                 
-                Text(type == .browser ? "糖葫芦大屏应用连接指引" : "电视大屏安全配对指引")
+                Text(type == .browser ? "糖葫芦浏览器专属大屏控制" : " Apple TV 原生系统遥控配对")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                 
-                Text(type == .browser ? "请按照以下步骤，开启大屏沉浸微操通道" : "电视端全面支持大屏二维码即扫即连，无需输入 PIN 码")
+                Text(type == .browser ? "扫描电视专属二维码，开启网页光标微操与同传" : "支持全局控制 tvOS 桌面、音量、系统按键与各大 App")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -1004,34 +1009,34 @@ public struct ConnectionGuideModalView: View {
                 if type == .browser {
                     GuideStepRow(
                         stepNumber: 1,
-                        title: "打开电视端应用",
-                        detail: "使用电视遥控器，在 Apple TV 桌面点击打开【糖葫芦浏览器】App。"
+                        title: "打开电视端【糖葫芦浏览器】",
+                        detail: "使用电视遥控器在 Apple TV 桌面打开应用，进入主界面。"
                     )
                     GuideStepRow(
                         stepNumber: 2,
-                        title: "连接同一家庭 Wi-Fi",
-                        detail: "确保您的 iPhone 手机与 Apple TV 电视连接在同一个无线网络下。"
-                    )
-                    GuideStepRow(
-                        stepNumber: 3,
-                        title: "即开即连，无感连通",
-                        detail: "电视端应用启动后，手机遥控器将自动感应识别并连通，即可立即体验光标触控板与网页遥控。"
-                    )
-                } else {
-                    GuideStepRow(
-                        stepNumber: 1,
-                        title: "调出大屏配对二维码",
-                        detail: "在 Apple TV 打开【糖葫芦浏览器】或【糖葫芦视界】，屏幕主界面将呈现专属配对二维码。"
-                    )
-                    GuideStepRow(
-                        stepNumber: 2,
-                        title: "保持同一局域网 Wi-Fi",
-                        detail: "确保 iPhone 与 Apple TV 连接在同一 Wi-Fi 网络，保障毫秒级低延迟操控。"
+                        title: "调出屏幕右上角配对二维码",
+                        detail: "点击电视首页右上角的【📱 手机遥控配对】按钮呈现专属二维码。"
                     )
                     GuideStepRow(
                         stepNumber: 3,
                         title: "手机对准扫码秒连",
-                        detail: "点击下方【扫描电视二维码】，对准大屏二维码即可 0.5 秒完成加密双向配对与永久绑定。"
+                        detail: "点击下方【扫描电视二维码】，对准大屏即可极速建立网页光标控制通道。"
+                    )
+                } else {
+                    GuideStepRow(
+                        stepNumber: 1,
+                        title: "保持同一家庭 Wi-Fi 网络",
+                        detail: "确保 iPhone 与 Apple TV 连接在同一局域网 Wi-Fi 下。"
+                    )
+                    GuideStepRow(
+                        stepNumber: 2,
+                        title: "查看电视屏幕上的 4 位 PIN 码",
+                        detail: "发起连接后，Apple TV 系统屏幕正中央将弹出 4 位数字安全验证码。"
+                    )
+                    GuideStepRow(
+                        stepNumber: 3,
+                        title: "手机输入 PIN 码即可永久绑定",
+                        detail: "在手机弹出的输入框中输入该 PIN 码，一次配对后续永久自动免密连接。"
                     )
                 }
             }
@@ -1042,8 +1047,8 @@ public struct ConnectionGuideModalView: View {
             VStack(spacing: 10) {
                 Button(action: onPrimaryAction) {
                     HStack {
-                        Image(systemName: "qrcode.viewfinder")
-                        Text("扫描电视二维码配对")
+                        Image(systemName: type == .browser ? "qrcode.viewfinder" : "link.badge.plus")
+                        Text(type == .browser ? "扫描电视二维码" : "连接并等待输入 PIN 码")
                     }
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
@@ -1054,7 +1059,7 @@ public struct ConnectionGuideModalView: View {
                 .buttonStyle(PlainButtonStyle())
                 
                 Button(action: onSecondaryAction) {
-                    Text("我知道了")
+                    Text(type == .browser ? "暂不扫码" : "我知道了")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 40)

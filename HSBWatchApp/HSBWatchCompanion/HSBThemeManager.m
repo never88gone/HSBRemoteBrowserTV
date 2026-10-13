@@ -55,19 +55,19 @@ NSString * const HSBThemeChangedNotification = @"HSBThemeChangedNotification";
 }
 
 + (UIColor *)tanghuluBrandColor {
-    // 糖葫芦官方应用图标同源品牌天蓝 / 冰魄蓝 (#1C7BF9)
-    return [UIColor colorWithRed:28.0/255.0 green:123.0/255.0 blue:249.0/255.0 alpha:1.0];
+    // 糖葫芦官方新版图标同源品牌朱砂红 / 红宝石色 (#E02438)
+    return [UIColor colorWithRed:224.0/255.0 green:36.0/255.0 blue:56.0/255.0 alpha:1.0];
 }
 
 + (NSArray<UIColor *> *)brandGradientColors {
-    // 糖葫芦深空极光天蓝渐变色组：
-    // 顶部起始：深邃极光冰蓝 (#0A1C38)
-    // 中部过渡：神秘午夜深蓝 (#060F22)
-    // 底部结束：沉稳暗夜蓝黑 (#02050E)
+    // 糖葫芦深炭黑微光极简背景渐变色组：
+    // 顶部起始：深炭黑微光 (#25262B)
+    // 中部过渡：沉稳炭黑 (#1C1D21)
+    // 底部结束：纯粹暗夜黑 (#141416)
     return @[
-        [UIColor colorWithRed:10.0/255.0 green:28.0/255.0 blue:56.0/255.0 alpha:1.0],
-        [UIColor colorWithRed:6.0/255.0 green:15.0/255.0 blue:34.0/255.0 alpha:1.0],
-        [UIColor colorWithRed:2.0/255.0 green:5.0/255.0 blue:14.0/255.0 alpha:1.0]
+        [UIColor colorWithRed:37.0/255.0 green:38.0/255.0 blue:43.0/255.0 alpha:1.0],
+        [UIColor colorWithRed:28.0/255.0 green:29.0/255.0 blue:33.0/255.0 alpha:1.0],
+        [UIColor colorWithRed:20.0/255.0 green:20.0/255.0 blue:22.0/255.0 alpha:1.0]
     ];
 }
 
@@ -79,23 +79,23 @@ NSString * const HSBThemeChangedNotification = @"HSBThemeChangedNotification";
         [cgColors addObject:(id)color.CGColor];
     }
     gradient.colors = cgColors;
-    gradient.locations = @[@(0.0), @(0.45), @(1.0)];
+    gradient.locations = @[@(0.0), @(0.5), @(1.0)];
     gradient.startPoint = CGPointMake(0.0, 0.0);
     gradient.endPoint = CGPointMake(1.0, 1.0);
     return gradient;
 }
 
 - (HSBThemePalette *)currentPalette {
-    UIColor *bg = [UIColor colorWithRed:6.0/255.0 green:15.0/255.0 blue:34.0/255.0 alpha:1.0];
-    UIColor *brandBlue = [HSBThemeManager tanghuluBrandColor];
-    UIColor *secondaryBlue = [UIColor colorWithRed:10.0/255.0 green:90.0/255.0 blue:210.0/255.0 alpha:1.0];
-    // 卡片背景：深蓝磨砂半透明质感
-    UIColor *cardBg = [UIColor colorWithRed:14.0/255.0 green:25.0/255.0 blue:48.0/255.0 alpha:0.65];
-    return [HSBThemePalette paletteWithPrimary:brandBlue
-                                     secondary:secondaryBlue
+    UIColor *bg = [UIColor colorWithRed:20.0/255.0 green:20.0/255.0 blue:22.0/255.0 alpha:1.0];
+    UIColor *brandRed = [HSBThemeManager tanghuluBrandColor];
+    UIColor *secondaryRed = [UIColor colorWithRed:245.0/255.0 green:75.0/255.0 blue:90.0/255.0 alpha:1.0];
+    // 卡片背景：深炭黑磨砂半透明质感
+    UIColor *cardBg = [UIColor colorWithRed:36.0/255.0 green:37.0/255.0 blue:42.0/255.0 alpha:0.75];
+    return [HSBThemePalette paletteWithPrimary:brandRed
+                                     secondary:secondaryRed
                                         cardBg:cardBg
                                          bgCol:bg
-                                         glowC:[brandBlue colorWithAlphaComponent:0.25]
+                                         glowC:[brandRed colorWithAlphaComponent:0.25]
                                       gradient:[HSBThemeManager brandGradientColors]];
 }
 
