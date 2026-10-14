@@ -221,15 +221,18 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         }
         
         // 5. 触发原生通道连接与待机唤醒
+        DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)
         DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
         let nativePort = device.port > 0 ? device.port : 49152
         DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name, port: nativePort)
         DualModeRemoteCoordinator.shared.wakeDevice(host: device.host, completion: nil)
         
-        // 6. 在后台静默尝试连接伴随大屏端服务 (56789)
-        let screenEndpoint = nw_endpoint_create_host(device.host, "\(HSBRemoteConstants.screenDefaultPort)")
-        HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
-        DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
+        // 6. 仅在目标为电视时在后台尝试连接伴随大屏端服务 (56789)
+        if !device.isMacDevice {
+            let screenEndpoint = nw_endpoint_create_host(device.host, "\(HSBRemoteConstants.screenDefaultPort)")
+            HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
+            DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
+        }
     }
     
     @objc @MainActor public static func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)? = nil) {

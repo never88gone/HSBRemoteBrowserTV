@@ -29,9 +29,17 @@ import Network
         let isRealATV = (realAppleTVFlags & 0x4000) != 0
         record("Test 1.1: Apple TV PIN Pairing Flag (0x36782 & 0x4000 != 0)", passed: isRealATV)
         
-        let macFlags: UInt64 = 0x20300 // MacBook Companion Link
-        let isMacFiltered = (macFlags & 0x4000) == 0
-        record("Test 1.2: Filter out Mac / HomePod (0x20300 & 0x4000 == 0)", passed: isMacFiltered)
+        let macDevice = HSBDiscoveredAppleTV(
+            id: "MacBookPro18,1",
+            name: "MacBook Pro",
+            host: "MacBook-Pro.local",
+            port: 49152,
+            modelName: "MacBookPro18,1",
+            isNativeAppleTV: false,
+            isBrowserApp: false
+        )
+        let isMacRecognized = macDevice.isMacDevice && macDevice.deviceCategoryIconName == "laptopcomputer" && macDevice.displaySubtitle.contains("系统媒体控制就绪")
+        record("Test 1.2: Native macOS Media Terminal Recognition (Plan A)", passed: isMacRecognized, detail: "\(macDevice.deviceCategoryIconName), \(macDevice.displaySubtitle)")
         
         // Test 2: Model & Subtitle formatting (硬件专属)
         let testDevice = HSBDiscoveredAppleTV(
@@ -43,8 +51,8 @@ import Network
             isNativeAppleTV: true,
             isBrowserApp: false
         )
-        let hasCorrectSubtitle = testDevice.displaySubtitle.contains("AppleTV14,1") && testDevice.displaySubtitle.contains("系统原生硬件就绪")
-        record("Test 2: Device Subtitle Formatting (Hardware)", passed: hasCorrectSubtitle, detail: testDevice.displaySubtitle)
+        let hasCorrectSubtitle = testDevice.displaySubtitle.contains("AppleTV14,1") && testDevice.displaySubtitle.contains("系统原生硬件就绪") && testDevice.deviceCategoryIconName == "appletv.fill"
+        record("Test 2: Device Subtitle & Icon Formatting (Hardware)", passed: hasCorrectSubtitle, detail: testDevice.displaySubtitle)
         
         // Test 3: Dedicated Hardware Device Identification
         let hardDevice = HSBDiscoveredAppleTV(

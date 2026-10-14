@@ -121,42 +121,44 @@ public struct ModernRemoteContainerView: View {
                 if selectedMainTab == 0 {
                     // 遥控操作台 (含情境微操模式切换与交互面板)
                     VStack(spacing: 10) {
-                        Picker("遥控形态", selection: $selectedControlTab) {
-                            Text("系统").tag(0)
-                            Text("触控").tag(1)
-                            Text("IPTV").tag(2)
-                            Text("演讲").tag(3)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .padding(.horizontal, 16)
-                        
-                        // 电视未连接大屏时的轻量引导指引条 (大屏已连通时自动隐退，享受全屏沉浸操作)
-                        if !coordinatorObserver.isHSBBrowserConnected {
-                            Button(action: {
-                                lightHaptic.impactOccurred()
-                                NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
-                            }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "qrcode.viewfinder")
-                                        .foregroundColor(.tanghuluBrandBlue)
-                                        .font(.system(size: 13))
-                                    Text("尚未连接大屏？点击扫描电视二维码秒级连接")
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundColor(.primary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.secondary.opacity(0.6))
-                                }
-                                .padding(.vertical, 7)
-                                .padding(.horizontal, 14)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                                )
+                        if !coordinatorObserver.isTargetMac {
+                            Picker("遥控形态", selection: $selectedControlTab) {
+                                Text("系统").tag(0)
+                                Text("触控").tag(1)
+                                Text("IPTV").tag(2)
+                                Text("演讲").tag(3)
                             }
+                            .pickerStyle(SegmentedPickerStyle())
                             .padding(.horizontal, 16)
-                            .buttonStyle(PlainButtonStyle())
+                            
+                            // 电视未连接大屏时的轻量引导指引条 (大屏已连通时自动隐退，享受全屏沉浸操作)
+                            if !coordinatorObserver.isHSBBrowserConnected {
+                                Button(action: {
+                                    lightHaptic.impactOccurred()
+                                    NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "qrcode.viewfinder")
+                                            .foregroundColor(.tanghuluBrandBlue)
+                                            .font(.system(size: 13))
+                                        Text("尚未连接大屏？点击扫描电视二维码秒级连接")
+                                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                                            .foregroundColor(.primary)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.secondary.opacity(0.6))
+                                    }
+                                    .padding(.vertical, 7)
+                                    .padding(.horizontal, 14)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                                    )
+                                }
+                                .padding(.horizontal, 16)
+                                .buttonStyle(PlainButtonStyle())
+                            }
                         }
                         
                         remoteScenarioPanel
@@ -317,7 +319,10 @@ public struct ModernRemoteContainerView: View {
     @ViewBuilder
     private var remoteScenarioPanel: some View {
         ZStack {
-            if selectedControlTab == 0 {
+            if coordinatorObserver.isTargetMac {
+                // 方案 A：macOS 原生媒体控制中心 (免装软件原生直连)
+                MacOSMediaRemoteView(deviceName: coordinatorObserver.targetDeviceName)
+            } else if selectedControlTab == 0 {
                 // Tab 1: 系统遥控 (Apple TV 原生 D-pad 轮盘与一体化控制岛)
                 systemRemoteView
             } else if selectedControlTab == 1 && isBrowserRemoteVisible {
@@ -871,6 +876,8 @@ private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoord
     @Published var isHSBBrowserConnected: Bool = false
     @Published var browserDeviceName: String = ""
     @Published var isNativeConnected: Bool = false
+    @Published var isTargetMac: Bool = false
+    @Published var targetDeviceName: String = "Mac"
     private let coordinator: DualModeRemoteCoordinator
     
     init(coordinator: DualModeRemoteCoordinator) {
@@ -880,6 +887,8 @@ private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoord
         self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
         self.browserDeviceName = legacyMgr.deviceName ?? ""
         self.isNativeConnected = coordinator.nativeClient.isConnected
+        self.isTargetMac = coordinator.isCurrentTargetMac || CommandLine.arguments.contains("--test-mac-media")
+        self.targetDeviceName = coordinator.currentTargetDeviceName.isEmpty ? "Mac" : coordinator.currentTargetDeviceName
         coordinator.delegate = self
         
         NotificationCenter.default.addObserver(
@@ -909,6 +918,10 @@ private final class CoordinatorObservable: ObservableObject, DualModeRemoteCoord
             self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
             self.browserDeviceName = legacyMgr.deviceName ?? ""
             self.isNativeConnected = coordinator.nativeClient.isConnected
+            self.isTargetMac = coordinator.isCurrentTargetMac || CommandLine.arguments.contains("--test-mac-media")
+            if !coordinator.currentTargetDeviceName.isEmpty {
+                self.targetDeviceName = coordinator.currentTargetDeviceName
+            }
         }
     }
     

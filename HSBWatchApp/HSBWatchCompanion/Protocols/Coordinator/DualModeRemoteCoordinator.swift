@@ -61,6 +61,15 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     // 纯 itsytv 原生通道单连接模式 (Single Unified Native Connection)
     public var currentMode: HSBRemoteMode = .nativeOnly
     
+    // 当前目标设备是否为 Mac 终端 (方案 A: 原生媒体控制)
+    public var isCurrentTargetMac: Bool = false
+    public var currentTargetDeviceName: String = ""
+    
+    public func setCurrentTarget(device: HSBDiscoveredAppleTV) {
+        self.isCurrentTargetMac = device.isMacDevice
+        self.currentTargetDeviceName = device.name
+    }
+    
     public var currentState: HSBConnectionState {
         return stateMachine.currentState
     }
@@ -507,6 +516,10 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
         if currentMode == .nativeOnly || currentMode == .dual {
             switch state {
             case .ready(let name, _):
+                if name.lowercased().contains("mac") {
+                    self.isCurrentTargetMac = true
+                }
+                self.currentTargetDeviceName = name
                 let targetMode: HSBRemoteMode = (currentMode == .dual && screenClient.isConnected) ? .dual : .nativeOnly
                 stateMachine.handle(event: .socketConnected(deviceName: name, mode: targetMode))
             case .pairing(_, let pinNeeded):

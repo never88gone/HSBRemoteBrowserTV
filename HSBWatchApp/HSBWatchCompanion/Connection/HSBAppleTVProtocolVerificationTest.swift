@@ -80,15 +80,15 @@ import CryptoKit
         if let decodedTouch = OPACK.decodeDict(touchData),
            let action = decodedTouch["_i"] as? String,
            let content = decodedTouch["_c"] as? [String: Any] {
-            let cx = (content["_cx"] as? NSNumber)?.doubleValue
-            let cy = (content["_cy"] as? NSNumber)?.doubleValue
+            let cx = (content["_cx"] as? NSNumber)?.intValue
+            let cy = (content["_cy"] as? NSNumber)?.intValue
             let tPh = (content["_tPh"] as? NSNumber)?.intValue
             let tFg = (content["_tFg"] as? NSNumber)?.intValue
-            if action == "_touchEvent" && cx == 500.0 && cy == 350.0 && tPh == 2 && tFg == 1 {
+            if action == "_hidT" && cx == 500 && cy == 350 && tPh == 2 && tFg == 1 {
                 touchVerified = true
             }
         }
-        record("Test 2: OPACK 1000x1000 Virtual Space Touch Event Encoding", passed: touchVerified, detail: "cx: 500, cy: 350, phase: 2, flag: 1")
+        record("Test 2: OPACK 1000x1000 Virtual Space Touch Event Encoding", passed: touchVerified, detail: "action: _hidT, cx: 500, cy: 350, phase: 2, flag: 1")
 
         // ==========================================
         // 3. CompanionFrame 二进制帧编解码往返

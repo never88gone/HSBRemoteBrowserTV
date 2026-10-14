@@ -48,7 +48,28 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         return isNativeAppleTV && isBrowserApp
     }
     
+    @objc public var isMacDevice: Bool {
+        let lowerModel = (modelName ?? "").lowercased()
+        let lowerName = name.lowercased()
+        return lowerModel.contains("mac") || lowerName.contains("mac")
+    }
+    
+    @objc public var deviceCategoryIconName: String {
+        if isMacDevice {
+            let lower = (modelName ?? "").lowercased()
+            if lower.contains("book") {
+                return "laptopcomputer"
+            }
+            return "desktopcomputer"
+        }
+        return "appletv.fill"
+    }
+    
     @objc public var displaySubtitle: String {
+        if isMacDevice {
+            let modelStr = modelName ?? "Mac"
+            return "macOS (\(modelStr)) · 系统媒体控制就绪"
+        }
         if let model = modelName, !model.isEmpty {
             return "Apple TV (\(model)) · 系统原生硬件就绪"
         }
@@ -88,11 +109,39 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         self.isScanning = true
         self.deviceMap.removeAll()
         self.services.removeAll()
+        
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--test-device-list-mock") {
+            let macDev = HSBDiscoveredAppleTV(
+                id: "MacBookPro18,1",
+                name: "MacBook Pro (办公桌)",
+                host: "MacBook-Pro.local",
+                port: 49152,
+                modelName: "MacBookPro18,1",
+                isNativeAppleTV: false,
+                isBrowserApp: false
+            )
+            let tvDev = HSBDiscoveredAppleTV(
+                id: "LivingRoomATV",
+                name: "客厅 Apple TV 4K",
+                host: "Apple-TV-4K.local",
+                port: 61925,
+                modelName: "AppleTV14,1",
+                isNativeAppleTV: true,
+                isBrowserApp: true
+            )
+            self.deviceMap[macDev.id] = macDev
+            self.deviceMap[tvDev.id] = tvDev
+        }
         discoveryLock.unlock()
+        
+        if args.contains("--test-device-list-mock") {
+            notifyChange()
+        }
         
         log.info("Starting Apple TV Bonjour hardware discovery (_companion-link)...")
         
-        // 扫描 Apple TV 硬件 Companion Link 协议通道 (与 itsytv-macos 核心扫描服务完全一致)
+        // 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道 (与 itsytv-macos 核心扫描服务完全一致)
         let cBrowser = NetServiceBrowser()
         cBrowser.delegate = self
         cBrowser.schedule(in: .main, forMode: .common)
@@ -210,15 +259,23 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         log.info("Resolved Companion: \(serviceName) model=\(modelName ?? "nil") flags=0x\(String(flags, radix: 16))")
         NSLog("[BONJOUR_TRACE] Companion flags=0x%llx, model=%@ for %@", flags, modelName ?? "nil", serviceName)
         
-        // 核心硬件过滤规则 (参考 itsytv-macos DeviceDiscovery.swift:65-72)
-        // 只有 flags & 0x4000 != 0 才是具备 PIN 码原生配对能力的 Apple TV 物理硬件 (彻底排除同一局域网的 Mac、iPhone、HomePod)
-        guard (flags & 0x4000 != 0) || (modelName != nil && modelName!.contains("AppleTV")) else {
+        // 核心硬件与 Mac 媒体终端过滤规则：
+        // 1. 具备 PIN 码原生配对能力的 Apple TV 物理硬件 (flags & 0x4000 != 0 或 modelName 包含 AppleTV)
+        // 2. 具备免装软件媒体控制能力的 Mac 终端 (方案 A)：modelName 或设备名包含 Mac/iMac
+        let isDeviceMac: Bool = {
+            let lowerM = (modelName ?? "").lowercased()
+            let lowerN = cleanName.lowercased()
+            return lowerM.contains("mac") || lowerN.contains("mac")
+        }()
+        let isAppleTV = (flags & 0x4000 != 0) || (modelName != nil && modelName!.contains("AppleTV"))
+        
+        guard isAppleTV || isDeviceMac else {
             discoveryLock.lock()
             deviceMap.removeValue(forKey: cleanName)
             discoveryLock.unlock()
             notifyChange()
-            log.info("Filtered out non-AppleTV companion device: \(serviceName)")
-            NSLog("[BONJOUR_TRACE] Filtered out non-AppleTV: %@", serviceName)
+            log.info("Filtered out unsupported companion device: \(serviceName)")
+            NSLog("[BONJOUR_TRACE] Filtered out unsupported: %@", serviceName)
             return
         }
         
@@ -240,7 +297,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             host: host,
             port: port,
             modelName: modelName,
-            isNativeAppleTV: true,
+            isNativeAppleTV: !isDeviceMac,
             isBrowserApp: false,
             rawEndpoint: endpoint
         )
