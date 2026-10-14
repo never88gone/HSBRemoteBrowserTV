@@ -115,7 +115,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     // 4. 底部版权文字
     self.copyrightLabel = [[UILabel alloc] init];
-    self.copyrightLabel.text = @"Copyright © 2026 Never88gone. All rights reserved.";
+    self.copyrightLabel.text = @"Copyright © 2026 THL. All rights reserved.";
     self.copyrightLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
     self.copyrightLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.35];
     self.copyrightLabel.textAlignment = NSTextAlignmentCenter;
