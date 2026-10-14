@@ -157,11 +157,14 @@ static NSString * L(NSString *en, NSString *zh) {
                 });
             }
         });
-    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenSettings"]) {
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenSettings"] ||
+               [args containsObject:@"--test-open-settings"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [self openSettings];
         });
-    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenOpenSource"]) {
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenOpenSource"] ||
+               [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenComponents"] ||
+               [args containsObject:@"--test-open-components"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             HSBOpenSourceLibrariesViewController *vc = [[HSBOpenSourceLibrariesViewController alloc] init];
             [self.navigationController pushViewController:vc animated:NO];
@@ -176,7 +179,8 @@ static NSString * L(NSString *en, NSString *zh) {
             HSBLLMTestViewController *vc = [[HSBLLMTestViewController alloc] init];
             [self.navigationController pushViewController:vc animated:NO];
         });
-    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenAbout"]) {
+    } else if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenAbout"] ||
+               [args containsObject:@"--test-open-about"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             HSBAboutViewController *vc = [[HSBAboutViewController alloc] init];
             [self.navigationController pushViewController:vc animated:NO];
@@ -275,6 +279,9 @@ static NSString * L(NSString *en, NSString *zh) {
                          [args containsObject:@"--guide-browser"] ||
                          [args containsObject:@"--guide-system"] ||
                          [args containsObject:@"--test-mac-media"] ||
+                         [args containsObject:@"--test-open-components"] ||
+                         [args containsObject:@"--test-open-settings"] ||
+                         [args containsObject:@"--test-open-about"] ||
                          [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"];
         if (!isTestEnv) {
             [HSBModernRemoteBridge showLaunchEntranceAnimationOn:self];

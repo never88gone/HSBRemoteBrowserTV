@@ -180,8 +180,12 @@ static inline NSString * L(NSString *en, NSString *zh) {
         };
         cell.detailTextLabel.text = map[target] ?: target;
     } else if (indexPath.row == 4) {
-        cell.textLabel.text = L(@"Open Source Libraries", @"第三方库与开源许可");
-        cell.imageView.image = [UIImage systemImageNamed:@"shippingbox.fill"];
+        cell.textLabel.text = L(@"Third-Party Components", @"第三方组件");
+        UIImage *compIcon = [UIImage systemImageNamed:@"puzzlepiece.extension.fill"];
+        if (!compIcon) {
+            compIcon = [UIImage systemImageNamed:@"shippingbox.fill"];
+        }
+        cell.imageView.image = compIcon;
         cell.imageView.tintColor = palette.primaryColor;
     } else if (indexPath.row == 5) {
         cell.textLabel.text = L(@"Privacy Policy", @"隐私政策");
