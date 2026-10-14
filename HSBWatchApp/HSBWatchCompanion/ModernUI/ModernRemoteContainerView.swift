@@ -810,7 +810,7 @@ public struct ModernRemoteContainerView: View {
     
     // MARK: - Dual Channel Status Displays (大屏通道 & 系统原生通道)
     private var browserStatusColor: Color {
-        if coordinatorObserver.isHSBBrowserConnected {
+        if coordinatorObserver.isTargetMac || coordinatorObserver.isHSBBrowserConnected {
             return .tanghuluBrandBlue
         } else {
             return .gray
@@ -818,6 +818,9 @@ public struct ModernRemoteContainerView: View {
     }
     
     private var browserStatusText: String {
+        if coordinatorObserver.isTargetMac {
+            return "大屏: 已连接"
+        }
         if coordinatorObserver.isHSBBrowserConnected {
             let name = coordinatorObserver.browserDeviceName.isEmpty ? "已连接" : coordinatorObserver.browserDeviceName
             return "大屏: \(name)"
@@ -827,7 +830,7 @@ public struct ModernRemoteContainerView: View {
     }
     
     private var systemStatusColor: Color {
-        if coordinatorObserver.isNativeConnected {
+        if coordinatorObserver.isTargetMac || coordinatorObserver.isNativeConnected {
             return .tanghuluBrandBlue
         }
         if coordinatorObserver.isHSBBrowserConnected {
@@ -843,6 +846,9 @@ public struct ModernRemoteContainerView: View {
     }
     
     private var systemStatusText: String {
+        if coordinatorObserver.isTargetMac {
+            return "系统: 已连接"
+        }
         if coordinatorObserver.isNativeConnected {
             return "系统: 已连接"
         }
