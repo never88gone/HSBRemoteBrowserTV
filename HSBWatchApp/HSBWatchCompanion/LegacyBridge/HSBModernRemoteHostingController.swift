@@ -102,6 +102,15 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         return HSBModernRemoteHostingController()
     }
     
+    @objc @MainActor public static func setCurrentTargetDevice(_ device: HSBDiscoveredAppleTV?) {
+        if let dev = device {
+            DualModeRemoteCoordinator.shared.setCurrentTarget(device: dev)
+            if dev.isMacDevice {
+                DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
+            }
+        }
+    }
+    
     @objc @MainActor public static func connectWithHost(_ host: String, port: Int, deviceName: String) {
         if !DualModeRemoteCoordinator.shared.nativeClient.isConnected {
             DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
@@ -128,6 +137,16 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         let currentHost = DualModeRemoteCoordinator.shared.nativeClient.currentHost
         if (isNative || isScreen), (currentHost == device.host || currentHost == nil) {
             DispatchQueue.main.async {
+                completion?(true, nil)
+            }
+            return
+        }
+        
+        // 方案 A：针对 macOS 原生媒体终端直连，设置目标设备并就绪
+        if device.isMacDevice {
+            DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)
+            DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 completion?(true, nil)
             }
             return

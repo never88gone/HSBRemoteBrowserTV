@@ -178,6 +178,13 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
             }()
             HSBTVOSConnectionManager.shared().sendSimulateAction(simAction)
         }
+        if isCurrentTargetMac {
+            if direction == .left {
+                dispatchMacMediaCommand("previous")
+            } else if direction == .right {
+                dispatchMacMediaCommand("next")
+            }
+        }
         switch currentMode {
         case .screenOnly:
             screenClient.send(command: .button(action: direction.actionName))
@@ -361,18 +368,27 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
                 nativeClient.sendSystemKey(.menu)
             }
         case .volumeUp:
+            if isCurrentTargetMac {
+                dispatchMacMediaCommand("volume_up")
+            }
             if currentMode == .nativeOnly {
                 nativeClient.sendSystemKey(.volumeUp)
             } else {
                 screenClient.send(command: .volume(action: "volume_up", value: nil))
             }
         case .volumeDown:
+            if isCurrentTargetMac {
+                dispatchMacMediaCommand("volume_down")
+            }
             if currentMode == .nativeOnly {
                 nativeClient.sendSystemKey(.volumeDown)
             } else {
                 screenClient.send(command: .volume(action: "volume_down", value: nil))
             }
         case .mute:
+            if isCurrentTargetMac {
+                dispatchMacMediaCommand("mute")
+            }
             if currentMode == .nativeOnly {
                 nativeClient.sendMRPMuteToggle()
             } else {
@@ -381,6 +397,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         case .power:
             nativeClient.sendSystemKey(.power)
         case .playPause:
+            if isCurrentTargetMac {
+                dispatchMacMediaCommand("play_pause")
+            }
             if currentMode == .screenOnly {
                 screenClient.send(command: .media(action: .play, value: nil))
             } else {
@@ -473,6 +492,22 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
                 self?.stateMachine.handle(event: .pairingSucceeded)
             }
             completion?(success)
+        }
+    }
+    
+    // MARK: - Mac System Media Bridge Dispatcher
+    public func dispatchMacMediaCommand(_ action: String) {
+        guard isCurrentTargetMac else { return }
+        let urls = [
+            "http://127.0.0.1:49888/control?action=\(action)",
+            "http://localhost:49888/control?action=\(action)"
+        ]
+        for urlStr in urls {
+            if let url = URL(string: urlStr) {
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 0.5
+                URLSession.shared.dataTask(with: req).resume()
+            }
         }
     }
 }

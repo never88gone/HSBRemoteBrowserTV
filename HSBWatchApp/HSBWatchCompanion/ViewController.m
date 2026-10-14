@@ -212,6 +212,16 @@ static NSString * L(NSString *en, NSString *zh) {
                 [self tableView:self.tvTableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
             }
         });
+    } else if ([args containsObject:@"--test-connect-mac"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            for (NSInteger i = 0; i < self.discoveredDevices.count; i++) {
+                HSBDiscoveredAppleTV *dev = self.discoveredDevices[i];
+                if (dev.isMacDevice) {
+                    [self tableView:self.tvTableView didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:i inSection:0]];
+                    break;
+                }
+            }
+        });
     } else if ([args containsObject:@"--test-mac-media"]) {
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             HSBDiscoveredAppleTV *macDev = [[HSBDiscoveredAppleTV alloc] initWithId:@"MacBookPro18,1"
@@ -274,6 +284,7 @@ static NSString * L(NSString *en, NSString *zh) {
         NSArray *args = [NSProcessInfo processInfo].arguments;
         BOOL isTestEnv = [args containsObject:@"--run-appletv-tests"] ||
                          [args containsObject:@"--test-connect-device"] ||
+                         [args containsObject:@"--test-connect-mac"] ||
                          [args containsObject:@"--test-pin-alert"] ||
                          [args containsObject:@"--guide-pin"] ||
                          [args containsObject:@"--guide-browser"] ||
@@ -818,6 +829,9 @@ static NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)pushToModernRemoteWithDevice:(HSBDiscoveredAppleTV *)device {
+    if (device) {
+        [HSBModernRemoteBridge setCurrentTargetDevice:device];
+    }
     UIViewController *modernVC = [HSBModernRemoteBridge createModernRemoteViewController];
     modernVC.hidesBottomBarWhenPushed = YES;
     if (self.navigationController) {
