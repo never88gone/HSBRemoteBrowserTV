@@ -103,6 +103,25 @@ public final class PairingFlow {
             return
         }
         let step = tlv[.state]?.first ?? 0
+        
+        // 优先检查 Apple TV 返回的错误码（例如 0x03 退避频控锁定期）
+        if let errByte = tlv[.error]?.first {
+            var errorMsg = "Apple TV 配对错误 (代码: \(errByte))"
+            if errByte == 0x03 {
+                var delaySec = 60
+                if let delayData = tlv[.retryDelay] {
+                    if delayData.count >= 2 {
+                        delaySec = Int(UInt16(delayData[0]) | (UInt16(delayData[1]) << 8))
+                    } else if delayData.count == 1 {
+                        delaySec = Int(delayData[0])
+                    }
+                }
+                errorMsg = "Apple TV 正在配对安全保护期（频控锁定中，还剩 \(delaySec) 秒）。请稍候再试，或将 Apple TV 重启即可立即解除锁定并弹出 PIN 码。"
+            }
+            Log.companion.fail("Companion PS_Next error \(errByte): \(errorMsg)")
+            delegate.setState(.error(errorMsg))
+            return
+        }
 
         switch step {
         case 2:  // M2: ATV sent salt + public key → need PIN
@@ -148,6 +167,12 @@ public final class PairingFlow {
         }
         let step = tlv[.state]?.first ?? 0
         Log.companion.trace("Companion pvNext step=\(step) (\(extracted.count) bytes TLV8)")
+        
+        if let errByte = tlv[.error]?.first {
+            delegate.deleteCredentials(deviceID)
+            delegate.setState(.error("Pair verify rejected by ATV (error: \(errByte))"))
+            return
+        }
 
         switch step {
         case 2:  // M2: ATV sent ephemeral key + encrypted identity

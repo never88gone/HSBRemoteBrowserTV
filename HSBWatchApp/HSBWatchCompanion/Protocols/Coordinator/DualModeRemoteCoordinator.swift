@@ -138,12 +138,15 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         legacyMgr.connect(to: endpoint, deviceName: deviceName)
         
         var host = "apple-tv.local"
+        var port: UInt16 = 49152
         if nw_endpoint_get_type(endpoint) == nw_endpoint_type_host {
             host = String(cString: nw_endpoint_get_hostname(endpoint))
+            let p = nw_endpoint_get_port(endpoint)
+            if p > 0 { port = p }
         } else if nw_endpoint_get_type(endpoint) == nw_endpoint_type_bonjour_service {
             host = "\(String(cString: nw_endpoint_get_bonjour_service_name(endpoint))).local"
         }
-        connectToNative(host: host, deviceName: deviceName)
+        connectToNative(host: host, deviceName: deviceName, port: port)
     }
     
     public func connectToScreen(endpoint: nw_endpoint_t, deviceName: String) {
