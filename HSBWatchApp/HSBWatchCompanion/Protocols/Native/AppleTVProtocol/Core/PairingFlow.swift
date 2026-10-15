@@ -155,6 +155,7 @@ public final class PairingFlow {
                 let m3 = try pairVerify?.processM2(extracted) ?? Data()
                 delegate.sendFrame(.pvNext, OPACK.wrapPairingData(m3))
             } catch {
+                delegate.deleteCredentials(deviceID)
                 delegate.setState(.error("Pair verify M2 failed: \(error)"))
             }
 
@@ -167,9 +168,7 @@ public final class PairingFlow {
                 }
                 delegate.setState(.connected)
             } catch {
-                if case CompanionPairVerify.VerifyError.serverError = error {
-                    delegate.deleteCredentials(deviceID)
-                }
+                delegate.deleteCredentials(deviceID)
                 delegate.setState(.error("Pair verify failed: \(error)\nPress Connect to re-pair."))
             }
 

@@ -1185,27 +1185,20 @@ static NSString * L(NSString *en, NSString *zh) {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSLog(@"[NativePIN] Received HSBAppleTVNativePINRequiredNotification in ViewController");
         
-        // 1. 若当前有正在展示的连接等待弹窗，平滑更新其信息，引导用户关注顶层 PIN 码输入框
-        if (self.currentLoadingAlert) {
-            self.currentLoadingAlert.message = L(@"Apple TV 已在大屏显示 4 位 PIN 码，\n请在屏幕上方的弹窗中输入完成绑定", @"Apple TV 已在大屏显示 4 位 PIN 码，\n请在屏幕上方的弹窗中输入完成绑定");
-        }
+        void (^completion)(NSString *) = notification.userInfo[@"completion"];
+        NSString *deviceName = notification.userInfo[@"name"];
         
         [self updateUI:^{
-            self.tvStatusLabel.text = L(@"🟡 请输入电视上的 4 位 PIN 码...", @"🟡 请输入电视上的 4 位 PIN 码...");
+            self.tvStatusLabel.text = L(@"🟡 请在屏幕弹窗中输入电视上的 4 位 PIN 码...", @"🟡 请在屏幕弹窗中输入电视上的 4 位 PIN 码...");
             self.tvStatusLabel.textColor = [UIColor systemYellowColor];
         }];
         
-        // 2. 独立高优先级 UIWindow 呈现器已统一接管弹窗展示（HSBNativePINAlertPresenter.shared）
-        // 若由于极端场景未激活，此处执行兜底调用
-        if (![HSBNativePINAlertPresenter shared].isPresenting) {
-            void (^completion)(NSString *) = notification.userInfo[@"completion"];
-            NSString *deviceName = notification.userInfo[@"name"];
-            [[HSBNativePINAlertPresenter shared] presentPINAlertWithDeviceName:deviceName completion:^(NSString * _Nonnull pin) {
-                if (completion) {
-                    completion(pin);
-                }
-            }];
-        }
+        // 顶层主 Window 安全呈现器：标准呈现弹窗，100% 自动唤起系统数字键盘
+        [[HSBNativePINAlertPresenter shared] presentPINAlertWithDeviceName:deviceName completion:^(NSString * _Nonnull pin) {
+            if (completion) {
+                completion(pin);
+            }
+        }];
     });
 }
 
@@ -1216,9 +1209,6 @@ static NSString * L(NSString *en, NSString *zh) {
             self.tvStatusLabel.text = L(@"🟡 正在验证 PIN 码并建立加密通道...", @"🟡 正在验证 PIN 码并建立加密通道...");
             self.tvStatusLabel.textColor = [UIColor systemYellowColor];
         }];
-        if (self.currentLoadingAlert) {
-            self.currentLoadingAlert.message = L(@"正在验证 PIN 码并建立加密通道...", @"正在验证 PIN 码并建立加密通道...");
-        }
     });
 }
 
@@ -1231,10 +1221,6 @@ static NSString * L(NSString *en, NSString *zh) {
             self.tvStatusLabel.text = L(@"⚪️ 已取消配对", @"⚪️ 已取消配对");
             self.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
         }];
-        if (self.currentLoadingAlert) {
-            [self.currentLoadingAlert dismissViewControllerAnimated:YES completion:nil];
-            self.currentLoadingAlert = nil;
-        }
     });
 }
 
@@ -1265,83 +1251,58 @@ static NSString * L(NSString *en, NSString *zh) {
         self.tvStatusLabel.textColor = [UIColor systemYellowColor];
     }];
     
-    // 居中呈现连接中加载等待弹窗（支持用户随时取消）
-    NSString *alertTitle = isMac ? L(@"正在连接 Mac 媒体终端", @"正在连接 Mac 媒体终端") : L(@"正在连接电视", @"正在连接电视");
-    NSString *alertMsg = isMac ? [NSString stringWithFormat:L(@"正在尝试连接 “%@”，建立原生媒体控制通道...\n免装软件即可控制 Apple Music、系统音量与媒体播放", @"正在尝试连接 “%@”，建立原生媒体控制通道...\n免装软件即可控制 Apple Music、系统音量与媒体播放"), device.name]
-                               : [NSString stringWithFormat:L(@"正在尝试连接 “%@”，建立安全通信通道...\n若电视屏幕弹出 PIN 码，稍后将自动提示输入", @"正在尝试连接 “%@”，建立安全通信通道...\n若电视屏幕弹出 PIN 码，稍后将自动提示输入"), device.name];
-    UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:alertTitle
-                                                                          message:alertMsg
-                                                                   preferredStyle:UIAlertControllerStyleAlert];
-    self.currentLoadingAlert = loadingAlert;
-    
-    __block BOOL isCancelled = NO;
     __weak typeof(self) weakSelf = self;
-    [loadingAlert addAction:[UIAlertAction actionWithTitle:L(@"取消", @"取消") style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
-        isCancelled = YES;
-        weakSelf.currentLoadingAlert = nil;
-        weakSelf.connectingDeviceHost = nil;
-        [weakSelf.tvTableView reloadData];
-        [weakSelf updateUI:^{
-            weakSelf.tvStatusLabel.text = L(@"⚪️ Connection Cancelled", @"⚪️ 已取消连接");
-            weakSelf.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-        }];
-    }]];
     
-    [self presentViewController:loadingAlert animated:YES completion:nil];
-    
-    // 异步执行双模探测、待机唤醒与通道建立
+    // 异步执行双模探测、待机唤醒与通道建立（非模态，零冲突）
     [HSBModernRemoteBridge connectToDiscoveredDevice:device timeout:6.0 completion:^(BOOL success, NSString * _Nullable errorMsg) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (isCancelled) return;
-            
             weakSelf.connectingDeviceHost = nil;
             [weakSelf.tvTableView reloadData];
             
-            [loadingAlert dismissViewControllerAnimated:YES completion:^{
-                weakSelf.currentLoadingAlert = nil;
-                if (success) {
-                    // 连接成功：更新状态并平滑推进遥控器页面！
-                    [weakSelf updateUI:^{
-                        weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@", @"🟢 已连接至 %@"), device.name];
-                        weakSelf.tvStatusLabel.textColor = [UIColor systemGreenColor];
-                    }];
-                    [weakSelf pushToModernRemoteWithDevice:device];
+            if (success) {
+                // 连接成功：更新状态并平滑推进遥控器页面！
+                [weakSelf updateUI:^{
+                    weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🟢 Connected to %@", @"🟢 已连接至 %@"), device.name];
+                    weakSelf.tvStatusLabel.textColor = [UIColor systemGreenColor];
+                }];
+                [weakSelf pushToModernRemoteWithDevice:device];
+            } else {
+                // 连接未就绪：呈现详尽指引（根据设备类型自适应）
+                [weakSelf updateUI:^{
+                    weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🔴 Failed to connect to %@", @"🔴 连接 %@ 失败"), device.name];
+                    weakSelf.tvStatusLabel.textColor = [UIColor systemRedColor];
+                }];
+                
+                if (isMac) {
+                    NSString *macMsg = [NSString stringWithFormat:L(@"未能与 “%@” 建立原生媒体控制通道。\n\n• 开启免装软件控制通道：\n请确认 Mac 的 [系统设置] -> [通用] -> [隔空播放与接力] 中，已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与 Mac 连接在同一局域网 Wi-Fi 下。",
+                                                                            @"未能与 “%@” 建立原生媒体控制通道。\n\n• 开启免装软件控制通道：\n请确认 Mac 的 [系统设置] -> [通用] -> [隔空播放与接力] 中，已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与 Mac 连接在同一局域网 Wi-Fi 下。"), device.name];
+                    UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"Mac 连接指引", @"Mac 连接指引")
+                                                                                       message:macMsg
+                                                                                preferredStyle:UIAlertControllerStyleAlert];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"🔄 重试连接", @"🔄 重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        [weakSelf connectAndPushToDevice:device];
+                    }]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
+                    [weakSelf presentViewController:failAlert animated:YES completion:nil];
                 } else {
-                    // 连接未就绪：呈现详尽指引（根据设备类型自适应）
-                    [weakSelf updateUI:^{
-                        weakSelf.tvStatusLabel.text = [NSString stringWithFormat:L(@"🔴 Failed to connect to %@", @"🔴 连接 %@ 失败"), device.name];
-                        weakSelf.tvStatusLabel.textColor = [UIColor systemRedColor];
-                    }];
+                    NSString *msg = [NSString stringWithFormat:L(@"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。",
+                                                                             @"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。"), device.name];
                     
-                    if (isMac) {
-                        NSString *macMsg = [NSString stringWithFormat:L(@"未能与 “%@” 建立原生媒体控制通道。\n\n• 开启免装软件控制通道：\n请确认 Mac 的 [系统设置] -> [通用] -> [隔空播放与接力] 中，已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与 Mac 连接在同一局域网 Wi-Fi 下。",
-                                                                                @"未能与 “%@” 建立原生媒体控制通道。\n\n• 开启免装软件控制通道：\n请确认 Mac 的 [系统设置] -> [通用] -> [隔空播放与接力] 中，已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与 Mac 连接在同一局域网 Wi-Fi 下。"), device.name];
-                        UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"Mac 连接指引", @"Mac 连接指引")
-                                                                                           message:macMsg
-                                                                                    preferredStyle:UIAlertControllerStyleAlert];
-                        [failAlert addAction:[UIAlertAction actionWithTitle:L(@"🔄 重试连接", @"🔄 重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                            [weakSelf connectAndPushToDevice:device];
-                        }]];
-                        [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
-                        [weakSelf presentViewController:failAlert animated:YES completion:nil];
-                    } else {
-                        NSString *msg = [NSString stringWithFormat:L(@"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。",
-                                                                                 @"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。"), device.name];
-                        
-                        UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"电视连接指引", @"电视连接指引")
-                                                                                           message:msg
-                                                                                    preferredStyle:UIAlertControllerStyleAlert];
-                        [failAlert addAction:[UIAlertAction actionWithTitle:L(@"🔄 重试连接 (等待电视 PIN 码)", @"🔄 重试连接 (等待电视 PIN 码)") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                            [weakSelf connectAndPushToDevice:device];
-                        }]];
-                        [failAlert addAction:[UIAlertAction actionWithTitle:L(@"📷 扫码连接专属浏览器", @"📷 扫码连接专属浏览器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                            [weakSelf openQRCodeScanner];
-                        }]];
-                        [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
-                        [weakSelf presentViewController:failAlert animated:YES completion:nil];
-                    }
+                    UIAlertController *failAlert = [UIAlertController alertControllerWithTitle:L(@"电视连接指引", @"电视连接指引")
+                                                                                       message:msg
+                                                                                preferredStyle:UIAlertControllerStyleAlert];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"🔄 重试连接 (等待电视 PIN 码)", @"🔄 重试连接 (等待电视 PIN 码)") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        // 显式清理旧凭据，确保 Apple TV 必定发起 Pair-Setup 并弹出 PIN 码！
+                        [HSBModernRemoteBridge clearCredentialsForDevice:device.name];
+                        [weakSelf connectAndPushToDevice:device];
+                    }]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"📷 扫码连接专属浏览器", @"📷 扫码连接专属浏览器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        [weakSelf openQRCodeScanner];
+                    }]];
+                    [failAlert addAction:[UIAlertAction actionWithTitle:L(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
+                    [weakSelf presentViewController:failAlert animated:YES completion:nil];
                 }
-            }];
+            }
         });
     }];
 }

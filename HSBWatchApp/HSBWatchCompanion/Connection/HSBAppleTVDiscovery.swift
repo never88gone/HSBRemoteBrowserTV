@@ -279,8 +279,26 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             return
         }
         
-        // 处理主机名与端口
-        var host = service.hostName ?? "\(serviceName).local"
+        // 处理主机名与端口：优先从 Bonjour 解析出的 sockaddr 数据中提取真实 IPv4 数字地址，避免 mDNS 寻址失败
+        var resolvedIPv4: String? = nil
+        if let addresses = service.addresses {
+            for addrData in addresses {
+                addrData.withUnsafeBytes { rawPtr in
+                    guard let sa = rawPtr.baseAddress?.assumingMemoryBound(to: sockaddr.self) else { return }
+                    if sa.pointee.sa_family == sa_family_t(AF_INET) {
+                        let sin = rawPtr.baseAddress!.assumingMemoryBound(to: sockaddr_in.self)
+                        var ipBuf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                        var sinAddr = sin.pointee.sin_addr
+                        if inet_ntop(AF_INET, &sinAddr, &ipBuf, socklen_t(INET_ADDRSTRLEN)) != nil {
+                            resolvedIPv4 = String(cString: ipBuf)
+                        }
+                    }
+                }
+                if resolvedIPv4 != nil { break }
+            }
+        }
+        
+        var host = resolvedIPv4 ?? service.hostName ?? "\(serviceName).local"
         if host.hasSuffix(".") {
             host = String(host.dropLast())
         }

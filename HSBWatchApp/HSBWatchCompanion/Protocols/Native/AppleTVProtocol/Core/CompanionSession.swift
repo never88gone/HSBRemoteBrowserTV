@@ -113,6 +113,7 @@ public final class CompanionSession {
         pendingCallbacks.removeAll()
         currentTextInputData = nil
         // Closing the fd unblocks the blocking read() in startReadLoop.
+        Darwin.shutdown(fd, SHUT_RDWR)
         Darwin.close(fd)
     }
 

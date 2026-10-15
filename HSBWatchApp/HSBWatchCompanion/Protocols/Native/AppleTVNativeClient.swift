@@ -172,7 +172,9 @@ public final class AppleTVNativeClient: NSObject {
             var fd: Int32 = -1
             let trialFD = Darwin.socket(AF_INET, SOCK_STREAM, 0)
             if trialFD >= 0 {
+                #if os(macOS)
                 PrimaryInterface.bindSourceAddress(fd: trialFD, logHost: host)
+                #endif
                 
                 let flags = fcntl(trialFD, F_GETFL, 0)
                 _ = fcntl(trialFD, F_SETFL, flags | O_NONBLOCK)
@@ -304,6 +306,8 @@ public final class AppleTVNativeClient: NSObject {
                 case .error(let msg):
                     self.isConnected = false
                     self.isPairing = false
+                    self.credentialStore.delete(deviceID: device.id)
+                    self.credentialStore.delete(deviceID: device.name)
                     self.delegate?.nativeClient(self, didChangeState: .failed(error: msg))
                     
                 case .disconnected:
@@ -335,6 +339,11 @@ public final class AppleTVNativeClient: NSObject {
                 self?.credentialStore.delete(deviceID: deviceID)
             }
         )
+    }
+    
+    // MARK: - Credentials Management
+    public func clearCredentials(for deviceName: String) {
+        credentialStore.delete(deviceID: deviceName)
     }
     
     // MARK: - PIN Submission

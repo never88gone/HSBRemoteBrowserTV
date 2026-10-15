@@ -122,6 +122,10 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: deviceName)
     }
     
+    @objc(clearCredentialsForDevice:) @MainActor public static func clearCredentials(for deviceName: String) {
+        DualModeRemoteCoordinator.shared.clearNativeCredentials(for: deviceName)
+    }
+    
     @objc @MainActor public static func connectToDiscoveredDevice(_ device: HSBDiscoveredAppleTV) {
         connectToDiscoveredDevice(device, timeout: 6.0, completion: nil)
     }

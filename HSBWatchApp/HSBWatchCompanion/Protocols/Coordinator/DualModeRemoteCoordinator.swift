@@ -495,6 +495,10 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         }
     }
     
+    @objc public func clearNativeCredentials(for deviceName: String) {
+        nativeClient.clearCredentials(for: deviceName)
+    }
+    
     // MARK: - Mac System Media Bridge Dispatcher
     public func dispatchMacMediaCommand(_ action: String) {
         guard isCurrentTargetMac else { return }
