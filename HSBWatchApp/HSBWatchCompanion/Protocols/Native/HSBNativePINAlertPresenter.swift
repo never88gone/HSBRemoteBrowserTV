@@ -21,18 +21,25 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         super.init()
     }
     
-    /// 获取当前活跃的最顶层 UIViewController
-    public static func topVisibleViewController() -> UIViewController? {
+    /// 获取最顶层可用于 present 的有效宿主视图控制器（避开 UIAlertController 冲突）
+    public static func topHostViewController() -> UIViewController? {
         let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
         let activeScene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
         let window = activeScene?.windows.first { $0.isKeyWindow } ?? activeScene?.windows.first
         var top = window?.rootViewController
+        
         while let presented = top?.presentedViewController {
+            if presented is UIAlertController {
+                // 如果最顶层正有 UIAlertController，以其父控制器作为宿主，稍后将其安全 dismiss
+                break
+            }
             top = presented
         }
         if let nav = top as? UINavigationController {
             top = nav.topViewController ?? nav
+        } else if let tab = top as? UITabBarController {
+            top = tab.selectedViewController ?? tab
         }
         return top
     }
@@ -46,8 +53,8 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
             dismissAlert(animated: false)
         }
         
-        guard let topVC = Self.topVisibleViewController() else {
-            Log.companion.fail("[NativePIN] 未能找到顶层 UIViewController，无法弹出 PIN 码输入框")
+        guard let hostVC = Self.topHostViewController() else {
+            Log.companion.fail("[NativePIN] 未能找到宿主 UIViewController，无法弹出 PIN 码输入框")
             completion("")
             return
         }
@@ -67,7 +74,7 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
             textField.placeholder = "4 位数字 PIN 码"
             textField.keyboardType = .numberPad
             textField.textAlignment = .center
-            textField.font = UIFont.systemFont(ofSize: 26, weight: .bold)
+            textField.font = UIFont.systemFont(ofSize: 28, weight: .bold)
             textField.textColor = UIColor.label
             textField.delegate = self
             textField.returnKeyType = .done
@@ -109,16 +116,22 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         alert.addAction(pairAction)
         alert.addAction(cancelAction)
         
-        let presentBlock = {
-            topVC.present(alert, animated: true) {
+        let doPresent = { [weak alert, weak hostVC] in
+            guard let alert = alert, let host = hostVC else { return }
+            host.present(alert, animated: true) {
+                // 确保在主线程第一响应者弹起系统数字键盘
                 alert.textFields?.first?.becomeFirstResponder()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    alert.textFields?.first?.becomeFirstResponder()
+                }
             }
         }
         
-        if let currentPresented = topVC.presentedViewController, currentPresented is UIAlertController {
-            currentPresented.dismiss(animated: false, completion: presentBlock)
+        // 如果宿主当前已呈现控制器（如先前的提示弹窗），先将其无动画 dismiss，杜绝 presentation 冲突
+        if let presented = hostVC.presentedViewController {
+            presented.dismiss(animated: false, completion: doPresent)
         } else {
-            presentBlock()
+            doPresent()
         }
     }
     
@@ -145,6 +158,10 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         shouldChangeCharactersIn range: NSRange,
         replacementString string: String
     ) -> Bool {
+        // 允许退格删除
+        if string.isEmpty {
+            return true
+        }
         let allowed = CharacterSet.decimalDigits
         let characterSet = CharacterSet(charactersIn: string)
         if !allowed.isSuperset(of: characterSet) {

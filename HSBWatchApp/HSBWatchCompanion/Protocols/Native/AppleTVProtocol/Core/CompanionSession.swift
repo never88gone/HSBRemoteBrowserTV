@@ -434,6 +434,16 @@ public final class CompanionSession {
                 let n = Darwin.read(fd, &buf, buf.count)
                 if n <= 0 {
                     let err = n < 0 ? errno : 0
+                    if err == EINTR {
+                        continue
+                    }
+                    if err == EAGAIN || err == EWOULDBLOCK {
+                        var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+                        let ret = poll(&pfd, 1, 1000)
+                        if ret >= 0 {
+                            continue
+                        }
+                    }
                     let reason = err == 0 ? "EOF (ATV closed connection)" :
                                  "errno \(err): \(String(cString: strerror(err)))"
                     Log.companion.report("Companion: read loop ended — \(reason)")

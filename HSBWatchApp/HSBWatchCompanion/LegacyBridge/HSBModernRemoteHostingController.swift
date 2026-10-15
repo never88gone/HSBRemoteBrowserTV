@@ -132,7 +132,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     
     @objc @MainActor public static func connectToDiscoveredDevice(
         _ device: HSBDiscoveredAppleTV,
-        timeout: TimeInterval = 6.0,
+        timeout: TimeInterval = 15.0,
         completion: ((Bool, String?) -> Void)? = nil
     ) {
         // 1. 如果已连通当前设备，直接主线程完成
@@ -247,10 +247,10 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         }
         observerTokens.append(token3)
         
-        // 5. 超时保底处理（常规探测 6 秒，如遇待配对则放宽给用户输入 PIN 码时间）
+        // 5. 超时保底处理（常规探测放宽至 15 秒，如遇待配对则放宽给用户输入 PIN 码时间）
         let initialTimeoutItem = DispatchWorkItem {
             if isPairingPhase || DualModeRemoteCoordinator.shared.nativeClient.isPairing {
-                Log.companion.report("Bridge: Native pairing in progress, skipping 6s timeout")
+                Log.companion.report("Bridge: Native pairing in progress, skipping initial timeout")
                 return
             }
             

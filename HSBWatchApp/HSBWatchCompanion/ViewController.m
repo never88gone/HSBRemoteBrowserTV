@@ -1238,6 +1238,11 @@ static NSString * L(NSString *en, NSString *zh) {
         return;
     }
     
+    // 如果尚未连接成功，在连接前主动清理可能残留的无效凭证，确保 Apple TV 必定发起 Pair-Setup 并 100% 弹出 PIN 码！
+    if (!device.isMacDevice) {
+        [HSBModernRemoteBridge clearCredentialsForDevice:device.name];
+    }
+    
     self.connectingDeviceHost = device.host;
     [self.tvTableView reloadData];
     
@@ -1253,8 +1258,8 @@ static NSString * L(NSString *en, NSString *zh) {
     
     __weak typeof(self) weakSelf = self;
     
-    // 异步执行双模探测、待机唤醒与通道建立（非模态，零冲突）
-    [HSBModernRemoteBridge connectToDiscoveredDevice:device timeout:6.0 completion:^(BOOL success, NSString * _Nullable errorMsg) {
+    // 异步执行双模探测、待机唤醒与通道建立（非模态，零冲突，放宽至15秒）
+    [HSBModernRemoteBridge connectToDiscoveredDevice:device timeout:15.0 completion:^(BOOL success, NSString * _Nullable errorMsg) {
         dispatch_async(dispatch_get_main_queue(), ^{
             weakSelf.connectingDeviceHost = nil;
             [weakSelf.tvTableView reloadData];

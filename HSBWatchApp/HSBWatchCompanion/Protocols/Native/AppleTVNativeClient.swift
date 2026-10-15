@@ -131,14 +131,14 @@ public final class AppleTVNativeClient: NSObject {
         transport.reset()
         transport.resetNonces()
         
-        // 5 秒待机或无响应超时保护，避免由于真机休眠导致挂起在“正在连接”
+        // 12 秒连接与探测超时保护，避免由于真机休眠导致挂起在“正在连接”
         let timeoutItem = DispatchWorkItem { [weak self] in
             guard let self = self, !self.isConnected, self.connectionEpoch == entryEpoch else { return }
             self.disconnect()
             self.delegate?.nativeClient(self, didChangeState: .failed(error: "设备待机或未响应"))
         }
         self.connectTimeoutItem = timeoutItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timeoutItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12.0, execute: timeoutItem)
         
         Task.detached(priority: .userInitiated) { [weak self, entryEpoch] in
             var inAddr = in_addr()
@@ -200,7 +200,11 @@ public final class AppleTVNativeClient: NSObject {
                     }
                 }
                 
-                if fd < 0 {
+                if fd >= 0 {
+                    // 连接成功后，务必将 socket 恢复为阻塞模式，以便 CompanionSession 的 startReadLoop 正常阻塞等待 Apple TV 握手帧
+                    let currentFlags = fcntl(fd, F_GETFL, 0)
+                    _ = fcntl(fd, F_SETFL, currentFlags & ~O_NONBLOCK)
+                } else {
                     Darwin.close(trialFD)
                 }
             }
@@ -297,6 +301,8 @@ public final class AppleTVNativeClient: NSObject {
                     self.delegate?.nativeClient(self, didChangeState: .ready(deviceName: device.name, mode: .nativeOnly))
                     
                 case .awaitingPairingPin:
+                    self.connectTimeoutItem?.cancel()
+                    self.connectTimeoutItem = nil
                     self.isPairing = true
                     self.delegate?.nativeClient(self, didChangeState: .pairing(deviceName: device.name, pinNeeded: true))
                     self.delegate?.nativeClient(self, didRequirePINCompletion: { [weak self] pin in
@@ -334,6 +340,7 @@ public final class AppleTVNativeClient: NSObject {
             },
             saveCredentials: { [weak self] creds, deviceID in
                 self?.credentialStore.save(credentials: creds, for: deviceID)
+                self?.credentialStore.save(credentials: creds, for: creds.deviceID)
             },
             deleteCredentials: { [weak self] deviceID in
                 self?.credentialStore.delete(deviceID: deviceID)
@@ -344,6 +351,10 @@ public final class AppleTVNativeClient: NSObject {
     // MARK: - Credentials Management
     public func clearCredentials(for deviceName: String) {
         credentialStore.delete(deviceID: deviceName)
+        let trimmed = deviceName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed != deviceName {
+            credentialStore.delete(deviceID: trimmed)
+        }
     }
     
     // MARK: - PIN Submission
