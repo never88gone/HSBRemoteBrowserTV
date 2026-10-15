@@ -72,6 +72,7 @@ static NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, assign) CFTimeInterval lastScrollSendTime; // 双指滚动节流
 @property (nonatomic, assign) BOOL isDragging; // Drag visual state
 @property (nonatomic, strong) UITextField *mainUrlTextField; // 主界面 URL 输入框
+@property (nonatomic, weak) UIAlertController *currentLoadingAlert; // 当前连接等待弹窗弱引用
 
 // Activity Stats UI
 @property (nonatomic, strong) UIView *statsCard;
@@ -130,6 +131,8 @@ static NSString * L(NSString *en, NSString *zh) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchReachabilityChanged:) name:HSBWatchSessionReachabilityDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchActionReceived:) name:HSBWatchActionReceivedNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAppleTVNativePINRequired:) name:@"HSBAppleTVNativePINRequiredNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAppleTVNativePINSubmitting:) name:@"HSBAppleTVNativePINSubmittingNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleAppleTVNativePINCancelled:) name:@"HSBAppleTVNativePINCancelledNotification" object:nil];
     [self applyThemeStyle];
     
     // 配置返回按钮仅展示纯图标箭头，隐藏冗余页面标题文字
@@ -1180,57 +1183,58 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)handleAppleTVNativePINRequired:(NSNotification *)notification {
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"[NativePIN] Received HSBAppleTVNativePINRequiredNotification");
-        UIViewController *topVC = self;
-        while (topVC.presentedViewController) {
-            topVC = topVC.presentedViewController;
-        }
-        if ([topVC isKindOfClass:[UIAlertController class]]) {
-            [topVC dismissViewControllerAnimated:NO completion:nil];
-            topVC = self;
-            while (topVC.presentedViewController) {
-                topVC = topVC.presentedViewController;
-            }
+        NSLog(@"[NativePIN] Received HSBAppleTVNativePINRequiredNotification in ViewController");
+        
+        // 1. 若当前有正在展示的连接等待弹窗，平滑更新其信息，引导用户关注顶层 PIN 码输入框
+        if (self.currentLoadingAlert) {
+            self.currentLoadingAlert.message = L(@"Apple TV 已在大屏显示 4 位 PIN 码，\n请在屏幕上方的弹窗中输入完成绑定", @"Apple TV 已在大屏显示 4 位 PIN 码，\n请在屏幕上方的弹窗中输入完成绑定");
         }
         
-        UIAlertController *pinAlert = [UIAlertController alertControllerWithTitle:L(@" 请输入电视上的 PIN 码", @" 请输入电视上的 PIN 码")
-                                                                          message:L(@"Apple TV 已发起原生安全配对。\n请查看电视屏幕上显示的 4 位数字配对码并输入：", @"Apple TV 已发起原生安全配对。\n请查看电视屏幕上显示的 4 位数字配对码并输入：")
-                                                                   preferredStyle:UIAlertControllerStyleAlert];
-        
-        [pinAlert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-            textField.placeholder = L(@"例如：1234", @"例如：1234");
-            textField.keyboardType = UIKeyboardTypeNumberPad;
-            textField.textAlignment = NSTextAlignmentCenter;
-            textField.font = [UIFont systemFontOfSize:22 weight:UIFontWeightBold];
+        [self updateUI:^{
+            self.tvStatusLabel.text = L(@"🟡 请输入电视上的 4 位 PIN 码...", @"🟡 请输入电视上的 4 位 PIN 码...");
+            self.tvStatusLabel.textColor = [UIColor systemYellowColor];
         }];
         
-        __weak typeof(self) weakSelf = self;
-        [pinAlert addAction:[UIAlertAction actionWithTitle:L(@"配对连接", @"配对连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            NSString *pin = pinAlert.textFields.firstObject.text ?: @"";
-            pin = [pin stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        // 2. 独立高优先级 UIWindow 呈现器已统一接管弹窗展示（HSBNativePINAlertPresenter.shared）
+        // 若由于极端场景未激活，此处执行兜底调用
+        if (![HSBNativePINAlertPresenter shared].isPresenting) {
             void (^completion)(NSString *) = notification.userInfo[@"completion"];
-            if (completion) {
-                completion(pin);
-            }
-            [weakSelf updateUI:^{
-                weakSelf.tvStatusLabel.text = L(@"🟡 正在验证 PIN 码并建立加密通道...", @"🟡 正在验证 PIN 码并建立加密通道...");
-                weakSelf.tvStatusLabel.textColor = [UIColor systemYellowColor];
+            NSString *deviceName = notification.userInfo[@"name"];
+            [[HSBNativePINAlertPresenter shared] presentPINAlertWithDeviceName:deviceName completion:^(NSString * _Nonnull pin) {
+                if (completion) {
+                    completion(pin);
+                }
             }];
-        }]];
-        
-        [pinAlert addAction:[UIAlertAction actionWithTitle:L(@"取消", @"取消") style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
-            void (^completion)(NSString *) = notification.userInfo[@"completion"];
-            if (completion) {
-                completion(@"");
-            }
-            [weakSelf updateUI:^{
-                weakSelf.tvStatusLabel.text = L(@"⚪️ 已取消配对", @"⚪️ 已取消配对");
-                weakSelf.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-            }];
-        }]];
-        
-        NSLog(@"[NativePIN] Presenting pinAlert on topVC: %@", topVC);
-        [topVC presentViewController:pinAlert animated:YES completion:nil];
+        }
+    });
+}
+
+- (void)handleAppleTVNativePINSubmitting:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"[NativePIN] PIN submitted, verifying and establishing encrypted channel...");
+        [self updateUI:^{
+            self.tvStatusLabel.text = L(@"🟡 正在验证 PIN 码并建立加密通道...", @"🟡 正在验证 PIN 码并建立加密通道...");
+            self.tvStatusLabel.textColor = [UIColor systemYellowColor];
+        }];
+        if (self.currentLoadingAlert) {
+            self.currentLoadingAlert.message = L(@"正在验证 PIN 码并建立加密通道...", @"正在验证 PIN 码并建立加密通道...");
+        }
+    });
+}
+
+- (void)handleAppleTVNativePINCancelled:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"[NativePIN] PIN pairing cancelled by user");
+        self.connectingDeviceHost = nil;
+        [self.tvTableView reloadData];
+        [self updateUI:^{
+            self.tvStatusLabel.text = L(@"⚪️ 已取消配对", @"⚪️ 已取消配对");
+            self.tvStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+        }];
+        if (self.currentLoadingAlert) {
+            [self.currentLoadingAlert dismissViewControllerAnimated:YES completion:nil];
+            self.currentLoadingAlert = nil;
+        }
     });
 }
 
@@ -1268,11 +1272,13 @@ static NSString * L(NSString *en, NSString *zh) {
     UIAlertController *loadingAlert = [UIAlertController alertControllerWithTitle:alertTitle
                                                                           message:alertMsg
                                                                    preferredStyle:UIAlertControllerStyleAlert];
+    self.currentLoadingAlert = loadingAlert;
     
     __block BOOL isCancelled = NO;
     __weak typeof(self) weakSelf = self;
     [loadingAlert addAction:[UIAlertAction actionWithTitle:L(@"取消", @"取消") style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
         isCancelled = YES;
+        weakSelf.currentLoadingAlert = nil;
         weakSelf.connectingDeviceHost = nil;
         [weakSelf.tvTableView reloadData];
         [weakSelf updateUI:^{
@@ -1292,6 +1298,7 @@ static NSString * L(NSString *en, NSString *zh) {
             [weakSelf.tvTableView reloadData];
             
             [loadingAlert dismissViewControllerAnimated:YES completion:^{
+                weakSelf.currentLoadingAlert = nil;
                 if (success) {
                     // 连接成功：更新状态并平滑推进遥控器页面！
                     [weakSelf updateUI:^{

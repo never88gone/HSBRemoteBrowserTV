@@ -154,6 +154,8 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         
         var hasCompleted = false
         var observerTokens: [NSObjectProtocol] = []
+        var isPairingPhase = false
+        var timeoutWorkItem: DispatchWorkItem?
         let lock = NSLock()
         
         let finish = { (success: Bool, errorMsg: String?) in
@@ -169,10 +171,31 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
                 NotificationCenter.default.removeObserver(token)
             }
             observerTokens.removeAll()
+            timeoutWorkItem?.cancel()
+            timeoutWorkItem = nil
             
             DispatchQueue.main.async {
                 completion?(success, errorMsg)
             }
+        }
+        
+        let startPairingTimeout = {
+            guard !isPairingPhase else { return }
+            isPairingPhase = true
+            Log.companion.report("Bridge: Native pairing initiated, extending timeout to 90s for user PIN entry")
+            timeoutWorkItem?.cancel()
+            let pairingItem = DispatchWorkItem {
+                let connected = DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+                                HSBTVOSConnectionManager.shared().isConnected ||
+                                DualModeRemoteCoordinator.shared.screenClient.isConnected
+                if connected {
+                    finish(true, nil)
+                } else {
+                    finish(false, "配对超时：未在规定时间内输入电视屏幕上的 PIN 码。")
+                }
+            }
+            timeoutWorkItem = pairingItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 90.0, execute: pairingItem)
         }
         
         // 2. 监听大屏握手成功通知
@@ -198,8 +221,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
                 case .ready:
                     finish(true, nil)
                 case .pairing:
-                    // 进入原生 PIN 配对阶段，等待用户在手机上输入电视显示的验证码，不视为失败
-                    Log.companion.report("Bridge: Native pairing initiated, awaiting user PIN input")
+                    startPairingTimeout()
                 case .failed(let err):
                     if !HSBTVOSConnectionManager.shared().isConnected {
                         finish(false, "连接失败: \(err)")
@@ -211,21 +233,20 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         }
         observerTokens.append(token2)
         
-        // 4. 超时保底处理（常规探测 6 秒，如遇待配对则放宽给用户输入 PIN 码时间）
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
-            let isPairing = DualModeRemoteCoordinator.shared.nativeClient.isPairing
-            if isPairing {
-                // 如果正在配对，再给 60 秒等待用户输入 PIN 码
-                DispatchQueue.main.asyncAfter(deadline: .now() + 60.0) {
-                    let connected = DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
-                                    HSBTVOSConnectionManager.shared().isConnected ||
-                                    DualModeRemoteCoordinator.shared.screenClient.isConnected
-                    if connected {
-                        finish(true, nil)
-                    } else {
-                        finish(false, "配对超时：未在规定时间内输入电视屏幕上的 PIN 码。")
-                    }
-                }
+        // 4. 监听 PIN 码请求通知，确保在收到 PIN 提示时立即进入配对超时延展
+        let token3 = NotificationCenter.default.addObserver(
+            forName: Notification.Name("HSBAppleTVNativePINRequiredNotification"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            startPairingTimeout()
+        }
+        observerTokens.append(token3)
+        
+        // 5. 超时保底处理（常规探测 6 秒，如遇待配对则放宽给用户输入 PIN 码时间）
+        let initialTimeoutItem = DispatchWorkItem {
+            if isPairingPhase || DualModeRemoteCoordinator.shared.nativeClient.isPairing {
+                Log.companion.report("Bridge: Native pairing in progress, skipping 6s timeout")
                 return
             }
             
@@ -238,6 +259,8 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
                 finish(false, "连接超时：未能连接至 \(device.name)。\n请确认电视已开机亮屏，并在同一 Wi-Fi 网络。")
             }
         }
+        timeoutWorkItem = initialTimeoutItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: initialTimeoutItem)
         
         // 5. 触发原生通道连接与待机唤醒
         DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)

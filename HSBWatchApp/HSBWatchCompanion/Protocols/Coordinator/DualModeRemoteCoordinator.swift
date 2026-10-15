@@ -576,10 +576,15 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
     }
     
     public func nativeClient(_ client: AppleTVNativeClient, didRequirePINCompletion completion: @escaping (String) -> Void) {
+        let fallback = currentTargetDeviceName.isEmpty ? "Apple TV" : currentTargetDeviceName
+        let name = client.currentDeviceName ?? fallback
         NotificationCenter.default.post(
             name: Notification.Name("HSBAppleTVNativePINRequiredNotification"),
             object: self,
-            userInfo: ["completion": completion]
+            userInfo: [
+                "completion": completion,
+                "name": name
+            ]
         )
     }
 }
