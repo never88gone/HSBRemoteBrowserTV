@@ -7,47 +7,6 @@ import Foundation
 import CoreGraphics
 import Network
 
-public protocol DualModeRemoteCoordinatorDelegate: AnyObject {
-    func coordinator(_ coordinator: DualModeRemoteCoordinator, didChangeState state: HSBConnectionState)
-    func coordinator(_ coordinator: DualModeRemoteCoordinator, didReceiveScreenMessage message: [String: Any])
-}
-
-@MainActor
-public protocol DualModeRemoteCoordinatorProtocol: AnyObject {
-    var currentState: HSBConnectionState { get }
-    var currentMode: HSBRemoteMode { get set }
-    
-    // 导航与 D-pad
-    func sendDPad(direction: DPadDirection, action: KeyAction)
-    func sendSelect(action: KeyAction)
-    
-    // 触控板与微操
-    func sendCursorPan(dx: CGFloat, dy: CGFloat)
-    func sendTap(mode: Int, point: CGPoint?)
-    func sendScroll(dx: CGFloat, dy: CGFloat)
-    func sendDrag(state: DragState, dx: CGFloat, dy: CGFloat)
-    func sendZoom(scale: CGFloat)
-    
-    // 文本输入
-    func sendTextInput(text: String, isAtomicReplace: Bool)
-    func sendKeyCommand(key: SpecialKey)
-    
-    // 系统级控制 (Home, Menu, Volume, Power)
-    func sendSystemKey(_ key: SystemKey)
-    func wakeDevice(host: String, completion: ((Bool) -> Void)?)
-    
-    // 专有大屏高级指令
-    func sendPageAction(_ action: PageAction)
-    func executeJavaScript(_ script: String, completion: ((Result<String, Error>) -> Void)?)
-    func sendMediaControl(_ action: MediaAction, value: Double?)
-    
-    // 应用启动与生态调度 (沿用 itsytv-macos _launchApp，支持 URL Scheme 参数透传)
-    func launchApp(bundleID: String, url: String?, completion: ((Bool) -> Void)?)
-    
-    // 原生 PIN 码配对提交
-    func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)?)
-}
-
 @MainActor
 public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinatorProtocol {
     public static let shared = DualModeRemoteCoordinator()
@@ -57,6 +16,7 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     public let screenClient = HSBBrowserProtocolClient()
     public let nativeClient = AppleTVNativeClient()
     public let stateMachine = HSBConnectionStateMachine()
+    public private(set) lazy var router = RemoteCommandRouter(coordinator: self)
     
     // 纯 itsytv 原生通道单连接模式 (Single Unified Native Connection)
     public var currentMode: HSBRemoteMode = .nativeOnly
@@ -73,6 +33,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     public var currentState: HSBConnectionState {
         return stateMachine.currentState
     }
+    
+    private var pendingPINCompletion: ((String) -> Void)?
+    private var pendingPINDeviceName: String?
     
     public override init() {
         super.init()
@@ -92,7 +55,6 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
             object: nil
         )
         
-        // 初始状态同步（如果主大屏连接已就绪）
         let legacyMgr = HSBTVOSConnectionManager.shared()
         if legacyMgr.isConnected {
             let deviceName = legacyMgr.deviceName ?? "Apple TV"
@@ -125,7 +87,6 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
                 self.connectToNative(host: host, deviceName: deviceName)
             }
         } else {
-            // 大屏通道断开
             if currentMode == .screenOnly || !nativeClient.isConnected {
                 self.stateMachine.handle(event: .requestDisconnect(reason: "Unified display disconnected"))
             }
@@ -168,299 +129,53 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         stateMachine.handle(event: .requestDisconnect(reason: "User requested disconnect"))
     }
     
-    // MARK: - D-pad & Select
+    // MARK: - Router Delegated Remote Commands
     public func sendDPad(direction: DPadDirection, action: KeyAction = .tap) {
-        if HSBTVOSConnectionManager.shared().isConnected {
-            let simAction: HSBRemoteSimulateAction = {
-                switch direction {
-                case .up: return .up
-                case .down: return .down
-                case .left: return .left
-                case .right: return .right
-                }
-            }()
-            HSBTVOSConnectionManager.shared().sendSimulateAction(simAction)
-        }
-        if isCurrentTargetMac {
-            if direction == .left {
-                dispatchMacMediaCommand("previous")
-            } else if direction == .right {
-                dispatchMacMediaCommand("next")
-            }
-        }
-        switch currentMode {
-        case .screenOnly:
-            screenClient.send(command: .button(action: direction.actionName))
-        case .nativeOnly:
-            let sysKey: SystemKey = {
-                switch direction {
-                case .up: return .up
-                case .down: return .down
-                case .left: return .left
-                case .right: return .right
-                }
-            }()
-            nativeClient.sendSystemKey(sysKey, action: action)
-            // 辅以 1000x1000 虚拟空间微滑触控手势，确保无论是按键还是触控焦点引擎都能 100% 响应
-            let touchDelta: (dx: CGFloat, dy: CGFloat) = {
-                switch direction {
-                case .up: return (0, -120)
-                case .down: return (0, 120)
-                case .left: return (-120, 0)
-                case .right: return (120, 0)
-                }
-            }()
-            nativeClient.sendTouchEvent(phase: 1, point: CGPoint(x: 500, y: 500))
-            nativeClient.sendTouchEvent(phase: 2, point: CGPoint(x: 500 + touchDelta.dx, y: 500 + touchDelta.dy))
-            nativeClient.sendTouchEvent(phase: 3, point: CGPoint(x: 500 + touchDelta.dx, y: 500 + touchDelta.dy))
-        case .dual:
-            if screenClient.isConnected {
-                screenClient.send(command: .button(action: direction.actionName))
-            } else {
-                let sysKey: SystemKey = {
-                    switch direction {
-                    case .up: return .up
-                    case .down: return .down
-                    case .left: return .left
-                    case .right: return .right
-                    }
-                }()
-                nativeClient.sendSystemKey(sysKey, action: action)
-            }
-        }
+        router.sendDPad(direction: direction, action: action)
     }
     
     public func sendSelect(action: KeyAction = .tap) {
-        if HSBTVOSConnectionManager.shared().isConnected {
-            HSBTVOSConnectionManager.shared().sendSimulateAction(.select)
-        }
-        if currentMode == .nativeOnly {
-            nativeClient.sendSystemKey(.select, action: action)
-            nativeClient.sendTouchEvent(phase: 1, point: CGPoint(x: 500, y: 500))
-            nativeClient.sendTouchEvent(phase: 3, point: CGPoint(x: 500, y: 500))
-        } else {
-            if screenClient.isConnected {
-                screenClient.send(command: .button(action: "select"))
-            } else if currentMode == .dual {
-                nativeClient.sendSystemKey(.select, action: action)
-            }
-        }
+        router.sendSelect(action: action)
     }
     
-    // MARK: - Touchpad & Cursor
     public func sendCursorPan(dx: CGFloat, dy: CGFloat) {
-        if currentMode == .nativeOnly {
-            let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
-            nativeClient.sendTouchEvent(phase: 2, point: pt)
-        } else {
-            screenClient.send(command: .pan(dx: dx, dy: dy))
-        }
+        router.sendCursorPan(dx: dx, dy: dy)
     }
     
     public func sendTap(mode: Int = 1, point: CGPoint? = nil) {
-        if currentMode == .nativeOnly {
-            nativeClient.sendTouchEvent(phase: 1, point: point ?? CGPoint(x: 500, y: 500))
-        } else {
-            screenClient.send(command: .tap(mode: mode, point: point))
-        }
+        router.sendTap(mode: mode, point: point)
     }
     
     public func sendScroll(dx: CGFloat, dy: CGFloat) {
-        let legacyMgr = HSBTVOSConnectionManager.shared()
-        if screenClient.isConnected || legacyMgr.isConnected {
-            // 优先派发像素级无级平滑滚动 (mac_scroll)
-            screenClient.send(command: .scroll(dx: dx, dy: dy))
-            if legacyMgr.isConnected {
-                let scaledDx = dx * HSBRemoteConstants.scrollScale
-                let scaledDy = dy * HSBRemoteConstants.scrollScale
-                legacyMgr.sendPayload([
-                    "action": "mac_scroll",
-                    "dx": scaledDx,
-                    "dy": scaledDy
-                ])
-            }
-        } else {
-            // 降级保护：在未连通大屏辅助链路时，将滚动映射为原生 Touch 微移
-            let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
-            nativeClient.sendTouchEvent(phase: 2, point: pt)
-        }
+        router.sendScroll(dx: dx, dy: dy)
     }
     
     public func sendDrag(state: DragState, dx: CGFloat, dy: CGFloat) {
-        if currentMode != .nativeOnly {
-            screenClient.send(command: .drag(state: state, dx: dx, dy: dy))
-        }
+        router.sendDrag(state: state, dx: dx, dy: dy)
     }
     
     public func sendZoom(scale: CGFloat) {
-        if currentMode != .nativeOnly {
-            screenClient.send(command: .zoom(scale: scale))
-        }
+        router.sendZoom(scale: scale)
     }
     
-    // MARK: - Text Input
     public func sendTextInput(text: String, isAtomicReplace: Bool = false) {
-        if isAtomicReplace {
-            let script = "if (document.activeElement && 'value' in document.activeElement) { document.activeElement.value = '\(text)'; document.activeElement.dispatchEvent(new Event('input', {bubbles:true})); }"
-            executeJavaScript(script, completion: nil)
-        } else {
-            let escaped = text.replacingOccurrences(of: "'", with: "\\'")
-            let script = "if (document.activeElement) { document.execCommand('insertText', false, '\(escaped)'); }"
-            executeJavaScript(script, completion: nil)
-        }
+        router.sendTextInput(text: text, isAtomicReplace: isAtomicReplace)
     }
     
     public func sendKeyCommand(key: SpecialKey) {
-        if currentMode == .nativeOnly {
-            switch key {
-            case .enter:
-                nativeClient.sendSystemKey(.select)
-            case .escape:
-                nativeClient.sendSystemKey(.menu)
-            case .backspace:
-                break
-            case .space:
-                break
-            }
-        } else {
-            switch key {
-            case .backspace:
-                let script = "if (document.activeElement) { document.execCommand('delete'); }"
-                executeJavaScript(script, completion: nil)
-            case .enter:
-                screenClient.send(command: .button(action: "select"))
-            case .escape:
-                screenClient.send(command: .button(action: "menu"))
-            case .space:
-                sendTextInput(text: " ")
-            }
-        }
+        router.sendKeyCommand(key: key)
     }
     
-    // MARK: - System Keys
     public func sendSystemKey(_ key: SystemKey) {
-        if HSBTVOSConnectionManager.shared().isConnected {
-            switch key {
-            case .home:
-                HSBTVOSConnectionManager.shared().sendSimulateAction(.pageHome)
-            case .menu:
-                HSBTVOSConnectionManager.shared().sendSimulateAction(.menu)
-            case .volumeUp:
-                HSBTVOSConnectionManager.shared().sendSimulateAction(.volumeUp)
-            case .volumeDown:
-                HSBTVOSConnectionManager.shared().sendSimulateAction(.volumeDown)
-            case .mute:
-                HSBTVOSConnectionManager.shared().sendSimulateAction(.toggleMute)
-            case .playPause:
-                HSBTVOSConnectionManager.shared().sendSimulateAction(.play)
-            default:
-                break
-            }
-        }
-        switch key {
-        case .home:
-            if currentMode == .screenOnly {
-                screenClient.send(command: .pageAction(action: .home))
-            } else {
-                nativeClient.sendSystemKey(.home)
-            }
-        case .menu:
-            if currentMode == .screenOnly {
-                screenClient.send(command: .button(action: "menu"))
-            } else {
-                nativeClient.sendSystemKey(.menu)
-            }
-        case .volumeUp:
-            if isCurrentTargetMac {
-                dispatchMacMediaCommand("volume_up")
-            }
-            if currentMode == .nativeOnly {
-                nativeClient.sendSystemKey(.volumeUp)
-            } else {
-                screenClient.send(command: .volume(action: "volume_up", value: nil))
-            }
-        case .volumeDown:
-            if isCurrentTargetMac {
-                dispatchMacMediaCommand("volume_down")
-            }
-            if currentMode == .nativeOnly {
-                nativeClient.sendSystemKey(.volumeDown)
-            } else {
-                screenClient.send(command: .volume(action: "volume_down", value: nil))
-            }
-        case .mute:
-            if isCurrentTargetMac {
-                dispatchMacMediaCommand("mute")
-            }
-            if currentMode == .nativeOnly {
-                nativeClient.sendMRPMuteToggle()
-            } else {
-                screenClient.send(command: .volume(action: "toggle_mute", value: nil))
-            }
-        case .power:
-            nativeClient.sendSystemKey(.power)
-        case .playPause:
-            if isCurrentTargetMac {
-                dispatchMacMediaCommand("play_pause")
-            }
-            if currentMode == .screenOnly {
-                screenClient.send(command: .media(action: .play, value: nil))
-            } else {
-                nativeClient.sendSystemKey(.playPause)
-            }
-        case .up:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .up, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.up)
-            }
-        case .down:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .down, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.down)
-            }
-        case .left:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .left, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.left)
-            }
-        case .right:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .right, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.right)
-            }
-        case .select:
-            if currentMode == .screenOnly {
-                sendSelect(action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.select)
-            }
-        }
+        router.sendSystemKey(key)
     }
     
     public func wakeDevice(host: String, completion: ((Bool) -> Void)? = nil) {
         nativeClient.wakeDevice(host: host, completion: completion)
     }
     
-    // MARK: - Screen Browser Actions
     public func sendPageAction(_ action: PageAction) {
-        if currentMode == .nativeOnly {
-            switch action {
-            case .back:
-                nativeClient.sendSystemKey(.menu)
-            case .forward:
-                sendDPad(direction: .right, action: .tap)
-            case .reload:
-                sendSelect(action: .tap)
-            case .home:
-                nativeClient.sendSystemKey(.home)
-            }
-        } else {
-            screenClient.send(command: .pageAction(action: action))
-        }
+        router.sendPageAction(action)
     }
     
     public func executeJavaScript(_ script: String, completion: ((Result<String, Error>) -> Void)? = nil) {
@@ -477,7 +192,6 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         screenClient.send(command: .media(action: action, value: value))
     }
     
-    // MARK: - App Launching (Unified itsytv-macos Protocol with URL Parameter Payload)
     public func launchApp(bundleID: String, url: String? = nil, completion: ((Bool) -> Void)? = nil) {
         nativeClient.launchApp(bundleID: bundleID, url: url) { success in
             DispatchQueue.main.async {
@@ -489,6 +203,7 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
             }
         }
     }
+    
     public func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)? = nil) {
         nativeClient.submitPIN(pin) { [weak self] success in
             if success {
@@ -501,22 +216,6 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     @objc public func clearNativeCredentials(for deviceName: String) {
         nativeClient.clearCredentials(for: deviceName)
     }
-    
-    // MARK: - Mac System Media Bridge Dispatcher
-    public func dispatchMacMediaCommand(_ action: String) {
-        guard isCurrentTargetMac else { return }
-        let urls = [
-            "http://127.0.0.1:49888/control?action=\(action)",
-            "http://localhost:49888/control?action=\(action)"
-        ]
-        for urlStr in urls {
-            if let url = URL(string: urlStr) {
-                var req = URLRequest(url: url)
-                req.timeoutInterval = 0.5
-                URLSession.shared.dataTask(with: req).resume()
-            }
-        }
-    }
 }
 
 // MARK: - Delegates
@@ -528,7 +227,6 @@ extension DualModeRemoteCoordinator: HSBBrowserProtocolClientDelegate {
             stateMachine.handle(event: .socketConnected(deviceName: name, mode: targetMode))
         case .failed(let err):
             if currentMode == .dual && nativeClient.isConnected {
-                // 大屏异常断开，自愈降级至原生通道兜底，杜绝假死
                 let name = nativeClient.currentDeviceName ?? "Apple TV"
                 stateMachine.handle(event: .socketConnected(deviceName: name, mode: .nativeOnly))
             } else {
@@ -582,16 +280,42 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
         }
     }
     
+    @MainActor
+    public func reopenNativePINAlertIfNeeded() {
+        guard let completion = pendingPINCompletion else {
+            NSLog("[DualMode] No pending PIN completion to reopen")
+            return
+        }
+        let name = pendingPINDeviceName ?? "Apple TV"
+        NSLog("[DualMode] Reopening native PIN alert for %@", name)
+        HSBNativePINAlertPresenter.shared.presentPINAlert(deviceName: name) { [weak self] pin in
+            self?.pendingPINCompletion = nil
+            self?.pendingPINDeviceName = nil
+            completion(pin)
+        }
+    }
+
     public func nativeClient(_ client: AppleTVNativeClient, didRequirePINCompletion completion: @escaping (String) -> Void) {
         let fallback = currentTargetDeviceName.isEmpty ? "Apple TV" : currentTargetDeviceName
         let name = client.currentDeviceName ?? fallback
+        NSLog("[ATV_CONNECT] Native PIN required for %@. Presenting PIN alert directly from Swift...", name)
+        
+        self.pendingPINCompletion = completion
+        self.pendingPINDeviceName = name
+        
+        DispatchQueue.main.async {
+            HSBNativePINAlertPresenter.shared.presentPINAlert(deviceName: name) { [weak self] pin in
+                NSLog("[ATV_CONNECT] PIN entered: %@, submitting to native client", pin)
+                self?.pendingPINCompletion = nil
+                self?.pendingPINDeviceName = nil
+                completion(pin)
+            }
+        }
+        
         NotificationCenter.default.post(
             name: Notification.Name("HSBAppleTVNativePINRequiredNotification"),
             object: self,
-            userInfo: [
-                "completion": completion,
-                "name": name
-            ]
+            userInfo: ["name": name]
         )
     }
 }

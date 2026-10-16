@@ -285,13 +285,50 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         DualModeRemoteCoordinator.shared.submitNativePIN(pin, completion: completion)
     }
     
-    @objc @MainActor public static func showLaunchEntranceAnimation(on parent: UIViewController) {
+    @objc @MainActor public static var isLaunchAnimationActive: Bool = false
+    @objc @MainActor private static weak var currentLaunchHostingVC: UIViewController?
+    
+    @objc @MainActor public static func dismissLaunchAnimationIfNeeded(completion: (() -> Void)? = nil) {
+        guard isLaunchAnimationActive, let hosting = currentLaunchHostingVC else {
+            isLaunchAnimationActive = false
+            completion?()
+            return
+        }
+        isLaunchAnimationActive = false
+        currentLaunchHostingVC = nil
+        hosting.dismiss(animated: false, completion: completion)
+    }
+    
+    @objc @MainActor public static func reopenNativePINAlertIfNeeded() {
+        DualModeRemoteCoordinator.shared.reopenNativePINAlertIfNeeded()
+    }
+    
+    @objc(showLaunchEntranceAnimationOn:)
+    @MainActor public static func showLaunchEntranceAnimation(on parent: UIViewController) {
+        showLaunchEntranceAnimation(on: parent, completion: nil)
+    }
+    
+    @objc(showLaunchEntranceAnimationOn:completion:)
+    @MainActor public static func showLaunchEntranceAnimation(on parent: UIViewController, completion: (() -> Void)? = nil) {
+        isLaunchAnimationActive = true
         weak var weakHosting: UIViewController?
         let animView = TanghuluLaunchAnimationView {
-            weakHosting?.dismiss(animated: true, completion: nil)
+            isLaunchAnimationActive = false
+            currentLaunchHostingVC = nil
+            if let presented = weakHosting?.presentedViewController, presented is UIAlertController {
+                NSLog("[LaunchAnim] Alert is currently active on launch view, skip dismissing to prevent closing alert")
+                completion?()
+                NotificationCenter.default.post(name: Notification.Name("HSBLaunchAnimationDidFinishNotification"), object: nil)
+                return
+            }
+            weakHosting?.dismiss(animated: true) {
+                completion?()
+                NotificationCenter.default.post(name: Notification.Name("HSBLaunchAnimationDidFinishNotification"), object: nil)
+            }
         }
         let hosting = UIHostingController(rootView: animView)
         weakHosting = hosting
+        currentLaunchHostingVC = hosting
         hosting.view.backgroundColor = UIColor(red: 34.0 / 255.0, green: 34.0 / 255.0, blue: 34.0 / 255.0, alpha: 1.0)
         hosting.modalPresentationStyle = .overFullScreen
         hosting.modalTransitionStyle = .crossDissolve

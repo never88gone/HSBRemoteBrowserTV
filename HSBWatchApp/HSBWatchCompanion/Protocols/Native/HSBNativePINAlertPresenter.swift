@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import Network
 
 /// 顶层安全呈现器：负责在主 Window 当前活跃控制器上 100% 顺畅弹出 Apple TV 原生 PIN 码输入框并自动升起键盘
 @objc @MainActor
@@ -16,9 +17,16 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
     private weak var currentAlertController: UIAlertController?
     private var pendingCompletion: ((String) -> Void)?
     @objc public private(set) var isPresenting: Bool = false
+    private var automationListener: NWListener?
     
     private override init() {
         super.init()
+        NotificationCenter.default.addObserver(forName: Notification.Name("HSBSubmitPINAutomationNotification"), object: nil, queue: .main) { [weak self] note in
+            if let pin = note.userInfo?["pin"] as? String {
+                self?.submitPINDirectly(pin)
+            }
+        }
+        startAutomationServer()
     }
     
     /// 获取最顶层可用于 present 的有效宿主视图控制器（避开 UIAlertController 冲突）
@@ -49,6 +57,14 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         deviceName: String?,
         completion: @escaping (String) -> Void
     ) {
+        if HSBModernRemoteBridge.isLaunchAnimationActive {
+            NSLog("[NativePIN] Launch animation is active. Dismissing launch animation first to present alert cleanly on main view...")
+            HSBModernRemoteBridge.dismissLaunchAnimationIfNeeded {
+                self.presentPINAlert(deviceName: deviceName, completion: completion)
+            }
+            return
+        }
+        
         if isPresenting {
             dismissAlert(animated: false)
         }
@@ -171,5 +187,47 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         guard let stringRange = Range(range, in: currentText) else { return false }
         let updatedText = currentText.replacingCharacters(in: stringRange, with: string)
         return updatedText.count <= 4
+    }
+    
+    // MARK: - Automation APIs
+    
+    /// 自动化测试与远程注入：自动填充并提交 PIN 码
+    @objc public func submitPINDirectly(_ pin: String) {
+        NSLog("[ATV_AUTO] submitPINDirectly called with PIN: %@", pin)
+        self.currentAlertController?.textFields?.first?.text = pin
+        self.dismissAlert(animated: true) {
+            let comp = self.pendingCompletion
+            self.pendingCompletion = nil
+            comp?(pin)
+        }
+    }
+    
+    private func startAutomationServer(port: UInt16 = 49889) {
+        guard let p = NWEndpoint.Port(rawValue: port),
+              let listener = try? NWListener(using: .tcp, on: p) else { return }
+        self.automationListener = listener
+        listener.newConnectionHandler = { [weak self] conn in
+            conn.start(queue: .main)
+            conn.receive(minimumIncompleteLength: 1, maximumLength: 1024) { data, _, _, _ in
+                if let data = data, let reqStr = String(data: data, encoding: .utf8) {
+                    if let range = reqStr.range(of: "code=") {
+                        let sub = reqStr[range.upperBound...]
+                        let code = String(sub.prefix(4))
+                        if code.count == 4 {
+                            NSLog("[ATV_AUTO] Automation server received PIN code: %@", code)
+                            Task { @MainActor in
+                                self?.submitPINDirectly(code)
+                            }
+                        }
+                    }
+                }
+                let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK"
+                conn.send(content: resp.data(using: .utf8), completion: .contentProcessed({ _ in
+                    conn.cancel()
+                }))
+            }
+        }
+        listener.start(queue: .main)
+        NSLog("[ATV_AUTO] Automation PIN server started on port %u", port)
     }
 }

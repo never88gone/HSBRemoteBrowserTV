@@ -99,10 +99,12 @@ public final class PairingFlow {
         do {
             tlv = try TLV8.decode(extracted)
         } catch {
+            NSLog("[ATV_CONNECT] Pairing PS_Next malformed TLV8: %@", "\(error)")
             delegate.setState(.error("Pairing PS_Next: malformed TLV8 (\(error))"))
             return
         }
         let step = tlv[.state]?.first ?? 0
+        NSLog("[ATV_CONNECT] PairingFlow.handlePsNext received step: %d, extracted bytes: %d", Int(step), extracted.count)
         
         // 优先检查 Apple TV 返回的错误码（例如 0x03 退避频控锁定期）
         if let errByte = tlv[.error]?.first {
@@ -118,6 +120,7 @@ public final class PairingFlow {
                 }
                 errorMsg = "Apple TV 正在配对安全保护期（频控锁定中，还剩 \(delaySec) 秒）。请稍候再试，或将 Apple TV 重启即可立即解除锁定并弹出 PIN 码。"
             }
+            NSLog("[ATV_CONNECT] PairingFlow error: %@", errorMsg)
             Log.companion.fail("Companion PS_Next error \(errByte): \(errorMsg)")
             delegate.setState(.error(errorMsg))
             return
@@ -125,6 +128,7 @@ public final class PairingFlow {
 
         switch step {
         case 2:  // M2: ATV sent salt + public key → need PIN
+            NSLog("[ATV_CONNECT] M2 received from ATV! PIN code is now showing on TV screen.")
             pendingM2Data = extracted
             delegate.setState(.awaitingPairingPin)
 

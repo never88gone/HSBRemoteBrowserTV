@@ -131,512 +131,66 @@ public enum OPACK {
         }
     }
 
+    // MARK: - Direct Encoding / Decoding Helpers
+
+    public static func encodeStringDirect(_ s: String, into out: inout Data) {
+        encodeString(s, into: &out)
+    }
+    public static func encodeBytesDirect(_ data: Data, into out: inout Data) {
+        encodeBytes(data, into: &out)
+    }
+    public static func readDictHeaderDirect(_ data: Data, cursor: inout Data.Index) -> Int? {
+        readDictHeader(data, cursor: &cursor)
+    }
+    public static func readStringDirect(_ data: Data, cursor: inout Data.Index) -> String? {
+        readString(data, cursor: &cursor)
+    }
+    public static func readBytesDirect(_ data: Data, cursor: inout Data.Index) -> Data? {
+        readBytes(data, cursor: &cursor)
+    }
+    public static func skipValueDirect(_ data: Data, cursor: inout Data.Index) {
+        skipValue(data, cursor: &cursor)
+    }
+
     // MARK: - Session message helpers
 
-    /// Encode a `_heartbeat` response (type=3) when the ATV initiates the heartbeat.
-    public static func encodeHeartbeatResponse(txn: UInt32) -> Data {
-        var out = Data()
-        out.append(0xE3)              // dict, 3 entries
-        encodeString("_i", into: &out)
-        encodeString("_heartbeat", into: &out)
-        encodeString("_t", into: &out)
-        out.append(0x08 + 3)          // small int: 3 (response)
-        encodeString("_x", into: &out)
-        encodeUInt32(txn, into: &out)
-        return out
-    }
-
-    /// Encode a `_pong` response to an ATV `_ping` request.
-    /// _t: 3 = response (ATV sends _ping as _t: 2 request, expects _t: 3 response).
-    public static func encodePong(txn: UInt32) -> Data {
-        var out = Data()
-        out.append(0xE3)              // dict, 3 entries
-        encodeString("_i", into: &out)
-        encodeString("_pong", into: &out)
-        encodeString("_t", into: &out)
-        out.append(0x08 + 3)          // small int: 3 (response)
-        encodeString("_x", into: &out)
-        encodeUInt32(txn, into: &out)
-        return out
-    }
-
-    /// Encode `_systemInfo` request — tells the ATV who we are.
-    public static func encodeSystemInfo(clientID: String, name: String, txn: UInt32) -> Data {
-        pack([
-            "_i": "_systemInfo",
-            "_t": 2,
-            "_x": txn,
-            "_c": [
-                "_bf":   0,
-                "_cf":   512,
-                "_clFl": 128,
-                "_i":    clientID,
-                "_idsID": Data(clientID.utf8),
-                "_pubID": clientID,
-                "_sf":   256,
-                "_sv":   "170.18",
-                "model": "MacBookPro",
-                "name":  name,
-            ] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode `_touchStart` request — part of the Companion session handshake.
-    /// The ATV expects this between `_systemInfo` and `_sessionStart`; without
-    /// it the session setup is incomplete and the ATV closes the socket after
-    /// ~35 s. Matches pyatv's CompanionAPI._touch_start (api.py:450-453).
-    public static func encodeTouchStart(txn: UInt32) -> Data {
-        pack([
-            "_i": "_touchStart",
-            "_t": 2,
-            "_x": txn,
-            "_c": [
-                "_height": 1000,
-                "_tFl":    0,
-                "_width":  1000,
-            ] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode a `_hidT` touch event — one frame in a swipe gesture sequence.
-    ///
-    /// Coordinates are in the 1000×1000 space declared by `_touchStart`.
-    /// - `phase`: 1 = press (begin), 3 = hold (move), 4 = release (end)
-    /// - `nanoseconds`: ns elapsed since `_touchStart` was sent (pyatv's _base_timestamp).
-    ///
-    /// No `_x` transaction field — pyatv fires these as fire-and-forget events.
-    /// Matches pyatv's `hid_event()` / `_send_event("_hidT", ...)` in companion/api.py.
-    public static func encodeTouchEvent(x: Double, y: Double, phase: Int,
-                                        txn: UInt32, nanoseconds: UInt64) -> Data {
-        pack([
-            "_i": "_hidT",
-            "_t": 1,
-            "_x": txn,
-            "_c": [
-                "_cx":  Int(x),
-                "_cy":  Int(y),
-                "_tPh": phase,
-                "_tFg": 1,
-                "_ns":  nanoseconds,
-            ] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode a `_touchStop` frame — closes the touch session.
-    public static func encodeTouchStop(txn: UInt32) -> Data {
-        pack([
-            "_i": "_touchStop",
-            "_t": 2,
-            "_x": txn,
-            "_c": ["_i": 1] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode a HID button command (`_hidC`).
-    /// - Parameters:
-    ///   - keycode: HID keycode for the button.
-    ///   - state: 1 = button down, 2 = button up.
-    ///   - txn: Transaction counter value.
-    public static func encodeHIDCommand(keycode: UInt8, state: Int, txn: UInt32) -> Data {
-        pack([
-            "_i": "_hidC", "_t": 2, "_x": txn,
-            "_c": ["_hBtS": state, "_hidC": Int(keycode)] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode `_tiStart` (text input start) request — sent between
-    /// `_sessionStart` and `_interest`. Empty content payload.
-    /// Matches pyatv's CompanionAPI._text_input_start (api.py:385).
-    public static func encodeTextInputStart(txn: UInt32) -> Data {
-        pack([
-            "_i": "_tiStart",
-            "_t": 2,
-            "_x": txn,
-            "_c": [String: Any](),
-        ] as [String: Any])
-    }
-
-    /// Encode `_tiStop` — tears down the active text input session.
-    /// Sent as a request (_t:2) before a fresh _tiStart.
-    public static func encodeTextInputStop(txn: UInt32) -> Data {
-        pack([
-            "_i": "_tiStop",
-            "_t": 2,
-            "_x": txn,
-            "_c": [String: Any](),
-        ] as [String: Any])
-    }
-
-    /// Encode `_tiC` — fire-and-forget event (_t:1) that sends text to the ATV.
-    /// `tiD` is the RTI binary plist payload from RTITextOperations.
-    public static func encodeTextInputCommand(tiD: Data, txn: UInt32) -> Data {
-        pack([
-            "_i": "_tiC",
-            "_t": 1,
-            "_x": txn,
-            "_c": [
-                "_tiV": 1,
-                "_tiD": tiD,
-            ] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode a `FetchAttentionState` Request — a cheap status poll pyatv
-    /// uses as the closest thing to a heartbeat. The ATV responds with
-    /// `_c.state` (an Int), which gives us the reply traffic needed to
-    /// refresh its idle timer. Without periodic traffic like this the ATV
-    /// drops idle Companion sockets at ~38 s.
-    public static func encodeFetchAttentionState(txn: UInt32) -> Data {
-        pack([
-            "_i": "FetchAttentionState",
-            "_t": 2,
-            "_x": txn,
-            "_c": [String: Any](),
-        ] as [String: Any])
-    }
-
-    /// Fetch list of launchable apps from the ATV.
-    public static func encodeFetchLaunchableApplicationsEvent(txn: UInt32) -> Data {
-        pack([
-            "_i": "FetchLaunchableApplicationsEvent",
-            "_t": 2,
-            "_x": txn,
-            "_c": [String: Any](),
-        ] as [String: Any])
-    }
-
-    /// Launch an app by bundle ID.
-    public static func encodeLaunchApp(bundleID: String, txn: UInt32) -> Data {
-        pack([
-            "_i": "_launchApp",
-            "_t": 2,
-            "_x": txn,
-            "_c": ["_bundleID": bundleID],
-        ] as [String: Any])
-    }
-
-    /// Encode `_sessionStart` request.
-    public static func encodeSessionStart(txn: UInt32, localSID: UInt32) -> Data {
-        pack([
-            "_i": "_sessionStart",
-            "_t": 2,
-            "_x": txn,
-            "_c": [
-                "_srvT": "com.apple.tvremoteservices",
-                "_sid":  localSID,
-            ] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode `TVRCSessionStart` — registers a TV Remote Client session with
-    /// the tvremoted process. tvOS will not answer FetchAttentionState or
-    /// FetchLaunchableApplicationsEvent until this is sent.
-    /// Mirrors pyatv's `_tv_rc_session_start` (api.py).
-    public static func encodeTVRCSessionStart(txn: UInt32) -> Data {
-        pack([
-            "_i": "TVRCSessionStart",
-            "_t": 2,
-            "_x": txn,
-            "_c": ["ProtocolVersionKey": "1.2"] as [String: Any],
-        ] as [String: Any])
-    }
-
-    /// Encode `_interest` event subscription — tells the ATV we want to be
-    /// notified of events of a given type (e.g. `_iMC` for media control).
-    ///
-    /// `_t: 1` marks this as an Event (fire-and-forget, not a request), so the
-    /// ATV does not send a response. Once subscribed, the ATV pushes event
-    /// frames whenever the subscribed state changes, and that inbound traffic
-    /// keeps the connection's app-level idle timer from firing — which is why
-    /// pyatv-style clients never need a periodic keepalive.
-    public static func encodeInterest(events: [String], txn: UInt32) -> Data {
-        pack([
-            "_i": "_interest",
-            "_t": 1,    // Event (fire-and-forget) — ATV silently ignores _t:2 for _interest
-            "_x": txn,
-            "_c": [
-                "_regEvents": events as [Any],
-            ] as [String: Any],
-        ] as [String: Any])
-    }
+    @inline(__always) public static func encodeHeartbeatResponse(txn: UInt32) -> Data { OPACKMessageBuilder.encodeHeartbeatResponse(txn: txn) }
+    @inline(__always) public static func encodePong(txn: UInt32) -> Data { OPACKMessageBuilder.encodePong(txn: txn) }
+    @inline(__always) public static func encodeSystemInfo(clientID: String, name: String, txn: UInt32) -> Data { OPACKMessageBuilder.encodeSystemInfo(clientID: clientID, name: name, txn: txn) }
+    @inline(__always) public static func encodeTouchStart(txn: UInt32) -> Data { OPACKMessageBuilder.encodeTouchStart(txn: txn) }
+    @inline(__always) public static func encodeTouchEvent(x: Double, y: Double, phase: Int, txn: UInt32, nanoseconds: UInt64) -> Data { OPACKMessageBuilder.encodeTouchEvent(x: x, y: y, phase: phase, txn: txn, nanoseconds: nanoseconds) }
+    @inline(__always) public static func encodeTouchStop(txn: UInt32) -> Data { OPACKMessageBuilder.encodeTouchStop(txn: txn) }
+    @inline(__always) public static func encodeHIDCommand(keycode: UInt8, state: Int, txn: UInt32) -> Data { OPACKMessageBuilder.encodeHIDCommand(keycode: keycode, state: state, txn: txn) }
+    @inline(__always) public static func encodeTextInputStart(txn: UInt32) -> Data { OPACKMessageBuilder.encodeTextInputStart(txn: txn) }
+    @inline(__always) public static func encodeTextInputStop(txn: UInt32) -> Data { OPACKMessageBuilder.encodeTextInputStop(txn: txn) }
+    @inline(__always) public static func encodeTextInputCommand(tiD: Data, txn: UInt32) -> Data { OPACKMessageBuilder.encodeTextInputCommand(tiD: tiD, txn: txn) }
+    @inline(__always) public static func encodeFetchAttentionState(txn: UInt32) -> Data { OPACKMessageBuilder.encodeFetchAttentionState(txn: txn) }
+    @inline(__always) public static func encodeFetchLaunchableApplicationsEvent(txn: UInt32) -> Data { OPACKMessageBuilder.encodeFetchLaunchableApplicationsEvent(txn: txn) }
+    @inline(__always) public static func encodeLaunchApp(bundleID: String, txn: UInt32) -> Data { OPACKMessageBuilder.encodeLaunchApp(bundleID: bundleID, txn: txn) }
+    @inline(__always) public static func encodeSessionStart(txn: UInt32, localSID: UInt32) -> Data { OPACKMessageBuilder.encodeSessionStart(txn: txn, localSID: localSID) }
+    @inline(__always) public static func encodeTVRCSessionStart(txn: UInt32) -> Data { OPACKMessageBuilder.encodeTVRCSessionStart(txn: txn) }
+    @inline(__always) public static func encodeInterest(events: [String], txn: UInt32) -> Data { OPACKMessageBuilder.encodeInterest(events: events, txn: txn) }
 
     // MARK: - Decoding
 
     /// Decode a top-level OPACK dict into [String: Any].
-    /// Supports string, float, int, bytes, bool, and nested dict values.
-    /// Handles both fixed-count dicts (0xE0+N for N≤14) and open-ended dicts
-    /// (0xEF with a 0x03 terminator, used by the ATV for app lists).
-    public static func decodeDict(_ data: Data) -> [String: Any]? {
-        var cursor = data.startIndex
-        guard cursor < data.endIndex else { return nil }
-        let tag = data[cursor]
-        guard tag >= 0xE0, tag <= 0xEF else { return nil }
-        data.formIndex(after: &cursor)
-        let count = Int(tag - 0xE0)
-        let isOpen = count == 0xF  // 0xEF = open-ended, terminated by 0x03
-        var result = [String: Any]()
-        var iterations = 0
-        while true {
-            if isOpen {
-                // Check for terminator 0x03
-                if cursor < data.endIndex, data[cursor] == 0x03 { break }
-            } else {
-                if iterations >= count { break }
-            }
-            if iterations >= maxDictEntries {
-                Log.opack.fail("OPACK decodeDict: bailing at \(maxDictEntries) entries (open-ended attacker amplification?)")
-                break
-            }
-            guard let key = readString(data, cursor: &cursor) else { break }
-            if let s = peekString(data, cursor: &cursor) {
-                result[key] = s
-            } else if let f = peekDouble(data, cursor: &cursor) {
-                result[key] = f
-            } else if let i = peekInt(data, cursor: &cursor) {
-                result[key] = i
-            } else if let b = peekBytes(data, cursor: &cursor) {
-                result[key] = b
-            } else if let d = peekNestedDict(data, cursor: &cursor) {
-                result[key] = d
-            } else {
-                skipValue(data, cursor: &cursor)
-            }
-            iterations += 1
-        }
-        return result
+    @inline(__always) public static func decodeDict(_ data: Data) -> [String: Any]? {
+        OPACKDecoder.decodeDict(data)
     }
 
-    /// Fast shallow decode: reads only scalar top-level values (string, int, bool,
-    /// bytes). Nested dicts and arrays are skipped. Used for large messages like
-    /// the 7KB _systemInfo response where full recursive decoding is too expensive.
-    public static func decodeDictShallow(_ data: Data) -> [String: Any]? {
-        var cursor = data.startIndex
-        guard cursor < data.endIndex else { return nil }
-        let tag = data[cursor]
-        guard tag >= 0xE0, tag <= 0xEF else { return nil }
-        data.formIndex(after: &cursor)
-        let count = Int(tag - 0xE0)
-        let isOpen = count == 0xF
-        var result = [String: Any]()
-        var iterations = 0
-        while true {
-            if isOpen {
-                if cursor >= data.endIndex || data[cursor] == 0x03 { break }
-            } else {
-                if iterations >= count { break }
-            }
-            if iterations >= maxDictEntries {
-                Log.opack.fail("OPACK decodeDictShallow: bailing at \(maxDictEntries) entries (open-ended attacker amplification?)")
-                break
-            }
-            let before = cursor
-            guard let key = readString(data, cursor: &cursor) else { break }
-            let beforeValue = cursor
-            if let s = peekString(data, cursor: &cursor) {
-                result[key] = s
-            } else if let i = peekInt(data, cursor: &cursor) {
-                result[key] = i
-            } else if let f = peekDouble(data, cursor: &cursor) {
-                result[key] = f
-            } else if let b = peekBytes(data, cursor: &cursor) {
-                result[key] = b
-            } else {
-                skipValue(data, cursor: &cursor)  // skip nested dicts/arrays — shallow
-            }
-            if cursor == beforeValue { break }  // value didn't advance — corrupt/unknown tag
-            if cursor == before { break }  // guard against full no-progress
-            iterations += 1
-        }
-        return result
-    }
-
-    private static func peekString(_ data: Data, cursor: inout Data.Index) -> String? {
-        let saved = cursor
-        if let s = readString(data, cursor: &cursor) { return s }
-        cursor = saved; return nil
-    }
-
-    private static func peekInt(_ data: Data, cursor: inout Data.Index) -> Int? {
-        guard cursor < data.endIndex else { return nil }
-        let tag = data[cursor]
-        switch tag {
-        case 0x08...0x2F:
-            data.formIndex(after: &cursor)
-            return Int(tag) - 0x08
-        case 0x30:
-            guard let u = readLittleEndianUInt(data, cursor: cursor, byteCount: 1) else { return nil }
-            data.formIndex(&cursor, offsetBy: 2)
-            return Int(u)
-        case 0x31:
-            guard let u = readLittleEndianUInt(data, cursor: cursor, byteCount: 2) else { return nil }
-            data.formIndex(&cursor, offsetBy: 3)
-            return Int(u)
-        case 0x32:
-            guard let u = readLittleEndianUInt(data, cursor: cursor, byteCount: 4) else { return nil }
-            data.formIndex(&cursor, offsetBy: 5)
-            return Int(u)
-        case 0x33:
-            guard let u = readLittleEndianUInt(data, cursor: cursor, byteCount: 8) else { return nil }
-            data.formIndex(&cursor, offsetBy: 9)
-            // On 64-bit platforms Int == Int64, so values above Int64.max round-trip lossily.
-            // Our encoder never emits such values (they come from Swift Int input).
-            return Int(bitPattern: UInt(u))
-        case 0x35:
-            // int32, signed little-endian
-            guard let u = readLittleEndianUInt(data, cursor: cursor, byteCount: 4) else { return nil }
-            data.formIndex(&cursor, offsetBy: 5)
-            return Int(Int32(bitPattern: UInt32(u)))
-        case 0x36:
-            // int64, signed little-endian
-            guard let u = readLittleEndianUInt(data, cursor: cursor, byteCount: 8) else { return nil }
-            data.formIndex(&cursor, offsetBy: 9)
-            return Int(Int64(bitPattern: u))
-        default: return nil
-        }
-    }
-
-    /// Reads `byteCount` little-endian bytes starting at `cursor + 1` (skipping the tag
-    /// byte at `cursor`). Returns nil if the slice is out of bounds. Does NOT advance
-    /// the cursor — callers do that themselves after consuming the value.
-    private static func readLittleEndianUInt(_ data: Data,
-                                             cursor: Data.Index,
-                                             byteCount: Int) -> UInt64? {
-        guard data.distance(from: cursor, to: data.endIndex) >= 1 + byteCount else { return nil }
-        var v: UInt64 = 0
-        for offset in stride(from: byteCount, through: 1, by: -1) {
-            v = (v << 8) | UInt64(data[data.index(cursor, offsetBy: offset)])
-        }
-        return v
-    }
-
-    private static func peekDouble(_ data: Data, cursor: inout Data.Index) -> Double? {
-        let saved = cursor
-        guard cursor < data.endIndex else { return nil }
-        let tag = data[cursor]
-        data.formIndex(after: &cursor)
-        switch tag {
-        case 0x06:  // float32 big-endian IEEE 754
-            guard data.distance(from: cursor, to: data.endIndex) >= 4 else { cursor = saved; return nil }
-            var bits: UInt32 = 0
-            for i in 0..<4 { bits = (bits << 8) | UInt32(data[data.index(cursor, offsetBy: i)]) }
-            data.formIndex(&cursor, offsetBy: 4)
-            return Double(Float(bitPattern: bits))
-        case 0x07:  // float64 big-endian IEEE 754
-            guard data.distance(from: cursor, to: data.endIndex) >= 8 else { cursor = saved; return nil }
-            var bits: UInt64 = 0
-            for i in 0..<8 { bits = (bits << 8) | UInt64(data[data.index(cursor, offsetBy: i)]) }
-            data.formIndex(&cursor, offsetBy: 8)
-            return Double(bitPattern: bits)
-        default:
-            cursor = saved; return nil
-        }
-    }
-
-    private static func peekBytes(_ data: Data, cursor: inout Data.Index) -> Data? {
-        let saved = cursor
-        if let b = readBytes(data, cursor: &cursor) { return b }
-        cursor = saved; return nil
-    }
-
-    private static func peekNestedDict(_ data: Data, cursor: inout Data.Index) -> [String: Any]? {
-        let saved = cursor
-        guard cursor < data.endIndex else { return nil }
-        let tag = data[cursor]
-        guard tag >= 0xE0, tag <= 0xEF else { return nil }
-        if let d = decodeDict(data[cursor...]) {
-            // advance cursor: re-decode to know how many bytes were consumed
-            data.formIndex(after: &cursor)  // skip the tag byte
-            let count = Int(tag - 0xE0)
-            let isOpen = count == 0xF
-            var iterations = 0
-            while true {
-                if isOpen {
-                    if cursor < data.endIndex, data[cursor] == 0x03 {
-                        data.formIndex(after: &cursor); break
-                    }
-                } else {
-                    if iterations >= count { break }
-                }
-                skipValue(data, cursor: &cursor)  // key
-                skipValue(data, cursor: &cursor)  // value
-                iterations += 1
-            }
-            return d
-        }
-        cursor = saved; return nil
+    /// Fast shallow decode: reads only scalar top-level values (string, int, bool, bytes).
+    @inline(__always) public static func decodeDictShallow(_ data: Data) -> [String: Any]? {
+        OPACKDecoder.decodeDictShallow(data)
     }
 
     // MARK: - Pairing helpers
 
-    /// Encode `{"name": displayName}` for the Companion-specific TLV8 tag=0x11 in pair-setup M5.
-    /// This registers the controller in the Companion controller store on the ATV, which is the
-    /// store checked during pair-verify. Without it, the ATV stores us in HAP-only and rejects
-    /// pair-verify M3 with error=2 (Authentication).
-    public static func encodeDeviceName(_ displayName: String) -> Data {
-        var out = Data()
-        out.append(0xE1)   // dict, 1 entry
-        encodeString("name", into: &out)
-        encodeString(displayName, into: &out)
-        return out
-    }
-
-    /// Wrap raw TLV8 bytes in `{"_pd": data}` for pvNext frames.
-    public static func wrapPairingData(_ tlvData: Data) -> Data {
-        var out = Data()
-        out.append(0xE1)                    // dict, 1 entry
-        encodeString("_pd", into: &out)
-        encodeBytes(tlvData, into: &out)
-        return out
-    }
-
-    /// Wrap raw TLV8 bytes for psStart — `{"_pd": data, "_pwTy": 1}`.
-    /// `_pwTy: 1` triggers PIN display on the Apple TV.
-    public static func wrapPsStartData(_ tlvData: Data) -> Data {
-        var out = Data()
-        out.append(0xE2)                    // dict, 2 entries
-        encodeString("_pd", into: &out)
-        encodeBytes(tlvData, into: &out)
-        encodeString("_pwTy", into: &out)
-        out.append(0x09)                    // small int: 1
-        return out
-    }
-
-    /// Wrap raw TLV8 bytes for psNext (M3/M5) — `{"_pd": data, "_pwTy": 1}`.
-    public static func wrapPsNextData(_ tlvData: Data) -> Data {
-        var out = Data()
-        out.append(0xE2)                    // dict, 2 entries
-        encodeString("_pd", into: &out)
-        encodeBytes(tlvData, into: &out)
-        encodeString("_pwTy", into: &out)
-        out.append(0x09)                    // small int: 1
-        return out
-    }
-
-    /// Wrap raw TLV8 bytes for pvStart — `{"_pd": data, "_auTy": 4}`.
-    /// `_auTy: 4` tells the ATV this is a HAP pair-verify request.
-    public static func wrapPvStartData(_ tlvData: Data) -> Data {
-        var out = Data()
-        out.append(0xE2)                    // dict, 2 entries
-        encodeString("_pd", into: &out)
-        encodeBytes(tlvData, into: &out)
-        encodeString("_auTy", into: &out)
-        out.append(0x0C)                    // small int: 4 (0x08 + 4)
-        return out
-    }
-
-    /// Extract the `_pd` bytes value from an OPACK dict, or nil if not found.
-    public static func extractPairingData(from opack: Data) -> Data? {
-        var cursor = opack.startIndex
-        guard let count = readDictHeader(opack, cursor: &cursor) else { return nil }
-        for _ in 0..<count {
-            guard let key = readString(opack, cursor: &cursor) else { break }
-            if key == "_pd" {
-                return readBytes(opack, cursor: &cursor)
-            }
-            skipValue(opack, cursor: &cursor)
-        }
-        return nil
-    }
+    @inline(__always) public static func encodeDeviceName(_ displayName: String) -> Data { OPACKPairingPayloads.encodeDeviceName(displayName) }
+    @inline(__always) public static func wrapPairingData(_ tlvData: Data) -> Data { OPACKPairingPayloads.wrapPairingData(tlvData) }
+    @inline(__always) public static func wrapPsStartData(_ tlvData: Data) -> Data { OPACKPairingPayloads.wrapPsStartData(tlvData) }
+    @inline(__always) public static func wrapPsNextData(_ tlvData: Data) -> Data { OPACKPairingPayloads.wrapPsNextData(tlvData) }
+    @inline(__always) public static func wrapPvStartData(_ tlvData: Data) -> Data { OPACKPairingPayloads.wrapPvStartData(tlvData) }
+    @inline(__always) public static func extractPairingData(from opack: Data) -> Data? { OPACKPairingPayloads.extractPairingData(from: opack) }
 
     // MARK: - Encoding
 

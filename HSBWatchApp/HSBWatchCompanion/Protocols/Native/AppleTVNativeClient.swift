@@ -41,65 +41,13 @@ public final class AppleTVNativeClient: NSObject {
     private var connectionEpoch: Int = 0
     private var connectTimeoutItem: DispatchWorkItem?
     
-    // Apple TV 待机敲门与唤醒端口
-    private let knockPorts: [UInt16] = [3689, 7000, 49152, 49153]
-    
     public override init() {
         super.init()
     }
     
     // MARK: - Port Knocking Wakeup
     public func wakeDevice(host: String, completion: ((Bool) -> Void)? = nil) {
-        let group = DispatchGroup()
-        var atLeastOneSucceeded = false
-        let lock = NSLock()
-        let bgQueue = DispatchQueue(label: "com.tanghulu.native.wake.queue", qos: .userInitiated)
-        
-        for port in knockPorts {
-            group.enter()
-            let endpoint = nw_endpoint_create_host(host, "\(port)")
-            let params = nw_parameters_create()
-            let conn = nw_connection_create(endpoint, params)
-            nw_connection_set_queue(conn, bgQueue)
-            
-            var didFinish = false
-            let finish = { (success: Bool) in
-                if !didFinish {
-                    didFinish = true
-                    if success {
-                        lock.lock()
-                        atLeastOneSucceeded = true
-                        lock.unlock()
-                    }
-                    nw_connection_cancel(conn)
-                    group.leave()
-                }
-            }
-            
-            nw_connection_set_state_changed_handler(conn) { state, _ in
-                if state == nw_connection_state_ready {
-                    finish(true)
-                } else if state == nw_connection_state_failed || state == nw_connection_state_cancelled {
-                    finish(false)
-                }
-            }
-            
-            nw_connection_start(conn)
-            
-            bgQueue.asyncAfter(deadline: .now() + 0.5) {
-                finish(false)
-            }
-        }
-        
-        // 若已知 MAC 地址，亦可辅以 WoL 广播唤醒
-        let targetDevID = currentDeviceName ?? "Apple TV"
-        if let mac = MACStore.load(for: targetDevID) {
-            try? WakeOnLAN.send(mac: mac, targetIP: host)
-        }
-        
-        group.notify(queue: .main) {
-            completion?(atLeastOneSucceeded)
-        }
+        AppleTVWakeService.wakeDevice(host: host, targetDeviceName: currentDeviceName, completion: completion)
     }
     
     // MARK: - Connection & Pairing
@@ -141,117 +89,52 @@ public final class AppleTVNativeClient: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 12.0, execute: timeoutItem)
         
         Task.detached(priority: .userInitiated) { [weak self, entryEpoch] in
-            var inAddr = in_addr()
-            var resolved = (host.withCString { inet_pton(AF_INET, $0, &inAddr) } == 1)
-            if !resolved {
-                var hints = addrinfo()
-                hints.ai_family = AF_INET
-                hints.ai_socktype = SOCK_STREAM
-                var res: UnsafeMutablePointer<addrinfo>?
-                if getaddrinfo(host, nil, &hints, &res) == 0, let first = res {
-                    let sin = first.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
-                    inAddr = sin.sin_addr
-                    resolved = true
-                    freeaddrinfo(res)
+            let candidatePorts: [UInt16] = {
+                var ports: [UInt16] = []
+                if port > 0 { ports.append(port) }
+                if port != 49153 { ports.append(49153) }
+                if port != 49152 { ports.append(49152) }
+                return ports
+            }()
+            
+            do {
+                let (connFD, _) = try await AppleTVSocketConnector.connectToHost(host: host, candidatePorts: candidatePorts)
+                await MainActor.run { [weak self] in
+                    guard let self = self, self.connectionEpoch == entryEpoch else {
+                        Darwin.close(connFD)
+                        return
+                    }
+                    
+                    let sess = CompanionSession(
+                        fd: connFD,
+                        epoch: entryEpoch,
+                        transport: self.transport,
+                        writeQueue: self.writeQueue,
+                        readQueue: self.readQueue
+                    )
+                    sess.delegate = self
+                    self.session = sess
+                    sess.start()
+                    
+                    let flow = PairingFlow(delegate: self.makePairingDelegate(device: device))
+                    self.pairingFlow = flow
+                    
+                    if self.credentialStore.hasCredentials(for: deviceName),
+                       let creds = self.credentialStore.load(deviceID: deviceName) {
+                        NSLog("[ATV_CONNECT] Found credentials for %@, starting pair-verify", deviceName)
+                        Log.companion.report("Companion: starting pair-verify with credentials")
+                        flow.startPairVerify(credentials: creds)
+                    } else {
+                        NSLog("[ATV_CONNECT] No credentials for %@, starting pair-setup (requesting PIN)", deviceName)
+                        Log.companion.report("Companion: starting pair-setup for \(deviceName)")
+                        flow.startPairSetup()
+                    }
                 }
-            }
-            guard resolved else {
+            } catch {
                 await MainActor.run { [weak self] in
                     guard let self = self, self.connectionEpoch == entryEpoch else { return }
                     self.connectTimeoutItem?.cancel()
-                    self.delegate?.nativeClient(self, didChangeState: .failed(error: "无效主机地址: \(host)"))
-                }
-                return
-            }
-            var addr = sockaddr_in()
-            addr.sin_len    = UInt8(MemoryLayout<sockaddr_in>.size)
-            addr.sin_family = sa_family_t(AF_INET)
-            addr.sin_port   = in_port_t(port).bigEndian
-            addr.sin_addr   = inAddr
-            
-            var fd: Int32 = -1
-            let trialFD = Darwin.socket(AF_INET, SOCK_STREAM, 0)
-            if trialFD >= 0 {
-                #if os(macOS)
-                PrimaryInterface.bindSourceAddress(fd: trialFD, logHost: host)
-                #endif
-                
-                let flags = fcntl(trialFD, F_GETFL, 0)
-                _ = fcntl(trialFD, F_SETFL, flags | O_NONBLOCK)
-                
-                let rc = withUnsafePointer(to: addr) { ptr in
-                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                        Darwin.connect(trialFD, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
-                    }
-                }
-                
-                if rc == 0 {
-                    fd = trialFD
-                } else if errno == EINPROGRESS {
-                    var pfd = pollfd(fd: trialFD, events: Int16(POLLOUT), revents: 0)
-                    let ready = poll(&pfd, 1, 4000)
-                    if ready > 0 {
-                        var err: Int32 = 0
-                        var len = socklen_t(MemoryLayout<Int32>.size)
-                        getsockopt(trialFD, SOL_SOCKET, SO_ERROR, &err, &len)
-                        if err == 0 {
-                            fd = trialFD
-                        }
-                    }
-                }
-                
-                if fd >= 0 {
-                    // 连接成功后，务必将 socket 恢复为阻塞模式，以便 CompanionSession 的 startReadLoop 正常阻塞等待 Apple TV 握手帧
-                    let currentFlags = fcntl(fd, F_GETFL, 0)
-                    _ = fcntl(fd, F_SETFL, currentFlags & ~O_NONBLOCK)
-                } else {
-                    Darwin.close(trialFD)
-                }
-            }
-            
-            let connFD = fd
-            let connErrno = errno
-            guard connFD >= 0 else {
-                await MainActor.run { [weak self] in
-                    guard let self = self, self.connectionEpoch == entryEpoch else { return }
-                    self.connectTimeoutItem?.cancel()
-                    self.delegate?.nativeClient(self, didChangeState: .failed(error: "Native TCP 连接失败 (errno: \(connErrno))"))
-                }
-                return
-            }
-            
-            var enable: Int32 = 1
-            setsockopt(connFD, SOL_SOCKET, SO_KEEPALIVE, &enable, socklen_t(MemoryLayout<Int32>.size))
-            var idleSec: Int32 = 10
-            setsockopt(connFD, IPPROTO_TCP, TCP_KEEPALIVE, &idleSec, socklen_t(MemoryLayout<Int32>.size))
-            
-            await MainActor.run { [weak self] in
-                guard let self = self, self.connectionEpoch == entryEpoch else {
-                    Darwin.close(connFD)
-                    return
-                }
-                
-                let sess = CompanionSession(
-                    fd: connFD,
-                    epoch: entryEpoch,
-                    transport: self.transport,
-                    writeQueue: self.writeQueue,
-                    readQueue: self.readQueue
-                )
-                sess.delegate = self
-                self.session = sess
-                sess.start()
-                
-                let flow = PairingFlow(delegate: self.makePairingDelegate(device: device))
-                self.pairingFlow = flow
-                
-                if self.credentialStore.hasCredentials(for: deviceName),
-                   let creds = self.credentialStore.load(deviceID: deviceName) {
-                    Log.companion.report("Companion: starting pair-verify with credentials")
-                    flow.startPairVerify(credentials: creds)
-                } else {
-                    Log.companion.report("Companion: starting pair-setup for \(deviceName)")
-                    flow.startPairSetup()
+                    self.delegate?.nativeClient(self, didChangeState: .failed(error: error.localizedDescription))
                 }
             }
         }
@@ -290,6 +173,7 @@ public final class AppleTVNativeClient: NSObject {
                 
                 switch newState {
                 case .connected:
+                    NSLog("[ATV_CONNECT] PairingFlow state: .connected for %@", device.name)
                     self.isConnected = true
                     self.isPairing = false
                     let stored = self.credentialStore.load(deviceID: device.id)
@@ -301,15 +185,18 @@ public final class AppleTVNativeClient: NSObject {
                     self.delegate?.nativeClient(self, didChangeState: .ready(deviceName: device.name, mode: .nativeOnly))
                     
                 case .awaitingPairingPin:
+                    NSLog("[ATV_CONNECT] PairingFlow state: .awaitingPairingPin for %@", device.name)
                     self.connectTimeoutItem?.cancel()
                     self.connectTimeoutItem = nil
                     self.isPairing = true
                     self.delegate?.nativeClient(self, didChangeState: .pairing(deviceName: device.name, pinNeeded: true))
                     self.delegate?.nativeClient(self, didRequirePINCompletion: { [weak self] pin in
+                        NSLog("[ATV_CONNECT] Submitting user PIN: %@", pin)
                         self?.submitPIN(pin)
                     })
                     
                 case .error(let msg):
+                    NSLog("[ATV_CONNECT] PairingFlow state: .error: %@", msg)
                     self.isConnected = false
                     self.isPairing = false
                     self.credentialStore.delete(deviceID: device.id)
@@ -317,6 +204,7 @@ public final class AppleTVNativeClient: NSObject {
                     self.delegate?.nativeClient(self, didChangeState: .failed(error: msg))
                     
                 case .disconnected:
+                    NSLog("[ATV_CONNECT] PairingFlow state: .disconnected")
                     self.isConnected = false
                     self.isPairing = false
                     self.delegate?.nativeClient(self, didChangeState: .disconnected)

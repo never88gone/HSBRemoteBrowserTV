@@ -12,32 +12,6 @@ private let _installSigPipeIgnore: Void = {
     signal(SIGPIPE, SIG_IGN)
     return ()
 }()
-
-// MARK: - Delegate
-
-/// Callbacks from `CompanionSession` to its owner (`CompanionConnection`).
-/// All calls are dispatched to the main queue before firing.
-@MainActor
-public protocol CompanionSessionDelegate: AnyObject {
-    func sessionDidUpdateNowPlaying(_ info: CompanionNowPlayingUpdate)
-    func sessionDidChangeKeyboardActive(_ active: Bool, data: Data?)
-    func sessionDidUpdateAttentionState(_ state: Int)
-    func sessionDidReadError(_ message: String, epoch: Int)
-    func sessionDidClose(epoch: Int)
-    func sessionDidConfirmStart()
-    func sessionDidReceivePairingFrame(_ frame: CompanionFrame)
-    func sessionDidFetchApps(_ apps: [(id: String, name: String)])
-}
-
-// MARK: - CompanionNowPlayingUpdate
-
-/// Raw now-playing key/value map as received from an `_iMC` push, passed
-/// straight through to `CompanionConnection` for merging into `NowPlayingInfo`.
-public struct CompanionNowPlayingUpdate {
-    public let inner: [String: Any]
-    public init(_ inner: [String: Any]) { self.inner = inner }
-}
-
 // MARK: - CompanionSession
 
 /// Owns the live Companion session: the TCP socket fd, the blocking read loop,
@@ -69,13 +43,27 @@ public final class CompanionSession {
     private var txnCounter: UInt32
     private var pendingCallbacks: [UInt32: ([String: Any]) -> Void] = [:]
     private var sessionStartTxn: UInt32?
-    private var currentTextInputData: Data?
-    private var keepaliveTimer: DispatchSourceTimer?
-    /// Wall-clock of the most recent text-input op (sendText/sendBackspace/
-    /// sendClearText). Used to skip the keepalive's stop+start poll while the
-    /// user is actively typing — otherwise that poll's transient stale-UUID
-    /// window can race with a user send.
-    private var lastTextOpAt: Date?
+    public private(set) lazy var textInputController = CompanionTextInputController(session: self)
+    public private(set) lazy var appLauncher = CompanionAppLauncher(session: self)
+    public private(set) lazy var keepaliveManager = CompanionKeepaliveManager(session: self)
+
+    public var currentTextInputData: Data? {
+        get { textInputController.currentTextInputData }
+        set { textInputController.currentTextInputData = newValue }
+    }
+    public var lastTextOpAt: Date? {
+        get { textInputController.lastTextOpAt }
+        set { textInputController.lastTextOpAt = newValue }
+    }
+
+    public func registerCallback(txn: UInt32, callback: @escaping ([String: Any]) -> Void) {
+        pendingCallbacks[txn] = callback
+    }
+
+    @discardableResult
+    public func removeCallback(txn: UInt32) -> (([String: Any]) -> Void)? {
+        return pendingCallbacks.removeValue(forKey: txn)
+    }
 
     /// Create a session over an already-connected socket fd.
     /// - Parameters:
@@ -108,8 +96,7 @@ public final class CompanionSession {
     /// Tear down the session: cancel keepalive, close the socket, clear callbacks.
     /// Safe to call multiple times.
     public func close() {
-        keepaliveTimer?.cancel()
-        keepaliveTimer = nil
+        keepaliveManager.stop()
         pendingCallbacks.removeAll()
         currentTextInputData = nil
         // Closing the fd unblocks the blocking read() in startReadLoop.
@@ -152,39 +139,7 @@ public final class CompanionSession {
     // MARK: - Keepalive
 
     public func startKeepalive() {
-        keepaliveTimer?.cancel()
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + 25.0, repeating: 25.0)
-        timer.setEventHandler { [weak self] in
-            guard let self else { return }
-            let txn = self.nextTxn()
-            self.sendEncrypted(OPACK.encodeFetchAttentionState(txn: txn))
-            if self.currentTextInputData != nil {
-                // Skip the stop+start poll if the user typed within the last
-                // keepalive interval — recent activity already confirms the
-                // keyboard is alive, and racing the poll's stale-UUID window
-                // against a user send breaks sendText with sessionUUIDMissing.
-                if let last = self.lastTextOpAt,
-                   Date().timeIntervalSince(last) < 25 {
-                    return
-                }
-                let stopTxn = self.nextTxn()
-                self.sendEncrypted(OPACK.encodeTextInputStop(txn: stopTxn))
-                let tiTxn = self.nextTxn()
-                self.pendingCallbacks[tiTxn] = { [weak self] resp in
-                    guard let self else { return }
-                    let tiD = (resp["_c"] as? [String: Any])?["_tiD"] as? Data
-                    self.currentTextInputData = tiD
-                    if tiD == nil {
-                        Log.companion.report("Companion: keyboard inactive (poll detected no text field)")
-                        self.delegate?.sessionDidChangeKeyboardActive(false, data: nil)
-                    }
-                }
-                self.sendEncrypted(OPACK.encodeTextInputStart(txn: tiTxn))
-            }
-        }
-        timer.resume()
-        keepaliveTimer = timer
+        keepaliveManager.start()
     }
 
     // MARK: - Remote Commands
@@ -251,119 +206,26 @@ public final class CompanionSession {
     // MARK: - Text Input
 
     public func sendText(_ text: String, completion: @escaping (Error?) -> Void) {
-        guard let tiD = currentTextInputData else {
-            completion(TextInputError.noActiveTextField); return
-        }
-        guard let uuid = RTITextOperations.extractSessionUUID(from: tiD) else {
-            completion(TextInputError.sessionUUIDMissing); return
-        }
-        lastTextOpAt = Date()
-        let payload = RTITextOperations.inputPayload(sessionUUID: uuid, text: text)
-        sendEncrypted(OPACK.encodeTextInputCommand(tiD: payload, txn: nextTxn()))
-        Log.companion.report("Companion: sent text input (\(text.count) chars)")
-        completion(nil)
+        textInputController.sendText(text, completion: completion)
     }
 
     public func sendBackspace(completion: @escaping (Error?) -> Void) {
-        lastTextOpAt = Date()
-        let stopTxn = nextTxn()
-        sendEncrypted(OPACK.encodeTextInputStop(txn: stopTxn))
-        let startTxn = nextTxn()
-        pendingCallbacks[startTxn] = { [weak self] response in
-            guard let self else { return }
-            guard let tiD = (response["_c"] as? [String: Any])?["_tiD"] as? Data else {
-                completion(TextInputError.noActiveTextField); return
-            }
-            self.currentTextInputData = tiD
-            guard let uuid = RTITextOperations.extractSessionUUID(from: tiD) else {
-                completion(TextInputError.sessionUUIDMissing); return
-            }
-            let current = RTITextOperations.extractCurrentText(from: tiD) ?? ""
-            let updated = String(current.dropLast())
-            let payload = RTITextOperations.assertPayload(sessionUUID: uuid, text: updated)
-            self.sendEncrypted(OPACK.encodeTextInputCommand(tiD: payload, txn: self.nextTxn()))
-            Log.companion.report("Companion: sent backspace (was \(current.count) chars)")
-            completion(nil)
-        }
-        sendEncrypted(OPACK.encodeTextInputStart(txn: startTxn))
+        textInputController.sendBackspace(completion: completion)
     }
 
     public func sendClearText(completion: @escaping (Error?) -> Void) {
-        lastTextOpAt = Date()
-        let stopTxn = nextTxn()
-        sendEncrypted(OPACK.encodeTextInputStop(txn: stopTxn))
-        let startTxn = nextTxn()
-        pendingCallbacks[startTxn] = { [weak self] response in
-            guard let self else { return }
-            guard let tiD = (response["_c"] as? [String: Any])?["_tiD"] as? Data else {
-                completion(TextInputError.noActiveTextField); return
-            }
-            self.currentTextInputData = tiD
-            guard let uuid = RTITextOperations.extractSessionUUID(from: tiD) else {
-                completion(TextInputError.sessionUUIDMissing); return
-            }
-            let payload = RTITextOperations.clearPayload(sessionUUID: uuid)
-            self.sendEncrypted(OPACK.encodeTextInputCommand(tiD: payload, txn: self.nextTxn()))
-            Log.companion.report("Companion: sent clear text input")
-            completion(nil)
-        }
-        sendEncrypted(OPACK.encodeTextInputStart(txn: startTxn))
+        textInputController.sendClearText(completion: completion)
     }
 
     // MARK: - App List / Launch
 
     public func fetchApps(completion: ((Result<[(id: String, name: String)], Error>) -> Void)? = nil) {
-        let txn = nextTxn()
-        Log.companion.report("Companion: fetchApps txn=\(txn)")
-        let timeoutItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            if self.pendingCallbacks.removeValue(forKey: txn) != nil {
-                Log.companion.report("Companion: fetchApps timed out (no response from ATV)")
-                completion?(.failure(CompanionError.unexpectedResponse))
-            }
-        }
-        pendingCallbacks[txn] = { [weak self] response in
-            timeoutItem.cancel()
-            guard let self else { return }
-            let cVal = response["_c"]
-            Log.companion.report("Companion: fetchApps callback fired, _c type=\(type(of: cVal))")
-            guard let content = response["_c"] as? [String: Any] else {
-                Log.companion.report("Companion: fetchApps — unexpected response format")
-                completion?(.failure(CompanionError.unexpectedResponse))
-                return
-            }
-            let apps = content.compactMap { (key, value) -> (id: String, name: String)? in
-                guard let name = value as? String else { return nil }
-                return (id: key, name: name)
-            }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            self.delegate?.sessionDidFetchApps(apps)
-            completion?(.success(apps))
-        }
-        sendEncrypted(OPACK.encodeFetchLaunchableApplicationsEvent(txn: txn))
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timeoutItem)
+        appLauncher.fetchApps(completion: completion)
     }
 
     public func launchApp(bundleID: String,
                           completion: ((Result<Void, Error>) -> Void)? = nil) {
-        let txn = nextTxn()
-        Log.companion.report("Companion: launching app \(bundleID) txn=\(txn)")
-        let timeoutItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            if self.pendingCallbacks.removeValue(forKey: txn) != nil {
-                Log.companion.report("Companion: launchApp \(bundleID) timed out")
-                completion?(.failure(CompanionError.unexpectedResponse))
-            }
-        }
-        pendingCallbacks[txn] = { _ in
-            timeoutItem.cancel()
-            completion?(.success(()))
-        }
-        sendEncrypted(OPACK.encodeLaunchApp(bundleID: bundleID, txn: txn))
-        DispatchQueue.main.asyncAfter(deadline: .now() + LaunchApp.timeout, execute: timeoutItem)
-    }
-
-    private enum LaunchApp {
-        static let timeout: TimeInterval = 3
+        appLauncher.launchApp(bundleID: bundleID, completion: completion)
     }
 
     // MARK: - Encrypted send
@@ -616,32 +478,11 @@ public final class CompanionSession {
 
     // MARK: - Helpers
 
-    private func nextTxn() -> UInt32 {
+    public func registerCallback(for txn: UInt32, callback: @escaping ([String: Any]) -> Void) {
+        pendingCallbacks[txn] = callback
+    }
+
+    public func nextTxn() -> UInt32 {
         let t = txnCounter; txnCounter &+= 1; return t
-    }
-}
-
-// MARK: - Errors
-
-public enum CompanionError: LocalizedError {
-    case unexpectedResponse
-    public var errorDescription: String? {
-        switch self {
-        case .unexpectedResponse: return "Unexpected response from Apple TV"
-        }
-    }
-}
-
-public enum TextInputError: LocalizedError {
-    case notConnected
-    case noActiveTextField
-    case sessionUUIDMissing
-
-    public var errorDescription: String? {
-        switch self {
-        case .notConnected:       return "Not connected to an Apple TV"
-        case .noActiveTextField:  return "No text input active on Apple TV"
-        case .sessionUUIDMissing: return "Text input session UUID missing from ATV response"
-        }
     }
 }

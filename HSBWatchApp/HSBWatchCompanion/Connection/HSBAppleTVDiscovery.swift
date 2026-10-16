@@ -304,6 +304,9 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         }
         let port = service.port > 0 ? UInt16(service.port) : 49152
         
+        NSLog("[ATV_CONNECT] Bonjour resolved: %@ -> host=%@ (IPv4=%@, hostName=%@), port=%d (raw=%d), addrs=%d",
+              cleanName, host, resolvedIPv4 ?? "nil", service.hostName ?? "nil", Int(port), Int(service.port), service.addresses?.count ?? 0)
+        
         discoveryLock.lock()
         defer { discoveryLock.unlock() }
         
