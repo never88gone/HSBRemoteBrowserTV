@@ -53,10 +53,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [self.containerView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
     
-    // 默认展示动态加载出的第 0 个选项卡页面，支持 UI 测试指定初始 Tab
-    NSInteger initialTab = [[NSUserDefaults standardUserDefaults] integerForKey:@"UITestInitialTab"];
+    // 默认展示动态加载出的第 0 个选项卡页面
     self.currentIndex = -1;
-    [self switchToIndex:initialTab];
+    [self switchToIndex:0];
     
     [self applyThemeStyle];
 }

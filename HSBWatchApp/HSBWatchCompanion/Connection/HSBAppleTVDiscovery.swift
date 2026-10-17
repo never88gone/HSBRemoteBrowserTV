@@ -110,43 +110,6 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         self.deviceMap.removeAll()
         self.services.removeAll()
         
-        let args = ProcessInfo.processInfo.arguments
-        if args.contains("--test-device-list-mock") {
-            let livingRoom = HSBDiscoveredAppleTV(
-                id: "LivingRoomATV",
-                name: "客厅 Apple TV 4K",
-                host: "Apple-TV-4K.local",
-                port: 61925,
-                modelName: "AppleTV14,1",
-                isNativeAppleTV: true,
-                isBrowserApp: true
-            )
-            let studyRoom = HSBDiscoveredAppleTV(
-                id: "StudyATV",
-                name: "书房 Apple TV",
-                host: "Study-Apple-TV.local",
-                port: 49152,
-                modelName: "AppleTV11,1",
-                isNativeAppleTV: true,
-                isBrowserApp: false
-            )
-            let bedRoom = HSBDiscoveredAppleTV(
-                id: "BedroomATV",
-                name: "卧室 Apple TV",
-                host: "Bedroom-Apple-TV.local",
-                port: 49152,
-                modelName: "AppleTV6,2",
-                isNativeAppleTV: true,
-                isBrowserApp: false
-            )
-            self.deviceMap[livingRoom.id] = livingRoom
-            self.deviceMap[studyRoom.id] = studyRoom
-            self.deviceMap[bedRoom.id] = bedRoom
-            discoveryLock.unlock()
-            notifyChange()
-            // 在 Mock 模式下，阻断物理局域网扫描，确保绝对纯净演示数据，杜绝敏感设备泄露
-            return
-        }
         discoveryLock.unlock()
         
         log.info("Starting Apple TV Bonjour hardware discovery (_companion-link)...")

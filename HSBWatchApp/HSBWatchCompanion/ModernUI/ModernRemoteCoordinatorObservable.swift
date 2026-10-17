@@ -23,7 +23,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
         self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
         self.browserDeviceName = legacyMgr.deviceName ?? ""
         self.isNativeConnected = coordinator.nativeClient.isConnected
-        self.isTargetMac = coordinator.isCurrentTargetMac || CommandLine.arguments.contains("--test-mac-media")
+        self.isTargetMac = coordinator.isCurrentTargetMac
         self.targetDeviceName = coordinator.currentTargetDeviceName.isEmpty ? "Mac" : coordinator.currentTargetDeviceName
         coordinator.delegate = self
         
@@ -54,7 +54,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
             self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
             self.browserDeviceName = legacyMgr.deviceName ?? ""
             self.isNativeConnected = coordinator.nativeClient.isConnected
-            self.isTargetMac = coordinator.isCurrentTargetMac || CommandLine.arguments.contains("--test-mac-media")
+            self.isTargetMac = coordinator.isCurrentTargetMac
             if !coordinator.currentTargetDeviceName.isEmpty {
                 self.targetDeviceName = coordinator.currentTargetDeviceName
             }

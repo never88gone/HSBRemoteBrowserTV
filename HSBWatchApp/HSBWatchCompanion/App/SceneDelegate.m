@@ -11,9 +11,7 @@
 #import "HSBTVOSConnectionManager.h"
 
 @interface SceneDelegate ()
-#if DEBUG
-@property (nonatomic, strong) dispatch_source_t cmdFileTimer;
-#endif
+
 @end
 
 @implementation SceneDelegate
@@ -43,51 +41,7 @@
     for (UIOpenURLContext *context in connectionOptions.URLContexts) {
         [self handleRemotePairingURL:context.URL];
     }
-    for (NSString *arg in [NSProcessInfo processInfo].arguments) {
-        if ([arg hasPrefix:@"hsbremote://"]) {
-            [self handleRemotePairingURL:[NSURL URLWithString:arg]];
-        }
-    }
-    NSString *testPairURL = [[NSUserDefaults standardUserDefaults] stringForKey:@"UITestPairingURL"];
-    if (testPairURL.length > 0) {
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"UITestPairingURL"];
-        [self handleRemotePairingURL:[NSURL URLWithString:testPairURL]];
-    }
-#if DEBUG
-    [self setupAutomationListener];
-#endif
 }
-
-#if DEBUG
-- (void)setupAutomationListener {
-    NSString *docPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *cmdFile = [docPath stringByAppendingPathComponent:@"remote_cmd.txt"];
-    
-    dispatch_queue_t queue = dispatch_get_main_queue();
-    self.cmdFileTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
-    dispatch_source_set_timer(self.cmdFileTimer, DISPATCH_TIME_NOW, 150 * NSEC_PER_MSEC, 50 * NSEC_PER_MSEC);
-    
-    __weak typeof(self) weakSelf = self;
-    dispatch_source_set_event_handler(self.cmdFileTimer, ^{
-        if ([[NSFileManager defaultManager] fileExistsAtPath:cmdFile]) {
-            NSError *err = nil;
-            NSString *content = [NSString stringWithContentsOfFile:cmdFile encoding:NSUTF8StringEncoding error:&err];
-            [[NSFileManager defaultManager] removeItemAtPath:cmdFile error:nil];
-            if (content.length > 0) {
-                NSString *trimmed = [content stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-                if (trimmed.length > 0) {
-                    NSURL *url = [NSURL URLWithString:trimmed];
-                    if (url) {
-                        NSLog(@"[SceneDelegate] Executing automation command: %@", trimmed);
-                        [weakSelf handleRemotePairingURL:url];
-                    }
-                }
-            }
-        }
-    });
-    dispatch_resume(self.cmdFileTimer);
-}
-#endif
 
 - (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts {
     for (UIOpenURLContext *context in URLContexts) {
@@ -193,11 +147,6 @@
 
 - (void)sceneWillEnterForeground:(UIScene *)scene {
     [[HSBTVOSConnectionManager sharedManager] handleAppWillEnterForeground];
-    NSString *testPairURL = [[NSUserDefaults standardUserDefaults] stringForKey:@"UITestPairingURL"];
-    if (testPairURL.length > 0) {
-        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"UITestPairingURL"];
-        [self handleRemotePairingURL:[NSURL URLWithString:testPairURL]];
-    }
 }
 
 

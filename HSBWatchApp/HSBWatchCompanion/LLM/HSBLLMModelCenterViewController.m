@@ -40,47 +40,11 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestDemoDownloading"]) {
-        if ([HSBLocalLLMManager shared].availableModels.count >= 3) {
-            HSBLocalLLMModel *m0 = [HSBLocalLLMManager shared].availableModels[0];
-            HSBLocalLLMModel *m1 = [HSBLocalLLMManager shared].availableModels[1];
-            
-            m0.status = HSBLocalLLMDownloadStatusFinished;
-            [[HSBLocalLLMManager shared] activateModel:m0];
-            
-            m1.status = HSBLocalLLMDownloadStatusDownloading;
-            m1.downloadProgress = 0.685;
-            
-            [self.tableView reloadData];
-        }
-    }
+    [self.tableView reloadData];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    
-    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"UITestTriggerDownloadIndex"]) {
-        NSInteger downloadIdx = [[NSUserDefaults standardUserDefaults] integerForKey:@"UITestTriggerDownloadIndex"];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (downloadIdx < [HSBLocalLLMManager shared].availableModels.count) {
-                UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
-                btn.tag = downloadIdx;
-                [self handleAction:btn];
-            }
-        });
-    }
-    
-    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"UITestVerifyModelActivationIndex"]) {
-        NSInteger actIdx = [[NSUserDefaults standardUserDefaults] integerForKey:@"UITestVerifyModelActivationIndex"];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (actIdx < [HSBLocalLLMManager shared].availableModels.count) {
-                HSBLocalLLMModel *m = [HSBLocalLLMManager shared].availableModels[actIdx];
-                m.status = HSBLocalLLMDownloadStatusFinished;
-                [[HSBLocalLLMManager shared] activateModel:m];
-                [self.tableView reloadData];
-            }
-        });
-    }
 }
 
 - (void)handleCustomAPIConfig {

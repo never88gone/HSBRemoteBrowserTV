@@ -115,13 +115,6 @@ public struct ModernIPTVControlView: View {
         }
         .scrollIndicators(.hidden)
         .onAppear {
-            #if DEBUG
-            if CommandLine.arguments.contains("--iptv-source-manager") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    vm.isSourceManagerPresented = true
-                }
-            }
-            #endif
             if isConnected {
                 onAction?(.iptvGetFavorites)
                 onRequestSources?()

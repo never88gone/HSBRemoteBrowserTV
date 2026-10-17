@@ -6,7 +6,6 @@
 //
 
 #import "AppDelegate.h"
-#import "HSBLLMVerificationTest.h"
 
 @interface AppDelegate ()
 
@@ -16,16 +15,6 @@
 
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestCaptureLaunchScreen"]) {
-        [NSThread sleepForTimeInterval:1.2];
-    }
-    
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"UITestRunLLMVerification"]) {
-        [HSBLLMVerificationTest runAllLLMVerificationsWithCompletion:^(BOOL allPassed, NSString *report) {
-            NSLog(@"[LLM Verification Complete] Success: %d", allPassed);
-        }];
-    }
-    
     return YES;
 }
 
