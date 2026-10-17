@@ -6,7 +6,7 @@ PLATFORM="${1:-ios}"
 ACTION="${2:---archive-only}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$ROOT_DIR/HSBWatchApp/HSBWatchApp.xcodeproj"
-BUILD_NUMBER="${BUILD_NUMBER:-${THLBROWSER_BUILD_NUMBER:-$(date +%Y%m%d%H%M)}}"
+BUILD_NUMBER="${BUILD_NUMBER:-${THLBROWSER_BUILD_NUMBER:-$(date +%Y%m%d%H%M%S)}}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-${THLBROWSER_ARCHIVE_ROOT:-$ROOT_DIR/Artifacts/AppStore/$BUILD_NUMBER}}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${THLBROWSER_DERIVED_DATA_PATH:-$HOME/.thlbrowser-derived}}"
 

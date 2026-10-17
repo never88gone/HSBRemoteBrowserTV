@@ -55,6 +55,12 @@ jobs:
             echo "should_deploy=false" >> $GITHUB_OUTPUT
             echo "⏸️ 未检测到版本号变更且未指定强制发布，跳过本次打包"
           fi
+          
+          # 无论触发方式，统一注入当前精准时间版本号
+          EFFECTIVE_BUILD="${curr_val:-$(date +"%Y%m%d%H%M%S")}"
+          echo "BUILD_NUMBER=$EFFECTIVE_BUILD" >> $GITHUB_ENV
+          echo "THLBROWSER_BUILD_NUMBER=$EFFECTIVE_BUILD" >> $GITHUB_ENV
+          echo "📌 生效构建编号: $EFFECTIVE_BUILD"
 
       - name: Verify Required Secrets
         if: steps.check_trigger.outputs.should_deploy == 'true'
@@ -131,6 +137,8 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
+          BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
+          THLBROWSER_BUILD_NUMBER: ${{ env.THLBROWSER_BUILD_NUMBER }}
         run: |
           gem install fastlane --no-document
           fastlane beta
