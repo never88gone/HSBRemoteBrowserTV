@@ -133,9 +133,11 @@ platform :ios do
 
   desc "Legacy local build and upload lane"
   lane :beta do
-    sh("bash ../script/archive_app_store.sh ios --export")
-    ipa_file = Dir.glob("../Artifacts/AppStore/*/ios/export/*.ipa").max_by { |f| File.mtime(f) }
-    UI.user_error!("No exported IPA found") unless ipa_file
+    repo_root = ENV["GITHUB_WORKSPACE"] || ENV["CI_PROJECT_DIR"] || File.expand_path("../..", __dir__)
+    script_path = File.join(repo_root, "script/archive_app_store.sh")
+    sh("bash \"#{script_path}\" ios --export")
+    ipa_file = Dir.glob(File.join(repo_root, "Artifacts/AppStore/*/ios/export/*.ipa")).max_by { |f| File.mtime(f) }
+    UI.user_error!("No exported IPA found in #{File.join(repo_root, 'Artifacts/AppStore')}") unless ipa_file
 
     api_key = get_asc_api_key
     upload_to_testflight(

@@ -83,14 +83,19 @@ install_provisioning_profiles() {
   echo "==> 检查并动态装载描述文件..."
   for p in "$ROOT_DIR/HSBWatchApp/fastlane"/*.mobileprovision; do
     if [[ -f "$p" ]]; then
-      local uuid
-      uuid=$(/usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin <<< "$(security cms -D -i "$p" 2>/dev/null)" 2>/dev/null || true)
-      local name
-      name=$(/usr/libexec/PlistBuddy -c "Print :Name" /dev/stdin <<< "$(security cms -D -i "$p" 2>/dev/null)" 2>/dev/null || true)
-      if [[ -n "$uuid" ]]; then
-        cp -f "$p" "$PROFILES_DIR/$uuid.mobileprovision"
-        echo "    已装载描述文件: $name -> $uuid.mobileprovision"
+      local tmp_plist
+      tmp_plist="$(mktemp)"
+      if security cms -D -i "$p" > "$tmp_plist" 2>/dev/null; then
+        local uuid
+        uuid=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$tmp_plist" 2>/dev/null || true)
+        local name
+        name=$(/usr/libexec/PlistBuddy -c "Print :Name" "$tmp_plist" 2>/dev/null || true)
+        if [[ -n "$uuid" ]]; then
+          cp -f "$p" "$PROFILES_DIR/$uuid.mobileprovision"
+          echo "    已装载描述文件: $name -> $uuid.mobileprovision"
+        fi
       fi
+      rm -f "$tmp_plist"
     fi
   done
 }

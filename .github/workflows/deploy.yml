@@ -7,6 +7,9 @@ on:
       - master
     paths:
       - 'HSBWatchApp/HSBWatchCompanion/AppVersion.xcconfig'
+      - '.github/workflows/deploy.yml'
+      - 'HSBWatchApp/fastlane/**'
+      - 'script/**'
   workflow_dispatch:
     inputs:
       force_deploy:
@@ -104,8 +107,9 @@ jobs:
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASS" $KEYCHAIN_PATH
           security import $CERT_PATH -P "$P12_PASS" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" $KEYCHAIN_PATH
+          security default-keychain -s $KEYCHAIN_PATH
+          security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           
           # 解析 iOS 主 App Profile UUID 并重命名拷贝
