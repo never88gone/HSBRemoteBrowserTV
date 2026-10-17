@@ -58,9 +58,23 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         completion: @escaping (String) -> Void
     ) {
         if HSBModernRemoteBridge.isLaunchAnimationActive {
-            NSLog("[NativePIN] Launch animation is active. Dismissing launch animation first to present alert cleanly on main view...")
-            HSBModernRemoteBridge.dismissLaunchAnimationIfNeeded {
-                self.presentPINAlert(deviceName: deviceName, completion: completion)
+            NSLog("[NativePIN] Launch animation is active. Deferring PIN alert until launch animation finishes cleanly...")
+            var obs: NSObjectProtocol?
+            obs = NotificationCenter.default.addObserver(forName: Notification.Name("HSBLaunchAnimationDidFinishNotification"), object: nil, queue: .main) { [weak self] _ in
+                if let observer = obs {
+                    NotificationCenter.default.removeObserver(observer)
+                    obs = nil
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self?.presentPINAlert(deviceName: deviceName, completion: completion)
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                if let observer = obs {
+                    NotificationCenter.default.removeObserver(observer)
+                    obs = nil
+                    self?.presentPINAlert(deviceName: deviceName, completion: completion)
+                }
             }
             return
         }

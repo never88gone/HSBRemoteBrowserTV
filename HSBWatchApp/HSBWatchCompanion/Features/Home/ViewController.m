@@ -2,6 +2,7 @@
 //  ViewController.m
 //  HSBWatchCompanion
 //
+
 #import "ViewController.h"
 #import <UIKit/UIKit.h>
 #import "HomeConfigEditViewController.h"
@@ -12,6 +13,7 @@
 #import "HSBWatchSessionManager.h"
 #import "HSBLocalLLMManager.h"
 #import "HSBActivityTracker.h"
+#import "HSBHomeStatusCardsView.h"
 #import "HSBHomeVideoControlCard.h"
 #import "HSBHomeBrowserControlCard.h"
 #import "HSBHomeActivityStatsCard.h"
@@ -28,24 +30,17 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 @interface ViewController () <HSBActivityTrackerDelegate, HSBHomeDeviceListManagerDelegate, HSBQRCodeScannerDelegate>
 
-// UI Properties
-@property (nonatomic, strong) UILabel *watchStatusLabel;
-@property (nonatomic, strong) UILabel *tvStatusLabel;
-@property (nonatomic, strong) UILabel *logLabel;
 @property (nonatomic, strong) UITableView *tvTableView;
 @property (nonatomic, strong) UIActivityIndicatorView *scanSpinner;
-@property (nonatomic, strong) UISwitch *watchSyncSwitch;
-@property (nonatomic, strong) UISwitch *tvScanSwitch;
 @property (nonatomic, assign) BOOL watchSyncEnabled;
 @property (nonatomic, assign) BOOL tvScanEnabled;
 
 // Components
+@property (nonatomic, strong) HSBHomeStatusCardsView *statusCardsView;
 @property (nonatomic, strong) HSBHomeVideoControlCard *videoControlCard;
 @property (nonatomic, strong) HSBHomeBrowserControlCard *browserControlCard;
 @property (nonatomic, strong) HSBHomeDeviceListManager *deviceListManager;
 @property (nonatomic, strong) HSBActivityTracker *activityTracker;
-
-// Activity Stats UI
 @property (nonatomic, strong) HSBHomeActivityStatsCard *statsCard;
 
 @property (nonatomic, strong) NSMutableArray<UIView *> *themeCards;
@@ -70,6 +65,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleTVOSConnectionStateChanged:) name:HSBTVOSConnectionStateNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchReachabilityChanged:) name:HSBWatchSessionReachabilityDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchActionReceived:) name:HSBWatchActionReceivedNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLaunchAnimationDidFinish:) name:@"HSBLaunchAnimationDidFinishNotification" object:nil];
     [self applyThemeStyle];
     
     if (@available(iOS 14.0, *)) {
@@ -107,6 +103,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
         if (!isTestEnv) {
             [HSBModernRemoteBridge showLaunchEntranceAnimationOn:self completion:^{
                 NSLog(@"[LaunchAnim] showLaunchEntranceAnimation completed");
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [HSBModernRemoteBridge reopenNativePINAlertIfNeeded];
+                });
             }];
         }
     });
@@ -141,29 +140,26 @@ static inline NSString * L(NSString *en, NSString *zh) {
     subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:subtitleLabel];
     
-    self.watchStatusLabel = [self createLabel];
-    self.tvStatusLabel = [self createLabel];
-    self.logLabel = [self createLabel];
-    
-    self.watchSyncSwitch = [[UISwitch alloc] init];
-    self.watchSyncSwitch.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.watchSyncSwitch setOn:self.watchSyncEnabled animated:NO];
-    [self.watchSyncSwitch addTarget:self action:@selector(watchSyncSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-    
-    self.tvScanSwitch = [[UISwitch alloc] init];
-    self.tvScanSwitch.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.tvScanSwitch setOn:self.tvScanEnabled animated:NO];
-    [self.tvScanSwitch addTarget:self action:@selector(tvScanSwitchChanged:) forControlEvents:UIControlEventValueChanged];
-    
-    UIView *card1 = [self createCard:L(@" WATCH SYNC ENGINE", @" 穿戴设备运动同步引擎") valueLabel:self.watchStatusLabel switchView:self.watchSyncSwitch];
-    UIView *card2 = [self createCard:L(@" APPLE TV HARDWARE LINK", @" Apple TV 硬件设备直连") valueLabel:self.tvStatusLabel switchView:self.tvScanSwitch];
-    UITapGestureRecognizer *tvCardTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTVCardTapped)];
-    [card2 addGestureRecognizer:tvCardTap];
-    card2.userInteractionEnabled = YES;
-    
-    UIView *card3 = [self createCard:L(@"LATEST DETECTED ACTION", @"最终判定体感动作") valueLabel:self.logLabel switchView:nil];
-    
     __weak typeof(self) weakSelf = self;
+    self.statusCardsView = [[HSBHomeStatusCardsView alloc] init];
+    self.statusCardsView.onWatchSyncChanged = ^(BOOL enabled) {
+        weakSelf.watchSyncEnabled = enabled;
+        [weakSelf updateWatchSessionState];
+    };
+    self.statusCardsView.onTVScanChanged = ^(BOOL enabled) {
+        weakSelf.tvScanEnabled = enabled;
+        if (enabled) {
+            [weakSelf.deviceListManager startScanning];
+        } else {
+            [weakSelf.deviceListManager stopScanning];
+        }
+    };
+    self.statusCardsView.onTVCardTapped = ^{
+        [weakSelf.deviceListManager reopenPINAlertIfNeeded];
+    };
+    [self.view addSubview:self.statusCardsView];
+    [self.themeCards addObjectsFromArray:self.statusCardsView.cardViews];
+    
     self.videoControlCard = [[HSBHomeVideoControlCard alloc] init];
     self.videoControlCard.hidden = YES;
     self.videoControlCard.onSeekRequested = ^(NSTimeInterval seekTime) {
@@ -183,17 +179,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [weakSelf.navigationController pushViewController:vc animated:YES];
     };
     [self.themeCards addObject:self.browserControlCard];
-    
-    self.watchStatusLabel.text = L(@"🟡 Connecting...", @"🟡 获取 Apple Watch 状态中...");
-    self.tvStatusLabel.text = L(@"⚪️ Hardware Idle", @"⚪️ 未连接 Apple TV 硬件");
-    self.logLabel.text = L(@"Waiting for gestures...", @"等待进行体感动作...");
-    self.logLabel.textColor = [UIColor tertiaryLabelColor];
-    
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[card1, card2, card3]];
-    stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = 6;
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:stack];
     
     UIView *tableContainer = [[UIView alloc] init];
     tableContainer.backgroundColor = [UIColor secondarySystemBackgroundColor];
@@ -224,7 +209,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     self.deviceListManager = [[HSBHomeDeviceListManager alloc] initWithTableView:self.tvTableView
                                                                         spinner:self.scanSpinner
-                                                       presentingViewController:self];
+                                                        presentingViewController:self];
     self.deviceListManager.delegate = self;
     
     self.statsCard = [[HSBHomeActivityStatsCard alloc] init];
@@ -241,11 +226,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [subtitleLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
         [subtitleLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         
-        [stack.topAnchor constraintEqualToAnchor:subtitleLabel.bottomAnchor constant:10],
-        [stack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [stack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [self.statusCardsView.topAnchor constraintEqualToAnchor:subtitleLabel.bottomAnchor constant:10],
+        [self.statusCardsView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
+        [self.statusCardsView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         
-        [tableContainer.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:12],
+        [tableContainer.topAnchor constraintEqualToAnchor:self.statusCardsView.bottomAnchor constant:12],
         [tableContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
         [tableContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         [tableContainer.heightAnchor constraintEqualToConstant:190],
@@ -275,58 +260,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
     ]];
 }
 
-- (UILabel *)createLabel {
-    UILabel *l = [[UILabel alloc] init];
-    l.font = [UIFont systemFontOfSize:16 weight:UIFontWeightMedium];
-    l.textColor = [UIColor whiteColor];
-    l.numberOfLines = 0;
-    l.translatesAutoresizingMaskIntoConstraints = NO;
-    return l;
-}
-
-- (UIView *)createCard:(NSString *)title valueLabel:(UILabel *)valueLabel switchView:(UISwitch *)switchView {
-    UIView *view = [[UIView alloc] init];
-    view.backgroundColor = [UIColor secondarySystemBackgroundColor];
-    view.layer.cornerRadius = 14;
-    view.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.themeCards addObject:view];
-    
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.text = title;
-    titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
-    titleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.5];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [view addSubview:titleLabel];
-    [view addSubview:valueLabel];
-    
-    if (switchView) {
-        [view addSubview:switchView];
-        [NSLayoutConstraint activateConstraints:@[
-            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:10],
-            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
-            [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-12],
-            [switchView.centerYAnchor constraintEqualToAnchor:view.centerYAnchor],
-            [switchView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-18],
-            [switchView.widthAnchor constraintEqualToConstant:51],
-            [valueLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
-            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
-            [valueLabel.trailingAnchor constraintLessThanOrEqualToAnchor:switchView.leadingAnchor constant:-12],
-            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-10]
-        ]];
-    } else {
-        [NSLayoutConstraint activateConstraints:@[
-            [titleLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:10],
-            [titleLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
-            [titleLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-18],
-            [valueLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4],
-            [valueLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
-            [valueLabel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-18],
-            [valueLabel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-10]
-        ]];
-    }
-    return view;
-}
-
 #pragma mark - Activity Tracker Delegate
 
 - (void)activityTrackerDidUpdateSteps:(NSNumber *)steps {
@@ -340,8 +273,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 #pragma mark - Device List Manager Delegate
 
 - (void)deviceListManager:(HSBHomeDeviceListManager *)manager didChangeStatusText:(NSString *)text color:(UIColor *)color {
-    self.tvStatusLabel.text = text;
-    self.tvStatusLabel.textColor = color;
+    [self.statusCardsView updateTVStatusText:text color:color];
 }
 
 - (void)deviceListManager:(HSBHomeDeviceListManager *)manager didUpdateDeviceCount:(NSUInteger)count {
@@ -354,10 +286,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)deviceListManagerDidRequestQRCodeScanner:(HSBHomeDeviceListManager *)manager {
     [self openQRCodeScanner];
-}
-
-- (void)handleTVCardTapped {
-    [self.deviceListManager reopenPINAlertIfNeeded];
 }
 
 #pragma mark - Navigation & Actions
@@ -405,33 +333,16 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
-#pragma mark - Watch Session & Switches
-
-- (void)watchSyncSwitchChanged:(UISwitch *)sender {
-    self.watchSyncEnabled = sender.isOn;
-    [self updateWatchSessionState];
-}
-
-- (void)tvScanSwitchChanged:(UISwitch *)sender {
-    self.tvScanEnabled = sender.isOn;
-    if (sender.isOn) {
-        [self.deviceListManager startScanning];
-    } else {
-        [self.deviceListManager stopScanning];
-    }
-}
-
 - (void)updateWatchSessionState {
     if (!self.watchSyncEnabled) {
-        self.watchStatusLabel.text = L(@"🔴 Gesture Sync Disabled (Power Save)", @"🔴 手势同步已关闭 (省电模式)");
-        self.watchStatusLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4];
+        [self.statusCardsView updateWatchStatusText:L(@"🔴 Gesture Sync Disabled (Power Save)", @"🔴 手势同步已关闭 (省电模式)")
+                                             color:[[UIColor whiteColor] colorWithAlphaComponent:0.4]];
         return;
     }
     __weak typeof(self) weakSelf = self;
     [[HSBWatchSessionManager sharedManager] updateWatchSessionStateWithHandler:^(NSString *statusText) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            weakSelf.watchStatusLabel.textColor = [UIColor whiteColor];
-            weakSelf.watchStatusLabel.text = statusText;
+            [weakSelf.statusCardsView updateWatchStatusText:statusText color:[UIColor whiteColor]];
         });
     }];
 }
@@ -453,7 +364,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     NSString *action = note.userInfo[@"action"];
     if (action.length > 0) {
         [self.activityTracker incrementActionScore];
-        self.logLabel.text = [NSString stringWithFormat:L(@"Action: %@", @"捕获体感: %@"), action];
+        [self.statusCardsView updateActionLogText:[NSString stringWithFormat:L(@"Action: %@", @"捕获体感: %@"), action]];
     }
 }
 
@@ -465,6 +376,16 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.aiLoadingHUD setHidden:YES];
 }
 
+- (void)handleLaunchAnimationDidFinish:(NSNotification *)note {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [HSBModernRemoteBridge reopenNativePINAlertIfNeeded];
+    });
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
 - (void)setupAILoadingHUD {
     // LLM prewarming HUD placeholder
 }
@@ -473,8 +394,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [super applyThemeStyle];
     HSBThemePalette *p = [HSBThemeManager shared].currentPalette;
     self.view.backgroundColor = p.backgroundColor;
-    self.watchSyncSwitch.onTintColor = p.primaryColor;
-    self.tvScanSwitch.onTintColor = p.primaryColor;
+    [self.statusCardsView applyThemePrimaryColor:p.primaryColor];
     [self.videoControlCard applyThemePrimaryColor:p.primaryColor];
     [self.browserControlCard applyThemePrimaryColor:p.primaryColor];
     self.scanSpinner.color = p.primaryColor;

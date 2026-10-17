@@ -4,9 +4,11 @@
 //
 
 #import "VideoControlViewController.h"
+#import <UIKit/UIKit.h>
 #import "HSBThemeManager.h"
 #import "HSBTVOSConnectionManager.h"
 #import "HSBPhysicalVolumeListener.h"
+#import "HSBVideoPlayerControlPanelView.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
     NSString *language = [[NSLocale preferredLanguages] firstObject];
@@ -17,66 +19,72 @@ static inline NSString * L(NSString *en, NSString *zh) {
 }
 
 @interface VideoControlViewController ()
+
 @property (nonatomic, strong) UIScrollView *scrollView;
-@property (nonatomic, strong) UIView *contentView;
-@property (nonatomic, strong) UIButton *playPauseBtn;
-@property (nonatomic, strong) UISlider *progressSlider;
-@property (nonatomic, strong) UILabel *currentTimeLabel;
-@property (nonatomic, strong) UILabel *durationLabel;
-@property (nonatomic, strong) UISegmentedControl *rateControl;
-@property (nonatomic, strong) UISlider *volumeSlider;
-@property (nonatomic, strong) UIButton *muteBtn;
-@property (nonatomic, strong) UIButton *audioTrackBtn;
-@property (nonatomic, strong) UIButton *subtitleBtn;
+@property (nonatomic, strong) HSBVideoPlayerControlPanelView *controlPanelView;
+
+// Playback State
 @property (nonatomic, assign) BOOL isPlaying;
+@property (nonatomic, assign) NSTimeInterval currentTime;
+@property (nonatomic, assign) NSTimeInterval duration;
+@property (nonatomic, assign) double playbackRate;
+@property (nonatomic, assign) float volume;
 @property (nonatomic, assign) BOOL isMuted;
-@property (nonatomic, assign) BOOL isDraggingSlider;
-@property (nonatomic, assign) BOOL isDraggingVolume;
-@property (nonatomic, assign) NSTimeInterval currentDuration;
+
+// UI interaction states
+@property (nonatomic, assign) BOOL isSeeking;
+@property (nonatomic, strong) HSBPhysicalVolumeListener *volumeListener;
+
 @end
 
 @implementation VideoControlViewController
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [[HSBPhysicalVolumeListener sharedListener] stopListening];
+    [self.volumeListener stopListening];
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.isPlaying = YES;
-    self.isMuted = NO;
-    self.currentDuration = 0;
-    self.isDraggingSlider = NO;
-    self.isDraggingVolume = NO;
+    self.title = L(@"Video Player", @"全屏播放器");
     
-    // 监听 tvOS 状态更新通知
+    // Default mock or fallback states
+    self.isPlaying = YES;
+    self.currentTime = 0;
+    self.duration = 0;
+    self.playbackRate = 1.0;
+    self.volume = 1.0;
+    self.isMuted = NO;
+    
+    [self setupUI];
+    [self applyThemeStyle];
+    
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(handleTVOSStateUpdated:)
                                                  name:HSBTVOSStateUpdatedNotification
                                                object:nil];
-    
-    [self setupUI];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     __weak typeof(self) weakSelf = self;
-    [HSBPhysicalVolumeListener sharedListener].onVolumeUp = ^{
+    self.volumeListener = [HSBPhysicalVolumeListener sharedListener];
+    self.volumeListener.onVolumeUp = ^{
         [weakSelf volumeUp];
     };
-    [HSBPhysicalVolumeListener sharedListener].onVolumeDown = ^{
+    self.volumeListener.onVolumeDown = ^{
         [weakSelf volumeDown];
     };
-    [[HSBPhysicalVolumeListener sharedListener] startListening];
+    [self.volumeListener startListening];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [[HSBPhysicalVolumeListener sharedListener] stopListening];
+    [self.volumeListener stopListening];
+    self.volumeListener.onVolumeUp = nil;
+    self.volumeListener.onVolumeDown = nil;
+    self.volumeListener = nil;
 }
-
-#pragma mark - UI Setup
 
 - (void)setupUI {
     self.scrollView = [[UIScrollView alloc] init];
@@ -84,406 +92,174 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.scrollView.showsVerticalScrollIndicator = NO;
     [self.view addSubview:self.scrollView];
     
-    self.contentView = [[UIView alloc] init];
-    self.contentView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.scrollView addSubview:self.contentView];
+    self.controlPanelView = [[HSBVideoPlayerControlPanelView alloc] init];
+    [self.scrollView addSubview:self.controlPanelView];
     
-    // --- Play / Pause ---
-    self.playPauseBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    UIImageSymbolConfiguration *bigConfig = [UIImageSymbolConfiguration configurationWithPointSize:48 weight:UIImageSymbolWeightBold];
-    [self.playPauseBtn setImage:[UIImage systemImageNamed:@"pause.circle.fill" withConfiguration:bigConfig] forState:UIControlStateNormal];
-    self.playPauseBtn.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
-    [self.playPauseBtn addTarget:self action:@selector(togglePlayPause) forControlEvents:UIControlEventTouchUpInside];
-    self.playPauseBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.playPauseBtn];
+    __weak typeof(self) weakSelf = self;
+    self.controlPanelView.onPlayPauseToggled = ^{ [weakSelf togglePlayPause]; };
+    self.controlPanelView.onSeekBackward = ^{ [weakSelf seekBackward]; };
+    self.controlPanelView.onSeekForward = ^{ [weakSelf seekForward]; };
+    self.controlPanelView.onSliderChanged = ^(float value) { [weakSelf handleSliderChanged:value]; };
+    self.controlPanelView.onSliderEnded = ^(float value) { [weakSelf handleSliderEnded:value]; };
+    self.controlPanelView.onRateChanged = ^(double rate) { [weakSelf handleRateChanged:rate]; };
+    self.controlPanelView.onToggleMute = ^{ [weakSelf toggleMute]; };
+    self.controlPanelView.onVolumeChanged = ^(float value) { [weakSelf handleVolumeChanged:value]; };
+    self.controlPanelView.onVolumeEnded = ^(float value) { [weakSelf handleVolumeEnded:value]; };
+    self.controlPanelView.onSwitchAudioTrack = ^{ [weakSelf switchAudioTrack]; };
+    self.controlPanelView.onSwitchSubtitleTrack = ^{ [weakSelf switchSubtitleTrack]; };
     
-    // --- Backward 10s ---
-    UIButton *backBtn = [self createControlButtonWithIcon:@"gobackward.10" action:@selector(seekBackward)];
-    backBtn.tintColor = [UIColor whiteColor];
-    [self.contentView addSubview:backBtn];
-    
-    // --- Forward 10s ---
-    UIButton *fwdBtn = [self createControlButtonWithIcon:@"goforward.10" action:@selector(seekForward)];
-    fwdBtn.tintColor = [UIColor whiteColor];
-    [self.contentView addSubview:fwdBtn];
-    
-    // --- Progress Slider ---
-    self.progressSlider = [[UISlider alloc] init];
-    self.progressSlider.minimumValue = 0;
-    self.progressSlider.maximumValue = 1;
-    self.progressSlider.value = 0;
-    self.progressSlider.minimumTrackTintColor = [HSBThemeManager shared].currentPalette.primaryColor;
-    [self.progressSlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.progressSlider addTarget:self action:@selector(sliderEnded:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
-    self.progressSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.progressSlider];
-    
-    // --- Time Labels ---
-    self.currentTimeLabel = [[UILabel alloc] init];
-    self.currentTimeLabel.text = @"00:00";
-    self.currentTimeLabel.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];
-    self.currentTimeLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-    self.currentTimeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.currentTimeLabel];
-    
-    self.durationLabel = [[UILabel alloc] init];
-    self.durationLabel.text = @"--:--";
-    self.durationLabel.font = [UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];
-    self.durationLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-    self.durationLabel.textAlignment = NSTextAlignmentRight;
-    self.durationLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.durationLabel];
-    
-    // --- Playback Rate ---
-    UILabel *rateTitle = [[UILabel alloc] init];
-    rateTitle.text = L(@"Playback Speed", @"播放速率");
-    rateTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-    rateTitle.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-    rateTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:rateTitle];
-    
-    self.rateControl = [[UISegmentedControl alloc] initWithItems:@[@"0.5x", @"0.75x", @"1x", @"1.25x", @"1.5x", @"2x"]];
-    self.rateControl.selectedSegmentIndex = 2; // 1x default
-    self.rateControl.selectedSegmentTintColor = [HSBThemeManager shared].currentPalette.primaryColor;
-    [self.rateControl addTarget:self action:@selector(rateChanged:) forControlEvents:UIControlEventValueChanged];
-    self.rateControl.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.rateControl];
-    
-    // --- Volume Control Section ---
-    UILabel *volumeTitle = [[UILabel alloc] init];
-    volumeTitle.text = L(@"Volume Control", @"电视音量");
-    volumeTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-    volumeTitle.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
-    volumeTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:volumeTitle];
-    
-    self.muteBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    UIImageSymbolConfiguration *muteConfig = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
-    [self.muteBtn setImage:[UIImage systemImageNamed:@"speaker.wave.2.fill" withConfiguration:muteConfig] forState:UIControlStateNormal];
-    self.muteBtn.tintColor = [UIColor whiteColor];
-    [self.muteBtn addTarget:self action:@selector(toggleMute) forControlEvents:UIControlEventTouchUpInside];
-    self.muteBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.muteBtn];
-    
-    self.volumeSlider = [[UISlider alloc] init];
-    self.volumeSlider.minimumValue = 0;
-    self.volumeSlider.maximumValue = 1;
-    self.volumeSlider.value = 1.0;
-    self.volumeSlider.minimumTrackTintColor = [HSBThemeManager shared].currentPalette.primaryColor;
-    [self.volumeSlider addTarget:self action:@selector(volumeSliderChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.volumeSlider addTarget:self action:@selector(volumeSliderEnded:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside];
-    self.volumeSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.volumeSlider];
-    
-    // --- Extra Features Row (Track & Subtitles) ---
-    UIStackView *extraStack = [[UIStackView alloc] init];
-    extraStack.axis = UILayoutConstraintAxisHorizontal;
-    extraStack.spacing = 16;
-    extraStack.distribution = UIStackViewDistributionFillEqually;
-    extraStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:extraStack];
-    
-    self.audioTrackBtn = [self createFeatureCardWithIcon:@"waveform" title:L(@"Audio Track", @"音轨切换") action:@selector(switchAudioTrack)];
-    [extraStack addArrangedSubview:self.audioTrackBtn];
-    
-    self.subtitleBtn = [self createFeatureCardWithIcon:@"captions.bubble" title:L(@"Subtitles", @"字幕切换") action:@selector(switchSubtitleTrack)];
-    [extraStack addArrangedSubview:self.subtitleBtn];
-    
-    // --- Layout Constraints ---
     [NSLayoutConstraint activateConstraints:@[
         [self.scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
         [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         
-        [self.contentView.topAnchor constraintEqualToAnchor:self.scrollView.topAnchor],
-        [self.contentView.leadingAnchor constraintEqualToAnchor:self.scrollView.leadingAnchor],
-        [self.contentView.trailingAnchor constraintEqualToAnchor:self.scrollView.trailingAnchor],
-        [self.contentView.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor],
-        [self.contentView.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor],
-        
-        // Transport Controls Row: [<<10] [▶️/⏸] [10>>]
-        [self.playPauseBtn.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
-        [self.playPauseBtn.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:24],
-        [self.playPauseBtn.widthAnchor constraintEqualToConstant:70],
-        [self.playPauseBtn.heightAnchor constraintEqualToConstant:70],
-        
-        [backBtn.trailingAnchor constraintEqualToAnchor:self.playPauseBtn.leadingAnchor constant:-30],
-        [backBtn.centerYAnchor constraintEqualToAnchor:self.playPauseBtn.centerYAnchor],
-        [backBtn.widthAnchor constraintEqualToConstant:50],
-        [backBtn.heightAnchor constraintEqualToConstant:50],
-        
-        [fwdBtn.leadingAnchor constraintEqualToAnchor:self.playPauseBtn.trailingAnchor constant:30],
-        [fwdBtn.centerYAnchor constraintEqualToAnchor:self.playPauseBtn.centerYAnchor],
-        [fwdBtn.widthAnchor constraintEqualToConstant:50],
-        [fwdBtn.heightAnchor constraintEqualToConstant:50],
-        
-        // Progress Slider
-        [self.currentTimeLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
-        [self.currentTimeLabel.topAnchor constraintEqualToAnchor:self.playPauseBtn.bottomAnchor constant:24],
-        
-        [self.durationLabel.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
-        [self.durationLabel.centerYAnchor constraintEqualToAnchor:self.currentTimeLabel.centerYAnchor],
-        
-        [self.progressSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
-        [self.progressSlider.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
-        [self.progressSlider.topAnchor constraintEqualToAnchor:self.currentTimeLabel.bottomAnchor constant:8],
-        
-        // Rate
-        [rateTitle.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
-        [rateTitle.topAnchor constraintEqualToAnchor:self.progressSlider.bottomAnchor constant:24],
-        
-        [self.rateControl.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
-        [self.rateControl.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
-        [self.rateControl.topAnchor constraintEqualToAnchor:rateTitle.bottomAnchor constant:8],
-        [self.rateControl.heightAnchor constraintEqualToConstant:36],
-        
-        // Volume Section
-        [volumeTitle.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
-        [volumeTitle.topAnchor constraintEqualToAnchor:self.rateControl.bottomAnchor constant:24],
-        
-        [self.muteBtn.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
-        [self.muteBtn.topAnchor constraintEqualToAnchor:volumeTitle.bottomAnchor constant:12],
-        [self.muteBtn.widthAnchor constraintEqualToConstant:36],
-        [self.muteBtn.heightAnchor constraintEqualToConstant:36],
-        
-        [self.volumeSlider.leadingAnchor constraintEqualToAnchor:self.muteBtn.trailingAnchor constant:12],
-        [self.volumeSlider.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
-        [self.volumeSlider.centerYAnchor constraintEqualToAnchor:self.muteBtn.centerYAnchor],
-        
-        // Extra Features Row
-        [extraStack.topAnchor constraintEqualToAnchor:self.volumeSlider.bottomAnchor constant:28],
-        [extraStack.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:20],
-        [extraStack.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
-        [extraStack.heightAnchor constraintEqualToConstant:48],
-        [extraStack.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-30]
+        [self.controlPanelView.topAnchor constraintEqualToAnchor:self.scrollView.topAnchor],
+        [self.controlPanelView.leadingAnchor constraintEqualToAnchor:self.scrollView.leadingAnchor],
+        [self.controlPanelView.trailingAnchor constraintEqualToAnchor:self.scrollView.trailingAnchor],
+        [self.controlPanelView.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor],
+        [self.controlPanelView.widthAnchor constraintEqualToAnchor:self.scrollView.widthAnchor]
     ]];
 }
 
-- (UIButton *)createControlButtonWithIcon:(NSString *)icon action:(SEL)sel {
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:28 weight:UIImageSymbolWeightMedium];
-    [btn setImage:[UIImage systemImageNamed:icon withConfiguration:config] forState:UIControlStateNormal];
-    btn.tintColor = [UIColor labelColor];
-    [btn addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    return btn;
-}
-
-- (UIButton *)createFeatureCardWithIcon:(NSString *)icon title:(NSString *)title action:(SEL)sel {
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightMedium];
-    [btn setImage:[UIImage systemImageNamed:icon withConfiguration:config] forState:UIControlStateNormal];
-    [btn setTitle:[NSString stringWithFormat:@" %@", title] forState:UIControlStateNormal];
-    [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    btn.tintColor = [HSBThemeManager shared].currentPalette.primaryColor;
-    btn.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.08];
-    btn.layer.cornerRadius = 12;
-    btn.layer.borderWidth = 1;
-    btn.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12].CGColor;
-    btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    [btn addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
-    return btn;
-}
-
-#pragma mark - State Sync
+#pragma mark - TV Notification Receiver
 
 - (void)handleTVOSStateUpdated:(NSNotification *)notification {
     NSDictionary *userInfo = notification.userInfo;
     if (!userInfo) return;
     
-    NSNumber *currentTime = userInfo[HSBRemotePayloadKeyCurrentTime];
-    NSNumber *duration = userInfo[HSBRemotePayloadKeyDuration];
-    NSNumber *playbackState = userInfo[HSBRemotePayloadKeyPlaybackState];
-    NSNumber *volume = userInfo[HSBRemotePayloadKeyVolume];
-    NSNumber *muted = userInfo[HSBRemotePayloadKeyMuted];
-    
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (duration && [duration doubleValue] > 0) {
-            self.currentDuration = [duration doubleValue];
-            self.durationLabel.text = [self formatTime:self.currentDuration];
-            
-            if (currentTime && !self.isDraggingSlider) {
-                double cur = [currentTime doubleValue];
-                self.currentTimeLabel.text = [self formatTime:cur];
-                self.progressSlider.value = (float)(cur / self.currentDuration);
-            }
+        if (userInfo[@"isPlaying"]) {
+            self.isPlaying = [userInfo[@"isPlaying"] boolValue];
+            [self.controlPanelView updatePlayingState:self.isPlaying];
         }
         
-        if (playbackState != nil) {
-            self.isPlaying = [playbackState boolValue];
-            UIImageSymbolConfiguration *bigConfig = [UIImageSymbolConfiguration configurationWithPointSize:48 weight:UIImageSymbolWeightBold];
-            NSString *icon = self.isPlaying ? @"pause.circle.fill" : @"play.circle.fill";
-            [self.playPauseBtn setImage:[UIImage systemImageNamed:icon withConfiguration:bigConfig] forState:UIControlStateNormal];
+        if (userInfo[@"duration"]) {
+            self.duration = [userInfo[@"duration"] doubleValue];
         }
-
-        if (volume != nil && !self.isDraggingVolume) {
-            self.volumeSlider.value = MAX(0.0f, MIN(1.0f, volume.floatValue));
+        
+        if (userInfo[@"currentTime"] && !self.isSeeking) {
+            self.currentTime = [userInfo[@"currentTime"] doubleValue];
+            [self.controlPanelView updateCurrentTime:self.currentTime duration:self.duration isSeeking:self.isSeeking];
         }
-
-        if (muted != nil) {
-            self.isMuted = muted.boolValue;
-            UIImageSymbolConfiguration *muteConfig = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
-            NSString *icon = self.isMuted ? @"speaker.slash.fill" : @"speaker.wave.2.fill";
-            [self.muteBtn setImage:[UIImage systemImageNamed:icon withConfiguration:muteConfig] forState:UIControlStateNormal];
-            self.muteBtn.tintColor = self.isMuted ? [UIColor systemRedColor] : [UIColor whiteColor];
+        
+        if (userInfo[@"playbackRate"]) {
+            self.playbackRate = [userInfo[@"playbackRate"] doubleValue];
+            [self.controlPanelView updatePlaybackRate:self.playbackRate];
+        }
+        
+        if (userInfo[@"volume"]) {
+            self.volume = [userInfo[@"volume"] floatValue];
+            self.isMuted = (self.volume <= 0.001);
+            [self.controlPanelView updateVolume:self.volume isMuted:self.isMuted];
         }
     });
 }
 
-- (NSString *)formatTime:(NSTimeInterval)timeInSeconds {
-    if (isnan(timeInSeconds) || isinf(timeInSeconds) || timeInSeconds < 0) {
-        return @"00:00";
-    }
-    NSInteger totalSeconds = (NSInteger)round(timeInSeconds);
-    NSInteger minutes = totalSeconds / 60;
-    NSInteger seconds = totalSeconds % 60;
-    NSInteger hours = minutes / 60;
-    minutes = minutes % 60;
-    
-    if (hours > 0) {
-        return [NSString stringWithFormat:@"%02ld:%02ld:%02ld", (long)hours, (long)minutes, (long)seconds];
-    } else {
-        return [NSString stringWithFormat:@"%02ld:%02ld", (long)minutes, (long)seconds];
-    }
-}
-
-#pragma mark - Actions
+#pragma mark - Transport Actions
 
 - (void)togglePlayPause {
-    UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    [feedback impactOccurred];
-    
     self.isPlaying = !self.isPlaying;
-    UIImageSymbolConfiguration *bigConfig = [UIImageSymbolConfiguration configurationWithPointSize:48 weight:UIImageSymbolWeightBold];
-    NSString *icon = self.isPlaying ? @"pause.circle.fill" : @"play.circle.fill";
-    [self.playPauseBtn setImage:[UIImage systemImageNamed:icon withConfiguration:bigConfig] forState:UIControlStateNormal];
+    [self.controlPanelView updatePlayingState:self.isPlaying];
     
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: self.isPlaying ? (id)HSBRemoteSimulateActionPlay : (id)HSBRemoteSimulateActionPause});
-    }
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = self.isPlaying ? HSBRemoteSimulateActionPlay : HSBRemoteSimulateActionPause;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)seekBackward {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionSeekRelative, HSBRemotePayloadKeyValue: @(-10)});
-    }
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionSeekBackward;
+    payload[HSBRemotePayloadKeyValue] = @10;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)seekForward {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionSeekRelative, HSBRemotePayloadKeyValue: @(10)});
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionSeekForward;
+    payload[HSBRemotePayloadKeyValue] = @10;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+}
+
+- (void)handleSliderChanged:(float)value {
+    self.isSeeking = YES;
+    if (self.duration > 0) {
+        NSTimeInterval previewTime = value * self.duration;
+        [self.controlPanelView updateCurrentTime:previewTime duration:self.duration isSeeking:YES];
     }
 }
 
-- (void)sliderChanged:(UISlider *)slider {
-    self.isDraggingSlider = YES;
-    if (self.currentDuration > 0) {
-        NSTimeInterval previewTime = slider.value * self.currentDuration;
-        self.currentTimeLabel.text = [self formatTime:previewTime];
+- (void)handleSliderEnded:(float)value {
+    self.isSeeking = NO;
+    if (self.duration > 0) {
+        NSTimeInterval targetTime = value * self.duration;
+        NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+        payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionSeekAbsolute;
+        payload[HSBRemotePayloadKeyValue] = @(targetTime);
+        [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
     }
 }
 
-- (void)sliderEnded:(UISlider *)slider {
-    self.isDraggingSlider = NO;
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionSeekPercent, HSBRemotePayloadKeyValue: @(slider.value)});
-    }
-}
-
-- (void)rateChanged:(UISegmentedControl *)seg {
-    NSArray *rates = @[@0.5, @0.75, @1.0, @1.25, @1.5, @2.0];
-    NSNumber *rate = rates[seg.selectedSegmentIndex];
-    
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionSetRate, HSBRemotePayloadKeyValue: rate});
-    }
+- (void)handleRateChanged:(double)rate {
+    self.playbackRate = rate;
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionSetRate;
+    payload[HSBRemotePayloadKeyValue] = @(rate);
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)volumeUp {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionVolumeUp});
-    }
-    self.volumeSlider.value = MIN(1.0, self.volumeSlider.value + 0.05);
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionVolumeUp;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)volumeDown {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionVolumeDown});
-    }
-    self.volumeSlider.value = MAX(0.0, self.volumeSlider.value - 0.05);
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionVolumeDown;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)toggleMute {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    [fb impactOccurred];
-    
     self.isMuted = !self.isMuted;
-    UIImageSymbolConfiguration *muteConfig = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
-    NSString *icon = self.isMuted ? @"speaker.slash.fill" : @"speaker.wave.2.fill";
-    [self.muteBtn setImage:[UIImage systemImageNamed:icon withConfiguration:muteConfig] forState:UIControlStateNormal];
-    self.muteBtn.tintColor = self.isMuted ? [UIColor systemRedColor] : [UIColor whiteColor];
+    [self.controlPanelView updateVolume:self.volume isMuted:self.isMuted];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionToggleMute;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+}
+
+- (void)handleVolumeChanged:(float)value {
+    // 实时滑动不做频繁指令下发
+}
+
+- (void)handleVolumeEnded:(float)value {
+    self.volume = value;
+    self.isMuted = (value <= 0.001);
+    [self.controlPanelView updateVolume:self.volume isMuted:self.isMuted];
     
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionToggleMute});
-    }
-}
-
-- (void)volumeSliderChanged:(UISlider *)slider {
-    self.isDraggingVolume = YES;
-}
-
-- (void)volumeSliderEnded:(UISlider *)slider {
-    self.isDraggingVolume = NO;
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{
-            HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionSetVolume,
-            HSBRemotePayloadKeyVolume: @(slider.value)
-        });
-    }
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionSetVolume;
+    payload[HSBRemotePayloadKeyValue] = @(value);
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)switchAudioTrack {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionSwitchAudioTrack});
-    }
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionSwitchAudioTrack;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)switchSubtitleTrack {
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    if (self.sendPayloadBlock) {
-        self.sendPayloadBlock(@{HSBRemotePayloadKeyAction: (id)HSBRemoteSimulateActionToggleSubtitle});
-    }
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionToggleSubtitle;
+    [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
 }
 
 - (void)applyThemeStyle {
     [super applyThemeStyle];
-    HSBThemePalette *palette = [HSBThemeManager shared].currentPalette;
-    self.playPauseBtn.tintColor = palette.primaryColor;
-    self.progressSlider.minimumTrackTintColor = palette.primaryColor;
-    self.volumeSlider.minimumTrackTintColor = palette.primaryColor;
-    self.rateControl.selectedSegmentTintColor = palette.primaryColor;
-    self.audioTrackBtn.tintColor = palette.primaryColor;
-    self.subtitleBtn.tintColor = palette.primaryColor;
-    
-    if (@available(iOS 13.0, *)) {
-        [self.rateControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.6]} forState:UIControlStateNormal];
-        [self.rateControl setTitleTextAttributes:@{NSForegroundColorAttributeName: [UIColor whiteColor]} forState:UIControlStateSelected];
-    }
+    HSBThemePalette *p = [HSBThemeManager shared].currentPalette;
+    self.view.backgroundColor = p.backgroundColor;
+    [self.controlPanelView applyThemePrimaryColor:p.primaryColor];
 }
 
 @end

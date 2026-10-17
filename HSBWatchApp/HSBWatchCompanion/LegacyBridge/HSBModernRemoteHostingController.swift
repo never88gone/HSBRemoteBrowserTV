@@ -287,16 +287,22 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     
     @objc @MainActor public static var isLaunchAnimationActive: Bool = false
     @objc @MainActor private static weak var currentLaunchHostingVC: UIViewController?
+    @objc @MainActor private static var hasFinishedOrDismissed: Bool = false
     
     @objc @MainActor public static func dismissLaunchAnimationIfNeeded(completion: (() -> Void)? = nil) {
-        guard isLaunchAnimationActive, let hosting = currentLaunchHostingVC else {
+        guard isLaunchAnimationActive, let hosting = currentLaunchHostingVC, !hasFinishedOrDismissed else {
             isLaunchAnimationActive = false
+            currentLaunchHostingVC = nil
             completion?()
             return
         }
         isLaunchAnimationActive = false
+        hasFinishedOrDismissed = true
         currentLaunchHostingVC = nil
-        hosting.dismiss(animated: false, completion: completion)
+        hosting.dismiss(animated: false) {
+            completion?()
+            NotificationCenter.default.post(name: Notification.Name("HSBLaunchAnimationDidFinishNotification"), object: nil)
+        }
     }
     
     @objc @MainActor public static func reopenNativePINAlertIfNeeded() {
@@ -311,19 +317,31 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     @objc(showLaunchEntranceAnimationOn:completion:)
     @MainActor public static func showLaunchEntranceAnimation(on parent: UIViewController, completion: (() -> Void)? = nil) {
         isLaunchAnimationActive = true
+        hasFinishedOrDismissed = false
         weak var weakHosting: UIViewController?
         let animView = TanghuluLaunchAnimationView {
+            guard !hasFinishedOrDismissed else {
+                NSLog("[LaunchAnim] Animation already finished or dismissed, skipping duplicate action")
+                return
+            }
+            hasFinishedOrDismissed = true
             isLaunchAnimationActive = false
             currentLaunchHostingVC = nil
-            if let presented = weakHosting?.presentedViewController, presented is UIAlertController {
-                NSLog("[LaunchAnim] Alert is currently active on launch view, skip dismissing to prevent closing alert")
+            
+            if HSBNativePINAlertPresenter.shared.isPresenting ||
+               (weakHosting?.presentedViewController is UIAlertController) {
+                NSLog("[LaunchAnim] Alert is currently active on view, skip dismissing to prevent closing alert")
                 completion?()
                 NotificationCenter.default.post(name: Notification.Name("HSBLaunchAnimationDidFinishNotification"), object: nil)
                 return
             }
+            
             weakHosting?.dismiss(animated: true) {
                 completion?()
                 NotificationCenter.default.post(name: Notification.Name("HSBLaunchAnimationDidFinishNotification"), object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    DualModeRemoteCoordinator.shared.reopenNativePINAlertIfNeeded()
+                }
             }
         }
         let hosting = UIHostingController(rootView: animView)

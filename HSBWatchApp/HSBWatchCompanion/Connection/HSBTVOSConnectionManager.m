@@ -9,9 +9,10 @@
 #import "HSBTVOSInboundDispatcher.h"
 #import "HSBTVOSPairingCoordinator.h"
 #import "HSBTVOSHeartbeatCoordinator.h"
+#import "HSBTVOSTCPConnector.h"
 #import <UIKit/UIKit.h>
 
-@interface HSBTVOSConnectionManager () <HSBTVOSPairingCoordinatorDelegate, HSBTVOSHeartbeatCoordinatorDelegate>
+@interface HSBTVOSConnectionManager () <HSBTVOSPairingCoordinatorDelegate, HSBTVOSHeartbeatCoordinatorDelegate, HSBTVOSTCPConnectorDelegate>
 
 @property (nonatomic, assign) BOOL isConnected;
 @property (nonatomic, strong, nullable) nw_connection_t connection;
@@ -20,6 +21,7 @@
 @property (nonatomic, strong) dispatch_queue_t queue;
 @property (nonatomic, strong) HSBTVOSPairingCoordinator *pairingCoordinator;
 @property (nonatomic, strong) HSBTVOSHeartbeatCoordinator *heartbeatCoordinator;
+@property (nonatomic, strong) HSBTVOSTCPConnector *tcpConnector;
 @property (nonatomic, assign) NSUInteger connectionGeneration;
 @property (nonatomic, assign) BOOL isAppInBackground;
 @property (nonatomic, strong, nullable) NSDate *lastReceivedMessageDate;
@@ -53,6 +55,8 @@
         _pairingCoordinator.delegate = self;
         _heartbeatCoordinator = [[HSBTVOSHeartbeatCoordinator alloc] initWithQueue:_queue];
         _heartbeatCoordinator.delegate = self;
+        _tcpConnector = [[HSBTVOSTCPConnector alloc] init];
+        _tcpConnector.delegate = self;
         _isConnected = NO;
         _isAppInBackground = NO;
         
@@ -192,29 +196,6 @@
     return YES;
 }
 
-- (nw_parameters_t)createTCPParameters {
-    BOOL isPairingFlow = [self.pairingCoordinator isPairingTokenActive] && !self.pairingCoordinator.pairedTVRecord;
-    NSString *keyString = isPairingFlow ? self.pairingCoordinator.pairingToken : self.pairingCoordinator.pairedTVRecord[@"key"];
-    NSData *key = keyString ? [HSBTVOSKeychainStore dataFromBase64URLString:keyString] : nil;
-    NSString *identity = isPairingFlow ? @"pairing" : self.pairingCoordinator.pairedTVRecord[@"deviceID"];
-    nw_parameters_t parameters = nw_parameters_create_secure_tcp(^(nw_protocol_options_t tlsOptions) {
-        sec_protocol_options_t securityOptions = nw_tls_copy_sec_protocol_options(tlsOptions);
-        sec_protocol_options_set_min_tls_protocol_version(securityOptions, tls_protocol_version_TLSv12);
-        if (key.length == 32 && identity.length > 0) {
-            sec_protocol_options_add_pre_shared_key(securityOptions,
-                [HSBTVOSKeychainStore createDispatchData:key],
-                [HSBTVOSKeychainStore createDispatchData:[identity dataUsingEncoding:NSUTF8StringEncoding]]);
-        }
-    }, ^(nw_protocol_options_t tcpOptions) {
-        nw_tcp_options_set_enable_keepalive(tcpOptions, true);
-        nw_tcp_options_set_keepalive_idle_time(tcpOptions, 15);
-        nw_tcp_options_set_keepalive_interval(tcpOptions, 5);
-        nw_tcp_options_set_keepalive_count(tcpOptions, 3);
-    });
-    nw_parameters_set_include_peer_to_peer(parameters, true);
-    return parameters;
-}
-
 - (void)connectToEndpoint:(nw_endpoint_t)endpoint deviceName:(NSString *)deviceName {
     self.currentEndpoint = endpoint;
     self.deviceName = deviceName;
@@ -259,61 +240,57 @@
         self.connection = nil;
     }
     
-    nw_parameters_t parameters = [self createTCPParameters];
-    nw_connection_t connection = nw_connection_create(endpoint, parameters);
-    self.connection = connection;
-    NSUInteger generation = ++self.connectionGeneration;
+    BOOL isPairingFlow = [self.pairingCoordinator isPairingTokenActive] && !self.pairingCoordinator.pairedTVRecord;
+    NSString *keyString = isPairingFlow ? self.pairingCoordinator.pairingToken : self.pairingCoordinator.pairedTVRecord[@"key"];
+    NSData *key = keyString ? [HSBTVOSKeychainStore dataFromBase64URLString:keyString] : nil;
+    NSString *identity = isPairingFlow ? @"pairing" : self.pairingCoordinator.pairedTVRecord[@"deviceID"];
+    nw_parameters_t parameters = [HSBTVOSTCPConnector createParametersWithKey:key identity:identity];
     
-    __weak typeof(self) weakSelf = self;
-    nw_connection_set_state_changed_handler(connection, ^(nw_connection_state_t state, nw_error_t error) {
-        if (weakSelf.connection != connection || generation != weakSelf.connectionGeneration) return;
+    self.connectionGeneration++;
+    self.connection = [self.tcpConnector createAndStartConnectionToEndpoint:endpoint parameters:parameters queue:self.queue];
+}
 
-        switch (state) {
-            case nw_connection_state_ready: {
-                NSLog(@"[BonjourBridge] TLS ready; authenticating the paired device.");
-                weakSelf.pairingCoordinator.isAuthenticating = YES;
-                [weakSelf.heartbeatCoordinator stopReconnect];
-                [weakSelf startReceivingFromConnection:connection buffer:[NSMutableData data]];
-                [weakSelf.pairingCoordinator sendRemoteHelloOnConnection:connection];
-                break;
-            }
-            case nw_connection_state_failed: {
-                NSLog(@"[BonjourBridge] TVOS Connection failed: %@. Scheduling reconnect...", error);
-                weakSelf.isConnected = NO;
-                weakSelf.pairingCoordinator.isAuthenticating = NO;
-                weakSelf.connection = nil;
-                [weakSelf.heartbeatCoordinator stopHeartbeat];
-                [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
-                                                                    object:weakSelf 
-                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"🔴 Disconnected. Reconnecting..."}];
-                
-                if (weakSelf.pairingCoordinator.pairingToken.length > 0 && ![weakSelf.pairingCoordinator isPairingTokenActive]) {
-                    [weakSelf.pairingCoordinator clearPairingSession];
-                    weakSelf.currentEndpoint = nil;
-                }
-                
-                if (!weakSelf.isAppInBackground) {
-                    [weakSelf.heartbeatCoordinator scheduleReconnectWithDelay:0.0];
-                }
-                break;
-            }
-            case nw_connection_state_cancelled: {
-                NSLog(@"[BonjourBridge] TVOS Connection cancelled.");
-                weakSelf.isConnected = NO;
-                weakSelf.pairingCoordinator.isAuthenticating = NO;
-                [weakSelf.heartbeatCoordinator stopHeartbeat];
-                [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
-                                                                    object:weakSelf 
-                                                                  userInfo:@{HSBConnectionStateKeyState: @(state), HSBConnectionStateKeyMessage: @"⚪️ Disconnected"}];
-                break;
-            }
-            default:
-                break;
-        }
-    });
+#pragma mark - HSBTVOSTCPConnectorDelegate
+
+- (void)tcpConnector:(HSBTVOSTCPConnector *)connector didBecomeReadyWithConnection:(nw_connection_t)connection {
+    if (self.connection != connection) return;
+    NSLog(@"[BonjourBridge] TLS ready; authenticating the paired device.");
+    self.pairingCoordinator.isAuthenticating = YES;
+    [self.heartbeatCoordinator stopReconnect];
+    [self startReceivingFromConnection:connection buffer:[NSMutableData data]];
+    [self.pairingCoordinator sendRemoteHelloOnConnection:connection];
+}
+
+- (void)tcpConnector:(HSBTVOSTCPConnector *)connector didFailWithConnection:(nw_connection_t)connection error:(nullable nw_error_t)error {
+    if (self.connection != connection) return;
+    NSLog(@"[BonjourBridge] TVOS Connection failed: %@. Scheduling reconnect...", error);
+    self.isConnected = NO;
+    self.pairingCoordinator.isAuthenticating = NO;
+    self.connection = nil;
+    [self.heartbeatCoordinator stopHeartbeat];
+    [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
+                                                        object:self 
+                                                      userInfo:@{HSBConnectionStateKeyState: @(nw_connection_state_failed), HSBConnectionStateKeyMessage: @"🔴 Disconnected. Reconnecting..."}];
     
-    nw_connection_set_queue(connection, self.queue);
-    nw_connection_start(connection);
+    if (self.pairingCoordinator.pairingToken.length > 0 && ![self.pairingCoordinator isPairingTokenActive]) {
+        [self.pairingCoordinator clearPairingSession];
+        self.currentEndpoint = nil;
+    }
+    
+    if (!self.isAppInBackground) {
+        [self.heartbeatCoordinator scheduleReconnectWithDelay:0.0];
+    }
+}
+
+- (void)tcpConnector:(HSBTVOSTCPConnector *)connector didCancelWithConnection:(nw_connection_t)connection {
+    if (self.connection != connection) return;
+    NSLog(@"[BonjourBridge] TVOS Connection cancelled.");
+    self.isConnected = NO;
+    self.pairingCoordinator.isAuthenticating = NO;
+    [self.heartbeatCoordinator stopHeartbeat];
+    [[NSNotificationCenter defaultCenter] postNotificationName:HSBTVOSConnectionStateNotification 
+                                                        object:self 
+                                                      userInfo:@{HSBConnectionStateKeyState: @(nw_connection_state_cancelled), HSBConnectionStateKeyMessage: @"⚪️ Disconnected"}];
 }
 
 - (void)connectToPairingURL:(NSURL *)pairingURL {

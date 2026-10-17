@@ -5,6 +5,7 @@
 #import "HSBBuiltInAIEngine.h"
 #import "HSBCustomLLMAPIService.h"
 #import "HSBLocalLLMDownloadService.h"
+#import "HSBLocalLLMRegistry.h"
 
 @implementation HSBLocalLLMModel
 - (instancetype)initWithId:(NSString *)modelId name:(NSString *)name description:(NSString *)description url:(NSURL *)url {
@@ -126,58 +127,7 @@
 #pragma mark - Models Setup
 
 - (void)setupDefaultModels {
-    NSMutableArray *allModels = [NSMutableArray array];
-    
-    NSArray *builtInConfigs = @[
-        @{
-            @"id": @"mlx-community/Qwen1.5-0.5B-Chat-4bit",
-            @"name": @"Qwen1.5-0.5B (官方推荐)",
-            @"desc": @"轻量多语言通识模型，支持中英文同声传译与日常对话，耗费内存极低 (约 350MB)。",
-            @"url": @"https://hf-mirror.com/mlx-community/Qwen1.5-0.5B-Chat-4bit/resolve/main/tokenizer.json"
-        },
-        @{
-            @"id": @"mlx-community/SmolLM-135M-Instruct-4bit",
-            @"name": @"SmolLM-135M (极速体验)",
-            @"desc": @"超轻量极致模型，下载极快，硬件内存占用低 (约 90MB)，适合低功耗场景快速体验。",
-            @"url": @"https://hf-mirror.com/mlx-community/SmolLM-135M-Instruct-4bit/resolve/main/tokenizer.json"
-        },
-        @{
-            @"id": @"mlx-community/gemma-2-2b-it-4bit",
-            @"name": @"Gemma-2-2B-IT (深度推理)",
-            @"desc": @"Google 深度指令遵循模型，适合前端网页复杂 JS 控制脚本生成 (约 1.2GB)。",
-            @"url": @"https://hf-mirror.com/mlx-community/gemma-2-2b-it-4bit/resolve/main/tokenizer.json"
-        }
-    ];
-    
-    for (NSDictionary *info in builtInConfigs) {
-        [allModels addObject:[[HSBLocalLLMModel alloc] initWithId:info[@"id"]
-                                                            name:info[@"name"]
-                                                     description:info[@"desc"]
-                                                             url:[NSURL URLWithString:info[@"url"]]]];
-    }
-    
-    NSArray *customList = [[NSUserDefaults standardUserDefaults] objectForKey:@"HSBLocalLLM_CustomModelsList"];
-    for (NSDictionary *dict in customList) {
-        NSString *mId = dict[@"modelId"];
-        NSString *name = dict[@"name"];
-        NSString *desc = dict[@"description"];
-        NSString *originalUrl = dict[@"url"];
-        if (mId && name) {
-            BOOL alreadyExists = NO;
-            for (HSBLocalLLMModel *existing in allModels) {
-                if ([existing.modelId.lowercaseString isEqualToString:mId.lowercaseString]) {
-                    alreadyExists = YES;
-                    break;
-                }
-            }
-            if (!alreadyExists) {
-                NSURL *dummyUrl = (originalUrl && originalUrl.length > 0) ? [NSURL URLWithString:originalUrl] : [NSURL URLWithString:[NSString stringWithFormat:@"https://hf-mirror.com/%@/resolve/main/tokenizer.json", mId]];
-                [allModels addObject:[[HSBLocalLLMModel alloc] initWithId:mId name:name description:desc url:dummyUrl]];
-            }
-        }
-    }
-    
-    self.models = [allModels copy];
+    self.models = [HSBLocalLLMRegistry loadConfiguredModels];
     
     NSString *activeModelId = [[NSUserDefaults standardUserDefaults] stringForKey:@"HSBLocalLLM_ActiveModelId"];
     if ([activeModelId isEqualToString:@"qwen1.5-0.5b"]) activeModelId = @"mlx-community/Qwen1.5-0.5B-Chat-4bit";
@@ -327,76 +277,11 @@
 }
 
 - (BOOL)addCustomModelWithName:(NSString *)name repoId:(NSString *)repoId error:(NSError **)error {
-    NSString *trimmedName = [name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    NSString *trimmedInput = [repoId stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    
-    if (trimmedName.length == 0) {
-        if (error) *error = [NSError errorWithDomain:@"com.hsb.llm" code:-100 userInfo:@{NSLocalizedDescriptionKey: @"模型名称不能为空。"}];
-        return NO;
+    BOOL success = [HSBLocalLLMRegistry registerCustomModelWithName:name repoId:repoId error:error];
+    if (success) {
+        [self setupDefaultModels];
     }
-    if (trimmedInput.length == 0) {
-        if (error) *error = [NSError errorWithDomain:@"com.hsb.llm" code:-101 userInfo:@{NSLocalizedDescriptionKey: @"模型下载地址不能为空。"}];
-        return NO;
-    }
-    
-    NSString *parsedModelId = nil;
-    NSString *parsedEndpoint = nil;
-    NSString *parsedUrl = nil;
-    
-    if ([trimmedInput hasPrefix:@"http://"] || [trimmedInput hasPrefix:@"https://"]) {
-        NSURL *nsurl = [NSURL URLWithString:trimmedInput];
-        if (!nsurl || !nsurl.scheme || !nsurl.host) {
-            if (error) *error = [NSError errorWithDomain:@"com.hsb.llm" code:-102 userInfo:@{NSLocalizedDescriptionKey: @"无效的下载 URL。"}];
-            return NO;
-        }
-        parsedEndpoint = [NSString stringWithFormat:@"%@://%@%@", nsurl.scheme, nsurl.host, nsurl.port ? [NSString stringWithFormat:@":%@", nsurl.port] : @""];
-        parsedUrl = trimmedInput;
-        
-        NSString *path = nsurl.path;
-        NSRange resolveRange = [path rangeOfString:@"/resolve/" options:NSCaseInsensitiveSearch];
-        NSString *repoPath = (resolveRange.location != NSNotFound) ? [path substringToIndex:resolveRange.location] : path;
-        repoPath = [repoPath stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/"]];
-        NSArray *pathComponents = [repoPath componentsSeparatedByString:@"/"];
-        if (pathComponents.count != 2 || [pathComponents[0] length] == 0 || [pathComponents[1] length] == 0) {
-            if (error) *error = [NSError errorWithDomain:@"com.hsb.llm" code:-102 userInfo:@{NSLocalizedDescriptionKey: @"无法从 URL 中解析出有效的仓库信息。"}];
-            return NO;
-        }
-        parsedModelId = repoPath;
-    } else {
-        NSArray *parts = [trimmedInput componentsSeparatedByString:@"/"];
-        if (parts.count != 2 || [parts[0] length] == 0 || [parts[1] length] == 0) {
-            if (error) *error = [NSError errorWithDomain:@"com.hsb.llm" code:-102 userInfo:@{NSLocalizedDescriptionKey: @"格式不正确，应形如: 作者/项目名"}];
-            return NO;
-        }
-        parsedModelId = trimmedInput;
-        parsedEndpoint = @"https://hf-mirror.com";
-        parsedUrl = [NSString stringWithFormat:@"https://hf-mirror.com/%@/resolve/main/tokenizer.json", parsedModelId];
-    }
-    
-    for (HSBLocalLLMModel *m in self.models) {
-        if ([m.modelId.lowercaseString isEqualToString:parsedModelId.lowercaseString]) {
-            if (error) *error = [NSError errorWithDomain:@"com.hsb.llm" code:-103 userInfo:@{NSLocalizedDescriptionKey: @"该大模型已存在于您的模型列表中。"}];
-            return NO;
-        }
-    }
-    
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSArray *existing = [defaults objectForKey:@"HSBLocalLLM_CustomModelsList"];
-    NSMutableArray *customList = existing ? [existing mutableCopy] : [NSMutableArray array];
-    
-    [customList addObject:@{
-        @"modelId": parsedModelId,
-        @"name": trimmedName,
-        @"description": @"用户自定义添加的 MLX 格式模型。",
-        @"endpoint": parsedEndpoint,
-        @"url": parsedUrl
-    }];
-    [defaults setObject:customList forKey:@"HSBLocalLLM_CustomModelsList"];
-    [defaults setObject:parsedEndpoint forKey:[NSString stringWithFormat:@"HSBLocalLLM_ModelEndpoint_%@", parsedModelId]];
-    [defaults synchronize];
-    
-    [self setupDefaultModels];
-    return YES;
+    return success;
 }
 
 #pragma mark - Message Processing
@@ -407,7 +292,6 @@
 
 - (void)processMessage:(NSString *)message systemPrompt:(NSString *)systemPrompt type:(NSInteger)type completion:(HSBLocalLLMMessageCompletion)completion {
     if ([HSBLocalLLMManager useCustomAPI]) {
-        __weak typeof(self) weakSelf = self;
         [[HSBCustomLLMAPIService sharedService] processMessage:message systemPrompt:systemPrompt type:type completion:completion fallbackHandler:^{
             [[HSBBuiltInAIEngine sharedEngine] processMessage:message systemPrompt:systemPrompt type:type completion:completion];
         }];

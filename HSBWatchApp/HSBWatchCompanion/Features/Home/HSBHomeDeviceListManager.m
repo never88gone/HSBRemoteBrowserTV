@@ -120,6 +120,19 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
     if (!device) return;
     NSLog(@"[ATV_CONNECT] connectToDevice: %@", device.name);
     
+    if ([HSBModernRemoteBridge isLaunchAnimationActive]) {
+        NSLog(@"[ATV_CONNECT] Launch animation active, deferring connectToDevice until finish...");
+        __weak typeof(self) weakSelf = self;
+        __block id obs = nil;
+        obs = [[NSNotificationCenter defaultCenter] addObserverForName:@"HSBLaunchAnimationDidFinishNotification" object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
+            [[NSNotificationCenter defaultCenter] removeObserver:obs];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [weakSelf connectToDevice:device];
+            });
+        }];
+        return;
+    }
+    
     if ([HSBModernRemoteBridge isUnifiedConnected]) {
         [self.delegate deviceListManager:self didConnectSuccessToDevice:device];
         return;

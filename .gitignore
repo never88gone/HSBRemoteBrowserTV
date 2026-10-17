@@ -9,11 +9,16 @@ build/
 DerivedData/
 
 # Fastlane & Environment
+*.env
+*.env.*
 .env
 .env.*
-fastlane/.env
-fastlane/.env.*
-HSBWatchApp/fastlane/.env
+**/github_secrets.env
+fastlane/.env*
+HSBWatchApp/fastlane/.env*
+!**/*.env.example
+!**/fastlane/.env.example
+!**/fastlane/github_secrets.env.example
 fastlane/report.xml
 report.xml
 fastlane/Preview.html
@@ -21,6 +26,25 @@ fastlane/screenshots
 fastlane/test_output
 archive_log.txt
 fastlane_log.txt
+
+# Certificates, Keys & Provisioning Profiles (绝密私钥与证书，严禁提交到开源仓库)
+*.p8
+*.p12
+*.cer
+*.key
+*.pem
+*.mobileprovision
+*.provisionprofile
+AuthKey_*.p8
+**/fastlane/*.mobileprovision
+**/fastlane/*.provisionprofile
+**/fastlane/*.p8
+**/fastlane/*.p12
+**/fastlane/*.cer
+fastlane/certs/
+fastlane/profiles/
+**/fastlane/certs/
+**/fastlane/profiles/
 
 # Bundler
 .bundle/
@@ -40,4 +64,5 @@ ORIGINAL_REQUEST.md
 Artifacts/
 .thlbrowser-ci-derived/
 build_derived_data/
+/fastlane
 
