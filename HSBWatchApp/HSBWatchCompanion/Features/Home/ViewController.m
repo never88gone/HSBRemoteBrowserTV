@@ -18,6 +18,8 @@
 #import "HSBHomeBrowserControlCard.h"
 #import "HSBHomeActivityStatsCard.h"
 #import "HSBHomeDeviceListManager.h"
+#import "HSBLLMModelCenterViewController.h"
+#import "HSBLLMTestViewController.h"
 #import "HSBWatchCompanion-Swift.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
@@ -102,6 +104,8 @@ static inline NSString * L(NSString *en, NSString *zh) {
                          [args containsObject:@"--test-open-components"] ||
                          [args containsObject:@"--test-open-settings"] ||
                          [args containsObject:@"--test-open-about"] ||
+                         [args containsObject:@"--test-open-model-center"] ||
+                         [args containsObject:@"--test-open-assistant"] ||
                          [[NSUserDefaults standardUserDefaults] boolForKey:@"UITestOpenModernRemote"];
         if (!isTestEnv) {
             [HSBModernRemoteBridge showLaunchEntranceAnimationOn:self completion:^{
@@ -127,6 +131,24 @@ static inline NSString * L(NSString *en, NSString *zh) {
         dispatch_once(&openSettingsToken, ^{
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 [self openSettings];
+            });
+        });
+    }
+    if ([args containsObject:@"--test-open-model-center"]) {
+        static dispatch_once_t openModelCenterToken;
+        dispatch_once(&openModelCenterToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                HSBLLMModelCenterViewController *vc = [[HSBLLMModelCenterViewController alloc] init];
+                [self.navigationController pushViewController:vc animated:YES];
+            });
+        });
+    }
+    if ([args containsObject:@"--test-open-assistant"]) {
+        static dispatch_once_t openAssistantToken;
+        dispatch_once(&openAssistantToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                HSBLLMTestViewController *vc = [[HSBLLMTestViewController alloc] init];
+                [self.navigationController pushViewController:vc animated:YES];
             });
         });
     }
@@ -409,6 +431,32 @@ static inline NSString * L(NSString *en, NSString *zh) {
 }
 
 - (void)handleLaunchAnimationDidFinish:(NSNotification *)note {
+    NSArray *args = [NSProcessInfo processInfo].arguments;
+    if ([args containsObject:@"--test-open-remote"]) {
+        [self openModernRemoteController];
+        return;
+    }
+    if ([args containsObject:@"--test-open-settings"]) {
+        [self openSettings];
+        return;
+    }
+    if ([args containsObject:@"--test-open-model-center"]) {
+        HSBLLMModelCenterViewController *vc = [[HSBLLMModelCenterViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
+        return;
+    }
+    if ([args containsObject:@"--test-open-assistant"]) {
+        HSBLLMTestViewController *vc = [[HSBLLMTestViewController alloc] init];
+        [self.navigationController pushViewController:vc animated:YES];
+        return;
+    }
+    if ([args containsObject:@"--test-open-tv-detail"]) {
+        TVDetailViewController *detailVC = [[TVDetailViewController alloc] init];
+        detailVC.deviceName = @"客厅 Apple TV 4K";
+        detailVC.hidesBottomBarWhenPushed = YES;
+        [self.navigationController pushViewController:detailVC animated:YES];
+        return;
+    }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [HSBModernRemoteBridge reopenNativePINAlertIfNeeded];
     });

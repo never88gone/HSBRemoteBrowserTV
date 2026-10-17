@@ -89,7 +89,7 @@ public struct ModernRemoteContainerView: View {
                             .padding(.horizontal, 16)
                             
                             // 电视未连接大屏时的轻量引导指引条 (大屏已连通时自动隐退，享受全屏沉浸操作)
-                            if !coordinatorObserver.isHSBBrowserConnected {
+                            if !coordinatorObserver.isHSBBrowserConnected && !ProcessInfo.processInfo.arguments.contains("--screenshot-mode") {
                                 Button(action: {
                                     lightHaptic.impactOccurred()
                                     NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)

@@ -316,6 +316,13 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     
     @objc(showLaunchEntranceAnimationOn:completion:)
     @MainActor public static func showLaunchEntranceAnimation(on parent: UIViewController, completion: (() -> Void)? = nil) {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--screenshot-mode") || args.contains("--test-open-remote") || args.contains("--test-open-settings") || args.contains("--test-open-tv-detail") || args.contains("--test-device-list-mock") || args.contains("--test-open-model-center") || args.contains("--test-open-assistant") {
+            NSLog("[LaunchAnim] Test or screenshot mode active, skipping entrance animation")
+            completion?()
+            NotificationCenter.default.post(name: Notification.Name("HSBLaunchAnimationDidFinishNotification"), object: nil)
+            return
+        }
         isLaunchAnimationActive = true
         hasFinishedOrDismissed = false
         weak var weakHosting: UIViewController?

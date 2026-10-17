@@ -81,6 +81,9 @@ struct ModernRemoteStatusTopBar: View {
     
     // MARK: - Dual Channel Status Displays (大屏通道 & 系统原生通道)
     private var browserStatusColor: Color {
+        if ProcessInfo.processInfo.arguments.contains("--screenshot-mode") {
+            return .tanghuluBrandBlue
+        }
         if coordinatorObserver.isTargetMac || coordinatorObserver.isHSBBrowserConnected {
             return .tanghuluBrandBlue
         } else {
@@ -89,6 +92,9 @@ struct ModernRemoteStatusTopBar: View {
     }
     
     private var browserStatusText: String {
+        if ProcessInfo.processInfo.arguments.contains("--screenshot-mode") {
+            return "大屏: 糖葫芦浏览器"
+        }
         if coordinatorObserver.isTargetMac {
             return "大屏: 已连接"
         }
@@ -101,6 +107,9 @@ struct ModernRemoteStatusTopBar: View {
     }
     
     private var systemStatusColor: Color {
+        if ProcessInfo.processInfo.arguments.contains("--screenshot-mode") {
+            return .tanghuluBrandBlue
+        }
         if coordinatorObserver.isTargetMac || coordinatorObserver.isNativeConnected {
             return .tanghuluBrandBlue
         }
@@ -117,6 +126,9 @@ struct ModernRemoteStatusTopBar: View {
     }
     
     private var systemStatusText: String {
+        if ProcessInfo.processInfo.arguments.contains("--screenshot-mode") {
+            return "系统: 客厅 Apple TV 4K"
+        }
         if coordinatorObserver.isTargetMac {
             return "系统: 已连接"
         }

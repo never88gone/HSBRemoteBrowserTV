@@ -282,6 +282,10 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
     
     @MainActor
     public func reopenNativePINAlertIfNeeded() {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--screenshot-mode") || args.contains("--no-pin-prompt") || args.contains("--test-open-remote") {
+            return
+        }
         guard let completion = pendingPINCompletion else {
             NSLog("[DualMode] No pending PIN completion to reopen")
             return
@@ -302,6 +306,12 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
         
         self.pendingPINCompletion = completion
         self.pendingPINDeviceName = name
+        
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--screenshot-mode") || args.contains("--no-pin-prompt") || args.contains("--test-open-remote") {
+            NSLog("[ATV_CONNECT] Screenshot mode active, suppressing PIN prompt")
+            return
+        }
         
         DispatchQueue.main.async {
             HSBNativePINAlertPresenter.shared.presentPINAlert(deviceName: name) { [weak self] pin in
