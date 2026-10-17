@@ -2,8 +2,8 @@
 //  ModernAppGridView.swift
 //  HSBWatchCompanion
 //
-//  沿用 itsytv-macos 极简高效的应用启动器 (App Grid) 哲学。
-//  使用与 itsytv-macos 完全统一的 Apple TV Companion 连接通道，
+//  糖葫芦极简高效的大屏应用启动器 (App Grid)。
+//  使用统一的 Apple TV 原生与协同连接通道，
 //  一键 launchApp 唤起大屏应用并实现与糖葫芦浏览器、糖葫芦TV、糖葫芦PDF的深度协同。
 //
 
@@ -48,7 +48,7 @@ public struct ModernAppGridView: View {
     
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     
-    // 糖葫芦全生态三大旗舰核心应用 (附带 itsytv 协议深度解析 URL Scheme 载荷)
+    // 糖葫芦全生态三大旗舰核心应用 (附带系统协议深度解析 URL Scheme 载荷)
     private let ecosystemApps: [TanghuluAppItem] = [
         TanghuluAppItem(
             id: "browser",
@@ -82,7 +82,7 @@ public struct ModernAppGridView: View {
         )
     ]
     
-    // Apple TV 常用原生与第三方应用列表 (itsytv-macos 经典阵列)
+    // Apple TV 常用原生与第三方应用列表 (经典应用阵列)
     private let tvApps: [TanghuluAppItem] = [
         TanghuluAppItem(
             id: "appletv",
@@ -175,7 +175,7 @@ public struct ModernAppGridView: View {
                     }
                 }
                 
-                // 2. Apple TV 经典应用阵列 (itsytv-macos 风格网格)
+                // 2. Apple TV 常用与系统应用网格
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 6) {
                         Image(systemName: "square.grid.2x2.fill")

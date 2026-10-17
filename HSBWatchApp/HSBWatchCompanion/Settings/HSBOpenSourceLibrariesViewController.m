@@ -58,17 +58,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
     }
     {
         HSBOpenSourceItem *item = [[HSBOpenSourceItem alloc] init];
-        item.name = @"itsytv-macos";
-        item.author = @"Nick Ustinov";
-        item.license = @"MIT";
-        item.summary = L(@"Apple TV hardware Bonjour discovery & deep-sleep Port Knocking wake mechanism.",
-                         @"Apple TV 局域网 Bonjour 硬件发现、0x4000 标识过滤算法与深度休眠端口敲门唤醒参考实现。");
-        item.url = @"https://github.com/nickustinov/itsytv-macos";
-        item.licenseText = @"MIT License\n\nCopyright (c) 2024 Nick Ustinov\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.";
-        [items addObject:item];
-    }
-    {
-        HSBOpenSourceItem *item = [[HSBOpenSourceItem alloc] init];
         item.name = @"mlx-swift";
         item.author = @"Apple Inc.";
         item.license = @"MIT";

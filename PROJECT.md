@@ -49,7 +49,7 @@ HSBWatchApp/HSBWatchCompanion/
 │   ├── Screen/                           # hsbtvbrowser 专有大屏协议
 │   │   ├── HSBBrowserProtocolClient.swift
 │   │   └── HSBScreenCommands.swift       # 10 大类大屏控制指令封装
-│   ├── Native/                           # Apple TV 原生系统控制协议 (itsytv-core 移植)
+│   ├── Native/                           # Apple TV 原生系统控制协议 (原生协议栈实现)
 │   │   ├── AppleTVNativeClient.swift     # 原生系统通道客户端
 │   │   ├── Crypto/                       # SRP-6a, X25519, ChaCha20 加密栈
 │   │   ├── Companion/                    # Companion Link 报文与端口敲门唤醒
@@ -82,7 +82,7 @@ HSBWatchApp/HSBWatchCompanion/
 | 3 | 现代 Bonjour 发现增强与下线感知 | 基于 Network.framework 支持 Wi-Fi/AWDL 直连，处理设备下线与自动重连 | M1 | R3, Survey (Explorer 1, 3) |
 | 4 | 统一连接状态机管理 | 实现 `HSBConnectionStateMachine`（断开/扫描中/连接中/配对中/已就绪/异常） | M1 | R3, Survey (Explorer 1) |
 | 5 | hsbtvbrowser 专有协议全量封装 | 封装 10 大类大屏控制指令（按键、光标5.5x、点击mode 1~6、滚动3.0x、拖拽、导航缩放、JS注入、媒体控制、LLM翻译） | M2 | R1, Survey (Explorer 3) |
-| 6 | Apple TV 原生系统通道集成 | 移植 itsytv 原生协议（Companion Link TCP 49152/49153, AirPlay MRP TCP 7000） | M2 | R1, Survey (Explorer 2) |
+| 6 | Apple TV 原生系统通道集成 | 原生协议实现（Companion Link TCP 49152/49153, AirPlay MRP TCP 7000） | M2 | R1, Survey (Explorer 2) |
 | 7 | 多端口并发敲门电视唤醒 | 实现 3689, 7000, 49152, 49153 并发端口敲门，唤醒深度睡眠 Apple TV | M2 | R1, Survey (Explorer 2) |
 | 8 | 原生认证与安全通信栈 | 实现 SRP-6a 配对、X25519 会话恢复与 ChaCha20-Poly1305 帧对称加密 | M2 | R1, Survey (Explorer 2) |
 | 9 | 双模协同调度器 | 实现 `DualModeRemoteCoordinator`，统一分发大屏专有指令与系统级全局指令 | M2 | R1, Survey (Explorer 2) |

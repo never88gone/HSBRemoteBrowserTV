@@ -2,7 +2,7 @@
 //  HSBAppleTVDiscoveryVerificationTest.swift
 //  HSBWatchCompanion
 //
-//  自动化验证测试：验证 Apple TV 局域网 Bonjour 发现、过滤规则 (itsytv-macos 0x4000 规则)、
+//  自动化验证测试：验证 Apple TV 局域网 Bonjour 发现、过滤规则 (0x4000 硬件配对标识规则)、
 //  双模聚合、HID 按键原生编码及端口敲门逻辑。
 //
 
@@ -24,7 +24,7 @@ import Network
             }
         }
         
-        // Test 1: itsytv-macos 0x4000 flags & AppleTV model filtering
+        // Test 1: Apple TV 0x4000 flags & AppleTV model filtering
         let realAppleTVFlags: UInt64 = 0x36782 // HSBTV7 真实 Apple TV
         let isRealATV = (realAppleTVFlags & 0x4000) != 0
         record("Test 1.1: Apple TV PIN Pairing Flag (0x36782 & 0x4000 != 0)", passed: isRealATV)

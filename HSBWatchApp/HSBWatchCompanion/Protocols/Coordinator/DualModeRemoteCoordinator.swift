@@ -18,7 +18,7 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     public let stateMachine = HSBConnectionStateMachine()
     public private(set) lazy var router = RemoteCommandRouter(coordinator: self)
     
-    // 纯 itsytv 原生通道单连接模式 (Single Unified Native Connection)
+    // 纯原生通道单连接模式 (Single Unified Native Connection)
     public var currentMode: HSBRemoteMode = .nativeOnly
     
     // 当前目标设备是否为 Mac 终端 (方案 A: 原生媒体控制)

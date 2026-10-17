@@ -22,11 +22,11 @@
   <em>图：左侧为 Apple TV 4K 大屏真实 WebKit 网页渲染与虚拟光标交互实景；右侧为 iPhone 电视遥控中枢微操控制台</em>
 </p>
 
-### 📱 统一操作逻辑：沿用 itsytv-macos 经典架构 (【遥控】+【应用生态】双主轴设计)
+### 📱 糖葫芦统一操作哲学：【遥控】+【应用生态】双主轴设计
 | 1. 【遥控】原生系统轮盘与控制岛 | 2. 【应用生态】糖葫芦专属大屏生态一键唤起 | 3. 【遥控·触控】5.5x 微操触控板 | 4. 局域网智能设备统一发现 | 5. 电视遥控中枢：视频控制与倍速 |
 | :---: | :---: | :---: | :---: | :---: |
 | <img src="screenshot/unified_remote_tab.png" width="180" /> | <img src="screenshot/unified_apps_grid.png" width="180" /> | <img src="screenshot/unified_touchpad.png" width="180" /> | <img src="screenshot/1_device_discovery.png" width="180" /> | <img src="screenshot/3_video_control.png" width="180" /> |
-| **同一套连接 / 270pt 轮盘 / 一体化控制岛** | **itsytv-macos App Grid / 秒级唤起大屏应用** | **阻尼滑动 / 网页悬浮导航 / 实时软键盘** | **Bonjour 多通道并发 / 硬件精准过滤** | **0.5x~2.0x 极速倍速 / 10s快进退** |
+| **统一连接 / 270pt 轮盘 / 一体化控制岛** | **全生态 App Grid / 秒级唤起大屏应用** | **阻尼滑动 / 网页悬浮导航 / 实时软键盘** | **Bonjour 多通道并发 / 硬件精准过滤** | **0.5x~2.0x 极速倍速 / 10s快进退** |
 
 ### 🤖 板块二：Apple TV 客厅多场景生态与端侧 AI 矩阵 (Ecosystem Scenarios & Edge AI)
 | 6. IPTV 直播流多频道路由 | 7. PDF 大屏演说投屏神器 | 8. 端侧 MLX 模型管理中心 | 9. 端侧 AI 智能助手与传译 | 10. 统一设置中枢与生态矩阵 |
@@ -39,10 +39,10 @@
 
 ## 🔥 核心特性与技术亮点 (Core Features)
 
-### 🔀 1. 统一连接与 itsytv-macos 交互哲学 (Unified Connection & Interaction Philosophy)
-彻底终结传统多套繁琐操作逻辑，深度沿用 `itsytv-macos` 的单一统一连接会话与 **【遥控 (Remote)】+【应用生态 (Apps)】** 经典交互哲学：
-* **单一物理连接会话 (Single Unified Connection · 沿用 itsytv-macos)**：
-  - **局域网 Apple TV 自动寻址与休眠唤醒**：全面集成 `itsytv-macos` 经过实战检验的 Companion 协议通道，同时并发监听 `_companion-link._tcp.` 与 `_thltv._tcp.`，自动建立单一物理连接会话；
+### 🔀 1. 统一通信与双主轴交互哲学 (Unified Connection & Interaction Philosophy)
+彻底终结传统多套繁琐操作逻辑，创新构建单一统一物理连接会话与 **【遥控 (Remote)】+【应用生态 (Apps)】** 核心交互哲学：
+* **单一物理连接会话 (Single Unified Connection)**：
+  - **局域网 Apple TV 自动寻址与休眠唤醒**：全面采用原生 Companion 协议通道，同时并发监听 `_companion-link._tcp.` 与 `_thltv._tcp.`，自动建立单一物理连接会话；
   - **精准硬件过滤与抗干扰算法**：严格解析 Bonjour TXT 记录中的 `rpFl` 标志位（执行 `flags & 0x4000 != 0` 具备 PIN 配对能力校验）与 `rpMd` 硬件代号（`AppleTV*`），**100% 毫秒级剔除同一局域网下的 Mac 电脑（flags 为 `0x20000`）、iPhone 与 HomePod 等非目标设备**；
   - **无感端口敲门唤醒 (Port Knocking)**：针对处于待机或轻度休眠的 Apple TV，发起多路并发端口探测 (3689 / 7000 / 49152 / 49153)，毫秒级唤醒网络 Sleep Proxy；
   - **100% 统一入口**：无论在主设备列表点击哪台 Apple TV，全量统一直达智能遥控器，UI 层绝无分裂连接态。
@@ -84,7 +84,7 @@
 ---
 
 ### 🎛️ 5. 【遥控】与【应用生态】双主轴设计 (Dual-Axis Remote & App Grid Architecture)
-主视图沿用 `itsytv-macos` 经典双主轴设计：
+主视图创新采用糖葫芦原生双主轴设计：
 * **【遥控 (Remote)】**：
   - **原生系统轮盘**：270pt 黄金比例 Apple TV 原生质感 D-pad 轮盘与一体化控制岛（快退10s / 播放暂停 / 快进10s / 桌面 / 返回 / 静音 / 待机 / 硬件音量+/-）；
   - **情境微操模式**：支持随时平滑切换为 **触控板 (5.5x 微操 + 网页导航)**、**IPTV 直播换台** 与 **PDF 商务演说翻页**。
@@ -106,7 +106,7 @@
   <img src="screenshot/1_device_discovery.png" width="320" alt="局域网真实设备发现与智能分流" />
 </p>
 
-* **工作原理 (深度参考 itsytv-macos)**：
+* **工作原理 (原生 Bonjour 发现与过滤架构)**：
   - 采用 **Bonjour 多通道并发扫描**（同时监听 Apple TV 原生系统服务 `_companion-link._tcp.` 与大屏浏览器服务 `_thltv._tcp.`）；
   - **抗干扰过滤**：精确解析 TXT 记录中的 `rpFl` PIN 配对能力标志位（`flags & 0x4000 != 0`）与 `rpMd` 硬件型号，排除局域网其他非电视苹果设备；
   - 自动将硬件代号解析为精确型号（如 `AppleTV14,1` 为 Apple TV 4K 第三代），并在列表中呈现精准副标题。
@@ -221,7 +221,7 @@ flowchart TD
 ## 🧪 自动化测试与质量验收 (Testing & Verification)
 
 ### 1. Apple TV 原生局域网自动发现引擎测试套件 ([`HSBAppleTVDiscoveryVerificationTest.swift`](HSBWatchApp/HSBWatchCompanion/Connection/HSBAppleTVDiscoveryVerificationTest.swift))
-针对参考 `itsytv-macos` 协议架构的 Apple TV 原生局域网探测与过滤引擎，经实机与模拟器自动化测试，**5 项核心测试通过率 100% (Pass: 5, Fail: 0)**：
+针对原生 Apple TV 局域网探测与硬件过滤引擎，经实机与模拟器自动化测试，**5 项核心测试通过率 100% (Pass: 5, Fail: 0)**：
 - ✅ **Test 1**：PIN 配对标志位过滤验证（`0x4000` 标志位判定 Apple TV 具备配对就绪能力）
 - ✅ **Test 2**：局域网非电视设备排除验证（精准拦截 Mac 电脑广播的 `0x20000` 标志，100% 避免设备列表杂音）
 - ✅ **Test 3**：硬件型号副标题与状态机联动（`AppleTV14,1` 准确解析为 Apple TV 4K 第三代并标记系统遥控就绪）
@@ -281,26 +281,29 @@ xcodebuild -project HSBWatchApp/HSBWatchApp.xcodeproj \
 
 ### 3. 在模拟器 / Device Hub 中快速运行自动化测试与场景直达
 ```bash
-# 1. 启动 iPhone 模拟器并执行 Apple TV 自动发现引擎（参考 itsytv-macos）全功能验证套件
+# 1. 启动 iPhone 模拟器并执行 Apple TV 自动发现引擎全功能验证套件
 xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestRunAppleTVVerification YES
 
 # 2. 执行内置 MLX 大模型全生命周期自检套件
 xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestRunLLMVerification YES
 
-# 3. 直达 Apple TV 原生系统遥控器模式 (270pt 黄金轮盘 D-Pad / Home / Menu / 音量)
-xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenModernRemote YES -UITestRemoteTab 0
+# 3. 直达智能遥控器：系统轮盘模式 (270pt 黄金轮盘 D-Pad / Home / Menu / 音量)
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios --test-open-remote
 
-# 4. 直达现代智能遥控器：浏览器 5.5x 触控板与悬浮操作岛
-xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenModernRemote YES -UITestRemoteTab 1
+# 4. 直达智能遥控器：应用生态大网格 (糖葫芦专属生态 + Apple TV 系统应用)
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios --test-open-remote --tab-apps
 
-# 5. 直达改版后的电视遥控中枢：大屏浏览器控制与常用 JS 脚本芯片模式
-xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenTVDetail YES -UITestInitialTab 1
+# 5. 直达智能遥控器：浏览器 5.5x 触控微操板与悬浮操作坞
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios --test-open-remote --touchpad-tab
 
 # 6. 直达电视遥控中枢：视频控制与播放速率调节模式
-xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenTVDetail YES -UITestInitialTab 0
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios --test-open-tv-detail -UITestInitialTab 0
 
-# 7. 直达统一设置中枢与端侧 AI 模型管理中心
-xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios -UITestOpenSettings YES
+# 7. 直达电视遥控中枢：大屏浏览器控制与常用 JS 脚本芯片模式
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios --test-open-tv-detail -UITestInitialTab 1
+
+# 8. 直达统一设置中枢与端侧 AI 模型管理中心
+xcrun simctl launch --terminate-running-process <SIMULATOR_UDID> com.never88gone.thlbrowserios --test-open-settings
 ```
 
 ---

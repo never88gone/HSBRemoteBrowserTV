@@ -72,7 +72,7 @@ Tests/
 所有用例的预期输入与输出均来自经过审定的权威技术规范：
 1. **`PROJECT.md`**：系统架构规范、Feature 清单、接口契约（`HSBConnectionStateMachine`、`DualModeRemoteCoordinator`、`HSBJSONMessageParser`、`LegacyModuleCompatibility`）。
 2. **`survey_hsbtvbrowser.md`**：`hsbtvbrowser` 源码逆向提取的 Bonjour 服务类型（`_thltv._tcp`，端口 `56789`）、括号深度平衡状态机算法、10 大类大屏控制指令及字段规范。
-3. **`survey_itsytv.md`**：Apple TV 原生 Companion Link 协议（端口 `49152/49153`）、AirPlay MRP 隧道（端口 `7000`）、端口敲门唤醒集合（`3689, 7000, 49152, 49153`）、RTI 0x80 UID 二进制 Plist 规范、1000x1000 边界重置与 8 阶二次缓出惯性公式。
+3. **Apple TV 原生系统通信规范**：Apple TV 原生 Companion Link 协议（端口 `49152/49153`）、AirPlay MRP 隧道（端口 `7000`）、端口敲门唤醒集合（`3689, 7000, 49152, 49153`）、RTI 0x80 UID 二进制 Plist 规范、1000x1000 边界重置与 8 阶二次缓出惯性公式。
 
 ---
 

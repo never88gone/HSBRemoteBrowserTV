@@ -9,8 +9,11 @@ import Network
 public struct ModernRemoteContainerView: View {
     @ObservedObject private var coordinatorObserver = CoordinatorObservable(coordinator: DualModeRemoteCoordinator.shared)
     
-    // 主导航 Tab (沿用 itsytv-macos 经典架构：0=遥控 Remote, 1=应用生态 Apps)
+    // 主导航 Tab (糖葫芦双主轴设计：0=遥控 Remote, 1=应用生态 Apps)
     @State private var selectedMainTab: Int = {
+        if CommandLine.arguments.contains("--tab-apps") {
+            return 1
+        }
         if UserDefaults.standard.object(forKey: "UITestMainTab") != nil {
             return UserDefaults.standard.integer(forKey: "UITestMainTab")
         }
@@ -19,11 +22,15 @@ public struct ModernRemoteContainerView: View {
     
     // 遥控器情境微操模式 (0: 系统轮盘, 1: 触控板, 2: IPTV, 3: PDF演讲)
     @State private var selectedControlTab: Int = {
-        #if DEBUG
+        if CommandLine.arguments.contains("--touchpad-tab") {
+            return 1
+        }
         if CommandLine.arguments.contains("--iptv-tab") {
             return 2
         }
-        #endif
+        if CommandLine.arguments.contains("--pdf-tab") {
+            return 3
+        }
         if UserDefaults.standard.object(forKey: "UITestRemoteTab") != nil {
             return UserDefaults.standard.integer(forKey: "UITestRemoteTab")
         }
@@ -59,7 +66,7 @@ public struct ModernRemoteContainerView: View {
                     showingSystemGuide: $showingSystemGuide
                 )
                 
-                // 2. 主导航 Tab 切换栏 (沿用 itsytv-macos 经典架构：【遥控】与【应用生态】)
+                // 2. 主导航 Tab 切换栏 (双主轴架构：【遥控】与【应用生态】)
                 Picker("主导航", selection: $selectedMainTab) {
                     Text("遥控").tag(0)
                     Text("应用生态").tag(1)

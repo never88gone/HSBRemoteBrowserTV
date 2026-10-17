@@ -2,7 +2,7 @@
 //  HSBAppleTVDiscovery.swift
 //  HSBWatchCompanion
 //
-//  精准参考开源参考工程 itsytv-macos (DeviceDiscovery.swift) 的 Apple TV 局域网 Bonjour 发现与过滤架构。
+//  基于 Apple TV 局域网 Bonjour 发现与过滤架构。
 //  支持 _companion-link._tcp、_airplay._tcp 与 _thltv._tcp 多通道并发扫描、TXT 记录解析与端口敲门唤醒。
 //
 
@@ -77,7 +77,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     }
 }
 
-/// 局域网 Apple TV 自动发现引擎 (参考 itsytv-macos DeviceDiscovery)
+/// 局域网 Apple TV 自动发现引擎 (原生 Bonjour 发现与过滤架构)
 @objc public final class HSBAppleTVDiscovery: NSObject {
     @objc public static let shared = HSBAppleTVDiscovery()
     
@@ -112,16 +112,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--test-device-list-mock") {
-            let macDev = HSBDiscoveredAppleTV(
-                id: "MacBookPro18,1",
-                name: "MacBook Pro (办公桌)",
-                host: "MacBook-Pro.local",
-                port: 49152,
-                modelName: "MacBookPro18,1",
-                isNativeAppleTV: false,
-                isBrowserApp: false
-            )
-            let tvDev = HSBDiscoveredAppleTV(
+            let livingRoom = HSBDiscoveredAppleTV(
                 id: "LivingRoomATV",
                 name: "客厅 Apple TV 4K",
                 host: "Apple-TV-4K.local",
@@ -130,18 +121,37 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
                 isNativeAppleTV: true,
                 isBrowserApp: true
             )
-            self.deviceMap[macDev.id] = macDev
-            self.deviceMap[tvDev.id] = tvDev
+            let studyRoom = HSBDiscoveredAppleTV(
+                id: "StudyATV",
+                name: "书房 Apple TV",
+                host: "Study-Apple-TV.local",
+                port: 49152,
+                modelName: "AppleTV11,1",
+                isNativeAppleTV: true,
+                isBrowserApp: false
+            )
+            let bedRoom = HSBDiscoveredAppleTV(
+                id: "BedroomATV",
+                name: "卧室 Apple TV",
+                host: "Bedroom-Apple-TV.local",
+                port: 49152,
+                modelName: "AppleTV6,2",
+                isNativeAppleTV: true,
+                isBrowserApp: false
+            )
+            self.deviceMap[livingRoom.id] = livingRoom
+            self.deviceMap[studyRoom.id] = studyRoom
+            self.deviceMap[bedRoom.id] = bedRoom
+            discoveryLock.unlock()
+            notifyChange()
+            // 在 Mock 模式下，阻断物理局域网扫描，确保绝对纯净演示数据，杜绝敏感设备泄露
+            return
         }
         discoveryLock.unlock()
         
-        if args.contains("--test-device-list-mock") {
-            notifyChange()
-        }
-        
         log.info("Starting Apple TV Bonjour hardware discovery (_companion-link)...")
         
-        // 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道 (与 itsytv-macos 核心扫描服务完全一致)
+        // 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道
         let cBrowser = NetServiceBrowser()
         cBrowser.delegate = self
         cBrowser.schedule(in: .main, forMode: .common)
@@ -173,7 +183,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         log.info("Apple TV Bonjour hardware discovery stopped.")
     }
     
-    // MARK: - Port Knocking Wakeup (itsytv-macos 深度休眠唤醒)
+    // MARK: - Port Knocking Wakeup (深度休眠唤醒)
     
     /// 向 Apple TV 的常用唤醒端口发起短暂 TCP 握手，触发局域网 Sleep Proxy 唤醒
     @objc public func wakeDevice(host: String, completion: ((Bool) -> Void)? = nil) {
@@ -223,14 +233,14 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         }
     }
     
-    // MARK: - Internal Resolution & Filtering (itsytv-macos 核心过滤算法)
+    // MARK: - Internal Resolution & Filtering (核心过滤算法)
     
     fileprivate func processResolved(_ service: NetService) {
         let serviceType = service.type
         let serviceName = service.name
         NSLog("[BONJOUR_TRACE] didResolve name=%@, type=%@", serviceName, serviceType)
         
-        // 纯 itsytv 架构：仅扫描与解析真实的 Apple TV 物理硬件设备 (_companion-link)
+        // 核心原生架构：仅扫描与解析真实的 Apple TV 物理硬件设备 (_companion-link)
         guard serviceType.contains("_companion-link") else {
             return
         }

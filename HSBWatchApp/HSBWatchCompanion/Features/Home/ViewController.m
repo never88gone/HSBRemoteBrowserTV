@@ -89,6 +89,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
     dispatch_once(&launchAnimToken, ^{
         NSArray *args = [NSProcessInfo processInfo].arguments;
         BOOL isTestEnv = [args containsObject:@"--run-appletv-tests"] ||
+                         [args containsObject:@"--test-device-list-mock"] ||
+                         [args containsObject:@"--test-open-remote"] ||
+                         [args containsObject:@"--test-open-tv-detail"] ||
                          [args containsObject:@"--test-connect-device"] ||
                          [args containsObject:@"--test-connect-mac"] ||
                          [args containsObject:@"--test-pin-alert"] ||
@@ -109,6 +112,35 @@ static inline NSString * L(NSString *en, NSString *zh) {
             }];
         }
     });
+    
+    NSArray *args = [NSProcessInfo processInfo].arguments;
+    if ([args containsObject:@"--test-open-remote"]) {
+        static dispatch_once_t openRemoteToken;
+        dispatch_once(&openRemoteToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self openModernRemoteController];
+            });
+        });
+    }
+    if ([args containsObject:@"--test-open-settings"]) {
+        static dispatch_once_t openSettingsToken;
+        dispatch_once(&openSettingsToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self openSettings];
+            });
+        });
+    }
+    if ([args containsObject:@"--test-open-tv-detail"]) {
+        static dispatch_once_t openTVDetailToken;
+        dispatch_once(&openTVDetailToken, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                TVDetailViewController *detailVC = [[TVDetailViewController alloc] init];
+                detailVC.deviceName = @"客厅 Apple TV 4K";
+                detailVC.hidesBottomBarWhenPushed = YES;
+                [self.navigationController pushViewController:detailVC animated:YES];
+            });
+        });
+    }
 }
 
 - (void)setupActivityTracker {
@@ -233,7 +265,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [tableContainer.topAnchor constraintEqualToAnchor:self.statusCardsView.bottomAnchor constant:12],
         [tableContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
         [tableContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [tableContainer.heightAnchor constraintEqualToConstant:190],
+        [tableContainer.heightAnchor constraintEqualToConstant:230],
         
         [tableTitle.topAnchor constraintEqualToAnchor:tableContainer.topAnchor constant:16],
         [tableTitle.leadingAnchor constraintEqualToAnchor:tableContainer.leadingAnchor constant:20],
