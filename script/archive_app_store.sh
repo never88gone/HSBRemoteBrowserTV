@@ -28,6 +28,10 @@ detect_and_export_proxy() {
 }
 detect_and_export_proxy
 
+# 自动信任 Swift Package Macros 与插件 (避免 CI Runner 拦截 mlx-swift-lm 等三方宏)
+defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES 2>/dev/null || true
+defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidation -bool YES 2>/dev/null || true
+
 # SPM 依赖缓存预热保护 (确保 mlx-swift 等庞大依赖无需网络下载即可秒级就绪)
 prewarm_spm_cache() {
   mkdir -p "$SPM_SHARED_CACHE"
@@ -136,6 +140,8 @@ if [[ "$ACTION" == "--archive-only" || "$ACTION" == "--export" ]]; then
     -derivedDataPath "$DERIVED_DATA_PATH" \
     -clonedSourcePackagesDirPath "$SPM_SHARED_CACHE" \
     -archivePath "$ARCHIVE_PATH" \
+    -skipMacroValidation \
+    -skipPackagePluginValidation \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     archive
 elif [[ ! -d "$ARCHIVE_PATH" ]]; then
