@@ -66,3 +66,5 @@ Artifacts/
 build_derived_data/
 /fastlane
 
+AppStore_Submission
+idb-applications

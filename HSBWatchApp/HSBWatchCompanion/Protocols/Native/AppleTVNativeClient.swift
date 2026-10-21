@@ -31,6 +31,8 @@ public final class AppleTVNativeClient: NSObject {
     public private(set) var currentHost: String?
     public private(set) var currentPort: UInt16 = 49152
     public private(set) var currentDevice: AppleTVDevice?
+    public private(set) var userInitiatedDisconnect: Bool = false
+    private var autoReconnectWorkItem: DispatchWorkItem?
     
     // 核心协议栈组件
     public private(set) var transport = EncryptedFrameTransport()
@@ -52,7 +54,10 @@ public final class AppleTVNativeClient: NSObject {
     
     // MARK: - Connection & Pairing
     public func connect(host: String, deviceName: String, port: UInt16 = 49152) {
-        disconnect()
+        userInitiatedDisconnect = false
+        autoReconnectWorkItem?.cancel()
+        autoReconnectWorkItem = nil
+        disconnect(userInitiated: false)
         
         currentHost = host
         currentDeviceName = deviceName
@@ -140,7 +145,12 @@ public final class AppleTVNativeClient: NSObject {
         }
     }
     
-    public func disconnect() {
+    public func disconnect(userInitiated: Bool = false) {
+        if userInitiated {
+            userInitiatedDisconnect = true
+            autoReconnectWorkItem?.cancel()
+            autoReconnectWorkItem = nil
+        }
         connectTimeoutItem?.cancel()
         connectTimeoutItem = nil
         connectionEpoch &+= 1
@@ -155,7 +165,7 @@ public final class AppleTVNativeClient: NSObject {
         isConnected = false
         isPairing = false
         
-        if wasConnected {
+        if wasConnected && userInitiated {
             self.delegate?.nativeClient(self, didChangeState: .disconnected)
         }
     }
@@ -199,8 +209,8 @@ public final class AppleTVNativeClient: NSObject {
                     NSLog("[ATV_CONNECT] PairingFlow state: .error: %@", msg)
                     self.isConnected = false
                     self.isPairing = false
-                    self.credentialStore.delete(deviceID: device.id)
-                    self.credentialStore.delete(deviceID: device.name)
+                    // 关键修复：绝不在网络瞬断或配对过程中删除凭据！
+                    // 仅通知状态流转，保留凭据以便后续免密重连
                     self.delegate?.nativeClient(self, didChangeState: .failed(error: msg))
                     
                 case .disconnected:
@@ -248,13 +258,17 @@ public final class AppleTVNativeClient: NSObject {
     // MARK: - PIN Submission
     public func submitPIN(_ pin: String, completion: ((Bool) -> Void)? = nil) {
         guard let flow = pairingFlow else {
+            NSLog("[ATV_CONNECT] submitPIN failed: pairingFlow is nil!")
             completion?(false)
             return
         }
+        NSLog("[ATV_CONNECT] Calling flow.submitPin with PIN: %@", pin)
         flow.submitPin(pin, onSend: { [weak self] m3 in
+            NSLog("[ATV_CONNECT] submitPIN onSend called! Sending psNext frame (%d bytes)", m3.count)
             self?.session?.sendFrame(.psNext, payload: OPACK.wrapPsNextData(m3))
             completion?(true)
         }, onError: { [weak self] err in
+            NSLog("[ATV_CONNECT] submitPIN onError called: %@", err)
             guard let self = self else { return }
             self.delegate?.nativeClient(self, didChangeState: .failed(error: err))
             completion?(false)
@@ -281,7 +295,10 @@ public final class AppleTVNativeClient: NSObject {
         }()
         
         guard let session = self.session, self.isConnected else {
-            // 在离线/模拟测试模式下安全返回成功
+            if let host = self.currentHost, let devName = self.currentDeviceName, self.credentialStore.hasCredentials(for: devName) {
+                NSLog("[ATV_CONNECT] sendSystemKey triggered while disconnected, auto-resuming connection...")
+                self.connect(host: host, deviceName: devName, port: self.currentPort)
+            }
             completion?(true)
             return
         }
@@ -302,6 +319,9 @@ public final class AppleTVNativeClient: NSObject {
     // MARK: - 1000x1000 Virtual Space Touch Event
     public func sendTouchEvent(phase: Int, point: CGPoint, completion: ((Bool) -> Void)? = nil) {
         guard let session = self.session, self.isConnected else {
+            if let host = self.currentHost, let devName = self.currentDeviceName, self.credentialStore.hasCredentials(for: devName) {
+                self.connect(host: host, deviceName: devName, port: self.currentPort)
+            }
             completion?(true)
             return
         }
@@ -311,6 +331,9 @@ public final class AppleTVNativeClient: NSObject {
     
     public func sendSwipe(_ direction: SwipeDirection, completion: ((Bool) -> Void)? = nil) {
         guard let session = self.session, self.isConnected else {
+            if let host = self.currentHost, let devName = self.currentDeviceName, self.credentialStore.hasCredentials(for: devName) {
+                self.connect(host: host, deviceName: devName, port: self.currentPort)
+            }
             completion?(true)
             return
         }
@@ -356,6 +379,24 @@ extension AppleTVNativeClient: CompanionSessionDelegate {
         guard epoch == self.connectionEpoch else { return }
         self.isConnected = false
         self.isPairing = false
+        
+        // 若非用户主动断开，且该设备拥有配对凭据，开启后台静默自愈重连
+        if !self.userInitiatedDisconnect,
+           let devName = self.currentDeviceName,
+           self.credentialStore.hasCredentials(for: devName),
+           let host = self.currentHost {
+            NSLog("[ATV_CONNECT] Read error for %@ (%@). Starting auto-reconnect with credentials in 400ms...", devName, message)
+            self.autoReconnectWorkItem?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self = self, !self.isConnected, !self.userInitiatedDisconnect else { return }
+                NSLog("[ATV_CONNECT] Executing auto-reconnect to %@", devName)
+                self.connect(host: host, deviceName: devName, port: self.currentPort)
+            }
+            self.autoReconnectWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: item)
+            return
+        }
+        
         self.delegate?.nativeClient(self, didChangeState: .failed(error: message))
     }
     
@@ -363,6 +404,24 @@ extension AppleTVNativeClient: CompanionSessionDelegate {
         guard epoch == self.connectionEpoch else { return }
         self.isConnected = false
         self.isPairing = false
+        
+        // 若非用户主动断开，且该设备拥有配对凭据，开启后台静默自愈重连 (Apple TV 30秒 idle drop 常见恢复)
+        if !self.userInitiatedDisconnect,
+           let devName = self.currentDeviceName,
+           self.credentialStore.hasCredentials(for: devName),
+           let host = self.currentHost {
+            NSLog("[ATV_CONNECT] Idle drop or connection closed by ATV (%@). Starting auto-reconnect with credentials in 300ms...", devName)
+            self.autoReconnectWorkItem?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self = self, !self.isConnected, !self.userInitiatedDisconnect else { return }
+                NSLog("[ATV_CONNECT] Executing auto-reconnect to %@", devName)
+                self.connect(host: host, deviceName: devName, port: self.currentPort)
+            }
+            self.autoReconnectWorkItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
+            return
+        }
+        
         self.delegate?.nativeClient(self, didChangeState: .disconnected)
     }
     

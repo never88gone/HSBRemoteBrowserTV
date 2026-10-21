@@ -43,6 +43,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
 @property (nonatomic, strong) HSBActivityTracker *activityTracker;
 @property (nonatomic, strong) HSBHomeActivityStatsCard *statsCard;
 
+@property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) NSMutableArray<UIView *> *themeCards;
 @property (nonatomic, strong) UIVisualEffectView *aiLoadingHUD;
 
@@ -66,6 +67,9 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchReachabilityChanged:) name:HSBWatchSessionReachabilityDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchActionReceived:) name:HSBWatchActionReceivedNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLaunchAnimationDidFinish:) name:@"HSBLaunchAnimationDidFinishNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleHomeScrollToBottom:) name:@"HSBHomeScrollToBottomNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleHomeScrollToTop:) name:@"HSBHomeScrollToTopNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleOpenRemoteControl:) name:@"HSBOpenRemoteControlNotification" object:nil];
     [self applyThemeStyle];
     
     if (@available(iOS 14.0, *)) {
@@ -118,12 +122,32 @@ static inline NSString * L(NSString *en, NSString *zh) {
     
     self.navigationItem.rightBarButtonItems = @[settingsItem, remoteItem, scanItem];
     
+    UIScrollView *scrollView = [[UIScrollView alloc] init];
+    scrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    scrollView.alwaysBounceVertical = YES;
+    scrollView.showsVerticalScrollIndicator = YES;
+    [self.view addSubview:scrollView];
+    self.scrollView = scrollView;
+    
+    UIView *contentView = [[UIView alloc] init];
+    contentView.translatesAutoresizingMaskIntoConstraints = NO;
+    [scrollView addSubview:contentView];
+    
+    UIStackView *contentStackView = [[UIStackView alloc] init];
+    contentStackView.axis = UILayoutConstraintAxisVertical;
+    contentStackView.spacing = 14;
+    contentStackView.alignment = UIStackViewAlignmentFill;
+    contentStackView.distribution = UIStackViewDistributionFill;
+    contentStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:contentStackView];
+    
     UILabel *subtitleLabel = [[UILabel alloc] init];
     subtitleLabel.text = L(@"Keep this app open while using your Watch.", @"在使用手表遥控时保持此应用在前台运行");
     subtitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     subtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
+    subtitleLabel.numberOfLines = 0;
     subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.view addSubview:subtitleLabel];
+    [contentStackView addArrangedSubview:subtitleLabel];
     
     __weak typeof(self) weakSelf = self;
     self.statusCardsView = [[HSBHomeStatusCardsView alloc] init];
@@ -142,35 +166,15 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.statusCardsView.onTVCardTapped = ^{
         [weakSelf.deviceListManager reopenPINAlertIfNeeded];
     };
-    [self.view addSubview:self.statusCardsView];
+    [contentStackView addArrangedSubview:self.statusCardsView];
     [self.themeCards addObjectsFromArray:self.statusCardsView.cardViews];
-    
-    self.videoControlCard = [[HSBHomeVideoControlCard alloc] init];
-    self.videoControlCard.hidden = YES;
-    self.videoControlCard.onSeekRequested = ^(NSTimeInterval seekTime) {
-        [weakSelf sendSeekToTV:seekTime];
-    };
-    [self.themeCards addObject:self.videoControlCard];
-    
-    self.browserControlCard = [[HSBHomeBrowserControlCard alloc] init];
-    self.browserControlCard.onOpenURLRequested = ^(NSString * _Nonnull url) {
-        [weakSelf sendOpenURLToTV:url];
-    };
-    self.browserControlCard.onOpenRemoteRequested = ^{
-        [weakSelf openModernRemoteController];
-    };
-    self.browserControlCard.onEditHomeConfigRequested = ^{
-        HomeConfigEditViewController *vc = [[HomeConfigEditViewController alloc] init];
-        [weakSelf.navigationController pushViewController:vc animated:YES];
-    };
-    [self.themeCards addObject:self.browserControlCard];
     
     UIView *tableContainer = [[UIView alloc] init];
     tableContainer.backgroundColor = [UIColor secondarySystemBackgroundColor];
     tableContainer.layer.cornerRadius = 16;
     tableContainer.translatesAutoresizingMaskIntoConstraints = NO;
     [self.themeCards addObject:tableContainer];
-    [self.view addSubview:tableContainer];
+    [contentStackView addArrangedSubview:tableContainer];
     
     UILabel *tableTitle = [[UILabel alloc] init];
     tableTitle.text = L(@"APPLE TV HARDWARE UNITS", @"Apple TV 硬件终端");
@@ -197,28 +201,32 @@ static inline NSString * L(NSString *en, NSString *zh) {
                                                         presentingViewController:self];
     self.deviceListManager.delegate = self;
     
-    self.statsCard = [[HSBHomeActivityStatsCard alloc] init];
-    self.statsCard.onAdjustGoalRequested = ^{
-        [weakSelf.activityTracker showSetGoalAlertFrom:weakSelf];
+    self.videoControlCard = [[HSBHomeVideoControlCard alloc] init];
+    self.videoControlCard.hidden = YES;
+    self.videoControlCard.onSeekRequested = ^(NSTimeInterval seekTime) {
+        [weakSelf sendSeekToTV:seekTime];
     };
-    [self.themeCards addObject:self.statsCard];
-    [self.view addSubview:self.statsCard];
-    [self.view addSubview:self.videoControlCard];
-    [self.view addSubview:self.browserControlCard];
+    [self.themeCards addObject:self.videoControlCard];
+    [contentStackView addArrangedSubview:self.videoControlCard];
     
     [NSLayoutConstraint activateConstraints:@[
-        [subtitleLabel.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4],
-        [subtitleLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [subtitleLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         
-        [self.statusCardsView.topAnchor constraintEqualToAnchor:subtitleLabel.bottomAnchor constant:10],
-        [self.statusCardsView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [self.statusCardsView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
+        [contentView.topAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.topAnchor],
+        [contentView.leadingAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.leadingAnchor],
+        [contentView.trailingAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.trailingAnchor],
+        [contentView.bottomAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.bottomAnchor],
+        [contentView.widthAnchor constraintEqualToAnchor:scrollView.frameLayoutGuide.widthAnchor],
         
-        [tableContainer.topAnchor constraintEqualToAnchor:self.statusCardsView.bottomAnchor constant:12],
-        [tableContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [tableContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [tableContainer.heightAnchor constraintEqualToConstant:230],
+        [contentStackView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:10],
+        [contentStackView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
+        [contentStackView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
+        [contentStackView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-30],
+        
+        [tableContainer.heightAnchor constraintEqualToConstant:280],
         
         [tableTitle.topAnchor constraintEqualToAnchor:tableContainer.topAnchor constant:16],
         [tableTitle.leadingAnchor constraintEqualToAnchor:tableContainer.leadingAnchor constant:20],
@@ -231,17 +239,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [self.tvTableView.leadingAnchor constraintEqualToAnchor:tableContainer.leadingAnchor],
         [self.tvTableView.trailingAnchor constraintEqualToAnchor:tableContainer.trailingAnchor],
         [self.tvTableView.bottomAnchor constraintEqualToAnchor:tableContainer.bottomAnchor constant:-8],
-        
-        [self.statsCard.topAnchor constraintEqualToAnchor:tableContainer.bottomAnchor constant:12],
-        [self.statsCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [self.statsCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [self.videoControlCard.topAnchor constraintEqualToAnchor:self.statsCard.bottomAnchor constant:12],
-        [self.videoControlCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [self.videoControlCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [self.browserControlCard.topAnchor constraintEqualToAnchor:self.videoControlCard.bottomAnchor constant:12],
-        [self.browserControlCard.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
-        [self.browserControlCard.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
-        [self.browserControlCard.bottomAnchor constraintLessThanOrEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-20]
     ]];
 }
 
@@ -381,7 +378,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
     self.view.backgroundColor = p.backgroundColor;
     [self.statusCardsView applyThemePrimaryColor:p.primaryColor];
     [self.videoControlCard applyThemePrimaryColor:p.primaryColor];
-    [self.browserControlCard applyThemePrimaryColor:p.primaryColor];
     self.scanSpinner.color = p.primaryColor;
     [self.tvTableView reloadData];
 }
@@ -396,6 +392,36 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)qrCodeScannerDidCancel:(HSBQRCodeScannerViewController *)scanner {
     [scanner dismissViewControllerAnimated:YES completion:nil];
+}
+
+#pragma mark - Home Scroll Handlers
+
+- (void)handleHomeScrollToBottom:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat bottomY = self.scrollView.contentSize.height - self.scrollView.bounds.size.height + self.scrollView.adjustedContentInset.bottom;
+        if (bottomY > 0) {
+            [self.scrollView setContentOffset:CGPointMake(0, bottomY) animated:YES];
+        }
+    });
+}
+
+- (void)handleHomeScrollToTop:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.scrollView setContentOffset:CGPointMake(0, -self.scrollView.adjustedContentInset.top) animated:YES];
+    });
+}
+
+- (void)handleOpenRemoteControl:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        HSBDiscoveredAppleTV *device = note.userInfo[@"device"];
+        if (self.presentedViewController) {
+            [self.presentedViewController dismissViewControllerAnimated:NO completion:^{
+                [self pushToModernRemoteWithDevice:device];
+            }];
+        } else {
+            [self pushToModernRemoteWithDevice:device];
+        }
+    });
 }
 
 @end

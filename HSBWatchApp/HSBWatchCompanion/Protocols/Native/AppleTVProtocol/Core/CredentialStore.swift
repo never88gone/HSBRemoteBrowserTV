@@ -1,14 +1,10 @@
 import Foundation
 // import AppleTVLogging
 
-/// Persists Companion pairing credentials as JSON files in Application Support.
+/// Persists Companion pairing credentials as JSON files in Application Support and UserDefaults.
 ///
-/// Stored at: ~/Library/Application Support/AppleTVRemote/<deviceID>.json
-/// No Keychain access required — avoids macOS password prompts for unsigned apps.
-///
-/// Concurrent access (app + atv CLI) is serialised with per-file advisory locks
-/// (flock(2) on a companion .lock file). Reads acquire a shared lock; writes
-/// acquire an exclusive lock. Lock files are never deleted so their fd stays valid.
+/// 采用双重容灾存储：沙盒文件系统 + UserDefaults 备份。
+/// 支持设备名称大小写模糊容错，防止因前后空格、大小写差异导致的凭据丢失。
 public struct CredentialStore {
 
     public init() {}
@@ -21,6 +17,17 @@ public struct CredentialStore {
                                                  withIntermediateDirectories: true)
         return dir
     }()
+
+    private func normalizedKeys(for deviceID: String) -> [String] {
+        var keys: [String] = []
+        let raw = deviceID.replacingOccurrences(of: "/", with: "_")
+        keys.append(raw)
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !keys.contains(trimmed) { keys.append(trimmed) }
+        let lower = trimmed.lowercased()
+        if !keys.contains(lower) { keys.append(lower) }
+        return keys
+    }
 
     private func url(for deviceID: String) -> URL {
         let safe = deviceID.replacingOccurrences(of: "/", with: "_")
@@ -39,13 +46,10 @@ public struct CredentialStore {
 
     // MARK: - File locking
 
-    /// Execute `body` under an exclusive (write) flock on `path`.
     private func withExclusiveLock<T>(on path: String, body: () throws -> T) rethrows -> T {
         try withFileLock(on: path, kind: LOCK_EX, body: body)
     }
 
-    /// Execute `body` under a shared (read) flock on `path`. Multiple readers
-    /// can hold this concurrently; a writer (LOCK_EX) blocks until they drain.
     private func withSharedLock<T>(on path: String, body: () throws -> T) rethrows -> T {
         try withFileLock(on: path, kind: LOCK_SH, body: body)
     }
@@ -61,11 +65,24 @@ public struct CredentialStore {
     // MARK: - Check
 
     public func hasCredentials(for deviceID: String) -> Bool {
-        FileManager.default.fileExists(atPath: url(for: deviceID).path)
+        for k in normalizedKeys(for: deviceID) {
+            if FileManager.default.fileExists(atPath: url(for: k).path) {
+                return true
+            }
+            if UserDefaults.standard.data(forKey: "AppleTVRemote_\(k)") != nil {
+                return true
+            }
+        }
+        return false
     }
 
     public func hasAirPlayCredentials(for deviceID: String) -> Bool {
-        FileManager.default.fileExists(atPath: airPlayURL(for: deviceID).path)
+        for k in normalizedKeys(for: deviceID) {
+            if FileManager.default.fileExists(atPath: airPlayURL(for: k).path) {
+                return true
+            }
+        }
+        return false
     }
 
     // MARK: - Save
@@ -75,35 +92,63 @@ public struct CredentialStore {
             Log.credentials.fail("CredentialStore: encode failed for \(deviceID)")
             return
         }
-        let path = url(for: deviceID).path
-        withExclusiveLock(on: path) {
-            do {
-                try data.write(to: URL(fileURLWithPath: path), options: .atomic)
-                Log.credentials.report("CredentialStore: saved credentials for \(deviceID)")
-            } catch {
-                Log.credentials.fail("CredentialStore: save failed: \(error)")
+        
+        let allKeys = Array(Set(normalizedKeys(for: deviceID) + normalizedKeys(for: credentials.deviceID)))
+        
+        for k in allKeys {
+            UserDefaults.standard.set(data, forKey: "AppleTVRemote_\(k)")
+            let path = url(for: k).path
+            withExclusiveLock(on: path) {
+                do {
+                    try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                    Log.credentials.report("CredentialStore: saved credentials for \(k)")
+                } catch {
+                    Log.credentials.fail("CredentialStore: save failed: \(error)")
+                }
             }
         }
+        UserDefaults.standard.synchronize()
+        NSLog("[CredentialStore] Successfully persisted credentials for device: %@ (and %d aliases)", deviceID, allKeys.count)
     }
 
     // MARK: - Load
 
     public func load(deviceID: String) -> PairingCredentials? {
-        let path = url(for: deviceID).path
-        return withSharedLock(on: path) {
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
-            return try? JSONDecoder().decode(PairingCredentials.self, from: data)
+        let candidates = normalizedKeys(for: deviceID)
+        
+        for k in candidates {
+            let path = url(for: k).path
+            if let creds = withSharedLock(on: path, body: { () -> PairingCredentials? in
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+                return try? JSONDecoder().decode(PairingCredentials.self, from: data)
+            }) {
+                return creds
+            }
+            
+            if let data = UserDefaults.standard.data(forKey: "AppleTVRemote_\(k)"),
+               let creds = try? JSONDecoder().decode(PairingCredentials.self, from: data) {
+                // 回填到文件
+                try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                return creds
+            }
         }
+        
+        return nil
     }
 
-    // MARK: - Delete
+    // MARK: - Delete (只有在用户明确在设置中解除配对时调用)
 
     public func delete(deviceID: String) {
-        let path = url(for: deviceID).path
-        withExclusiveLock(on: path) {
-            try? FileManager.default.removeItem(atPath: path)
-            Log.credentials.report("CredentialStore: deleted credentials for \(deviceID)")
+        for k in normalizedKeys(for: deviceID) {
+            UserDefaults.standard.removeObject(forKey: "AppleTVRemote_\(k)")
+            let path = url(for: k).path
+            withExclusiveLock(on: path) {
+                try? FileManager.default.removeItem(atPath: path)
+                Log.credentials.report("CredentialStore: deleted credentials for \(k)")
+            }
         }
+        UserDefaults.standard.synchronize()
+        NSLog("[CredentialStore] Explicitly deleted credentials for device: %@", deviceID)
     }
 
     // MARK: - AirPlay
@@ -113,30 +158,39 @@ public struct CredentialStore {
             Log.credentials.fail("CredentialStore: airplay encode failed for \(deviceID)")
             return
         }
-        let path = airPlayURL(for: deviceID).path
-        withExclusiveLock(on: path) {
-            do {
-                try data.write(to: URL(fileURLWithPath: path), options: .atomic)
-                Log.credentials.report("CredentialStore: saved airplay credentials for \(deviceID)")
-            } catch {
-                Log.credentials.fail("CredentialStore: airplay save failed: \(error)")
+        for k in normalizedKeys(for: deviceID) {
+            let path = airPlayURL(for: k).path
+            withExclusiveLock(on: path) {
+                do {
+                    try data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                    Log.credentials.report("CredentialStore: saved airplay credentials for \(k)")
+                } catch {
+                    Log.credentials.fail("CredentialStore: airplay save failed: \(error)")
+                }
             }
         }
     }
 
     public func loadAirPlay(deviceID: String) -> AirPlayCredentials? {
-        let path = airPlayURL(for: deviceID).path
-        return withSharedLock(on: path) {
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
-            return try? JSONDecoder().decode(AirPlayCredentials.self, from: data)
+        for k in normalizedKeys(for: deviceID) {
+            let path = airPlayURL(for: k).path
+            if let creds = withSharedLock(on: path, body: { () -> AirPlayCredentials? in
+                guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
+                return try? JSONDecoder().decode(AirPlayCredentials.self, from: data)
+            }) {
+                return creds
+            }
         }
+        return nil
     }
 
     public func deleteAirPlay(deviceID: String) {
-        let path = airPlayURL(for: deviceID).path
-        withExclusiveLock(on: path) {
-            try? FileManager.default.removeItem(atPath: path)
-            Log.credentials.report("CredentialStore: deleted airplay credentials for \(deviceID)")
+        for k in normalizedKeys(for: deviceID) {
+            let path = airPlayURL(for: k).path
+            withExclusiveLock(on: path) {
+                try? FileManager.default.removeItem(atPath: path)
+                Log.credentials.report("CredentialStore: deleted airplay credentials for \(k)")
+            }
         }
     }
 }
@@ -170,8 +224,5 @@ public struct PairingCredentials: Codable {
         deviceLTPK = try c.decode(Data.self,   forKey: .deviceLTPK)
         deviceID   = try c.decode(String.self, forKey: .deviceID)
         name       = (try? c.decode(String.self, forKey: .name)) ?? "Mac Remote"
-        // Older credentials persisted an `rpID` field that was never written
-        // to the wire (the encoder uses clientID for both `_i` and `_pubID`).
-        // We silently ignore it — leaving the JSON intact for forward-compat.
     }
 }

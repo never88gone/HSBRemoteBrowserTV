@@ -28,12 +28,12 @@ public struct ModernDPadView: View {
     @State private var isCenterPressed: Bool = false
     
     public init(
-        size: CGFloat = 260.0,
+        size: CGFloat = 220.0,
         onDirection: ((DPadDirection, KeyAction) -> Void)? = nil,
         onSelect: ((KeyAction) -> Void)? = nil
     ) {
         self.outerSize = size
-        self.centerSize = size * 0.44
+        self.centerSize = size * 0.35
         self.onDirection = onDirection
         self.onSelect = onSelect
     }
@@ -99,7 +99,7 @@ public struct ModernDPadView: View {
                     }
                     
                     Text("OK")
-                        .font(.system(size: max(17, outerSize * 0.08), weight: .bold, design: .rounded))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                 }
                 .scaleEffect(isCenterPressed ? 0.94 : 1.0)

@@ -170,6 +170,8 @@ public final class HSBConnectionStateMachine: ObservableObject {
                 self.transition(to: .disconnected)
                 
             // 4. pairing 状态下的事件响应
+            case (.pairing, .socketConnected(let name, let mode)):
+                self.transition(to: .ready(deviceName: name, mode: mode))
             case (.pairing(let name, _), .pairingSucceeded):
                 self.transition(to: .ready(deviceName: name, mode: .nativeOnly))
             case (.pairing, .handshakeFailed(let err)):

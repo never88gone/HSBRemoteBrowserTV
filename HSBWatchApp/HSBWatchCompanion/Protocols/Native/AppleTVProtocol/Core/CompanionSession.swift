@@ -253,9 +253,11 @@ public final class CompanionSession {
     public func sendFrame(_ type: CompanionFrame.FrameType, payload: Data) {
         let fd = self.fd
         guard fd >= 0 else {
+            NSLog("[ATV_CONNECT] sendFrame failed: socket fd is closed/negative: %d", fd)
             Log.companion.fail("Companion: sendFrame called with no socket")
             return
         }
+        NSLog("[ATV_CONNECT] Companion sendFrame type=0x%02x (%d bytes payload) queuing to writeQueue", type.rawValue, payload.count)
         Log.companion.trace("Companion → sending \(type) (\(payload.count) bytes)")
         let frameData = CompanionFrame(type: type, payload: payload).encoded
         writeQueue.async {
@@ -266,11 +268,13 @@ public final class CompanionSession {
                 while offset < total {
                     let n = Darwin.write(fd, base + offset, total - offset)
                     if n <= 0 {
+                        NSLog("[ATV_CONNECT] Companion sendFrame Darwin.write error (errno %d)", errno)
                         Log.companion.fail("Companion send error (errno \(errno))")
                         return
                     }
                     offset += n
                 }
+                NSLog("[ATV_CONNECT] Companion sendFrame Darwin.write succeeded (%d bytes written)", total)
             }
         }
     }
@@ -348,10 +352,12 @@ public final class CompanionSession {
             Log.companion.trace("Companion ← frame \(frame.type) (\(frame.payload.count) bytes)")
             switch frame.type {
             case .psNext, .pvNext:
+                NSLog("[ATV_CONNECT] Companion processBuffer received pairing frame: %@ (%d bytes)", "\(frame.type)", frame.payload.count)
                 delegate?.sessionDidReceivePairingFrame(frame)
             case .eOPACK:
                 handleEOPACK(frame.payload)
             default:
+                NSLog("[ATV_CONNECT] Companion processBuffer unhandled frame: 0x%02x", frame.type.rawValue)
                 Log.companion.fail("Companion: unhandled frame 0x\(String(frame.type.rawValue, radix: 16))")
             }
         }

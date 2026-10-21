@@ -183,7 +183,7 @@
         NSLog(@"[BonjourBridge] No paired TV records in Keychain to reconnect.");
         return NO;
     }
-    NSDictionary *record = records.lastObject ?: records.firstObject;
+    NSDictionary *record = records.firstObject;
     [self.pairingCoordinator clearPairingSession];
     self.pairingCoordinator.pairedTVRecord = record;
     NSString *host = record[@"host"];
@@ -213,11 +213,11 @@
     }
 
     if (!self.pairingCoordinator.pairingToken || self.pairingCoordinator.pairedTVRecord) {
-        NSDictionary *record = self.pairingCoordinator.pairedTVRecord;
+        const char *epHost = nw_endpoint_get_hostname(endpoint);
+        NSString *targetHost = epHost ? [NSString stringWithUTF8String:epHost] : nil;
+        NSDictionary *record = [HSBTVOSKeychainStore findRecordMatchingHost:targetHost deviceName:deviceName];
         if (!record) {
-            const char *epHost = nw_endpoint_get_hostname(endpoint);
-            NSString *targetHost = epHost ? [NSString stringWithUTF8String:epHost] : nil;
-            record = [HSBTVOSKeychainStore findRecordMatchingHost:targetHost deviceName:deviceName];
+            record = self.pairingCoordinator.pairedTVRecord;
         }
         if (record && record[@"name"]) {
             self.deviceName = record[@"name"];
@@ -353,6 +353,13 @@
                                                         object:self
                                                       userInfo:@{HSBConnectionStateKeyState: @(nw_connection_state_cancelled),
                                                                  HSBConnectionStateKeyMessage: @"⚪️ Disconnected"}];
+}
+
+- (void)clearPairedTVRecords {
+    [HSBTVOSKeychainStore savePairedTVRecords:@[]];
+    [self.pairingCoordinator clearPairingSession];
+    self.pairingCoordinator.pairedTVRecord = nil;
+    [self disconnect];
 }
 
 #pragma mark - Send Operations

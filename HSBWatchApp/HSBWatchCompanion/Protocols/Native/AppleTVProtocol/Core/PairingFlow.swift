@@ -134,23 +134,31 @@ public final class PairingFlow {
 
         case 4:  // M4: server proof verified → send M5
             do {
+                NSLog("[ATV_CONNECT] M4 received from ATV! Verifying server proof...")
                 let m5 = try pairing?.processM4(extracted) ?? Data()
+                NSLog("[ATV_CONNECT] Server proof verified! Sending M5 payload (%d bytes)...", m5.count)
                 delegate.sendFrame(.psNext, OPACK.wrapPsNextData(m5))
             } catch {
+                NSLog("[ATV_CONNECT] Pairing M4 failed: %@", "\(error)")
                 delegate.setState(.error("Pairing M4 failed: \(error)"))
             }
 
         case 6:  // M6: ATV identity → pairing complete, reconnect for verify
             do {
+                NSLog("[ATV_CONNECT] M6 received from ATV! Processing ATV credentials...")
                 let creds = try pairing?.processM6(extracted)
                 guard let creds = creds as PairingCredentials? else {
+                    NSLog("[ATV_CONNECT] Pairing M6 failed: missing credentials")
                     delegate.setState(.error("Pairing M6: missing credentials"))
                     return
                 }
+                NSLog("[ATV_CONNECT] Pairing M6 succeeded! Saving credentials for device: %@", device.id)
                 delegate.saveCredentials(creds, device.id)
                 // Companion protocol requires pair-verify on a fresh TCP connection.
+                NSLog("[ATV_CONNECT] Reconnecting to ATV for pair-verify...")
                 delegate.reconnect(device)
             } catch {
+                NSLog("[ATV_CONNECT] Pairing M6 failed: %@", "\(error)")
                 delegate.setState(.error("Pairing M6 failed: \(error)"))
             }
 
@@ -173,7 +181,9 @@ public final class PairingFlow {
         Log.companion.trace("Companion pvNext step=\(step) (\(extracted.count) bytes TLV8)")
         
         if let errByte = tlv[.error]?.first {
-            delegate.deleteCredentials(deviceID)
+            if errByte == 0x02 { // 仅当 Apple TV 显式返回身份认证失效时才删除凭据
+                delegate.deleteCredentials(deviceID)
+            }
             delegate.setState(.error("Pair verify rejected by ATV (error: \(errByte))"))
             return
         }
@@ -184,7 +194,7 @@ public final class PairingFlow {
                 let m3 = try pairVerify?.processM2(extracted) ?? Data()
                 delegate.sendFrame(.pvNext, OPACK.wrapPairingData(m3))
             } catch {
-                delegate.deleteCredentials(deviceID)
+                NSLog("[ATV_CONNECT] Pair verify M2 processing failed: %@", "\(error)")
                 delegate.setState(.error("Pair verify M2 failed: \(error)"))
             }
 
@@ -197,8 +207,8 @@ public final class PairingFlow {
                 }
                 delegate.setState(.connected)
             } catch {
-                delegate.deleteCredentials(deviceID)
-                delegate.setState(.error("Pair verify failed: \(error)\nPress Connect to re-pair."))
+                NSLog("[ATV_CONNECT] Pair verify M4 failed: %@", "\(error)")
+                delegate.setState(.error("Pair verify failed: \(error)"))
             }
 
         default:
@@ -209,22 +219,36 @@ public final class PairingFlow {
     /// Called from `CompanionConnection.submitPairingPin(_:)` after the user
     /// enters their PIN. Runs SRP off-main to avoid beachballing.
     public func submitPin(_ pin: String, onSend: @escaping @Sendable @MainActor (Data) -> Void, onError: @escaping @Sendable @MainActor (String) -> Void) {
-        guard let m2 = pendingM2Data else { return }
-        let capturedPairing = pairing
+        guard let m2 = pendingM2Data else {
+            NSLog("[ATV_CONNECT] submitPin failed: pendingM2Data is nil!")
+            return
+        }
+        guard let capturedPairing = pairing else {
+            NSLog("[ATV_CONNECT] submitPin failed: pairing is nil!")
+            return
+        }
+        NSLog("[ATV_CONNECT] submitPin: starting SRP calculation for PIN: %@", pin)
         pinTask?.cancel()
         pinTask = Task.detached { [weak self] in
             do {
-                let m3 = try capturedPairing?.processM2(m2, pin: pin) ?? Data()
-                if Task.isCancelled { return }
+                NSLog("[ATV_CONNECT] processM2 starting on background task...")
+                let m3 = try capturedPairing.processM2(m2, pin: pin)
+                NSLog("[ATV_CONNECT] processM2 completed successfully! M3 size: %d bytes", m3.count)
+                if Task.isCancelled {
+                    NSLog("[ATV_CONNECT] pinTask was cancelled, aborting.")
+                    return
+                }
                 await MainActor.run {
-                    // The flow may have been reset() while M3 was being
-                    // computed — in that case `pairing` is nil and any M3 we
-                    // send out is against a half-torn-down state machine.
-                    guard let self, self.pairing != nil else { return }
+                    guard let self, self.pairing != nil else {
+                        NSLog("[ATV_CONNECT] MainActor callback aborted: self or pairing was reset")
+                        return
+                    }
                     self.pinTask = nil
+                    NSLog("[ATV_CONNECT] Calling onSend with M3 data...")
                     onSend(m3)
                 }
             } catch {
+                NSLog("[ATV_CONNECT] processM2 failed with error: %@", "\(error)")
                 if Task.isCancelled { return }
                 await MainActor.run {
                     guard let self, self.pairing != nil else { return }

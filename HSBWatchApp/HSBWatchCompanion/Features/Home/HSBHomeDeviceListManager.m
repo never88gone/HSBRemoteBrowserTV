@@ -70,32 +70,6 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
                 NSString *text = [NSString stringWithFormat:fmt, (unsigned long)weakSelf.discoveredDevices.count];
                 [weakSelf notifyStatus:text color:[UIColor systemGreenColor]];
                 [weakSelf.delegate deviceListManager:weakSelf didUpdateDeviceCount:weakSelf.discoveredDevices.count];
-                
-                static BOOL didAutoConnect = NO;
-                if (!didAutoConnect) {
-                    for (HSBDiscoveredAppleTV *dev in devices) {
-                        if ([dev.name isEqualToString:@"HSBTV7"]) {
-                            didAutoConnect = YES;
-                            NSLog(@"[ATV_AUTO] Auto-connecting to discovered Apple TV: %@", dev.name);
-                            if ([HSBModernRemoteBridge isLaunchAnimationActive]) {
-                                NSLog(@"[ATV_AUTO] Launch animation is active, waiting for animation to finish before connecting...");
-                                __block id obs = nil;
-                                obs = [[NSNotificationCenter defaultCenter] addObserverForName:@"HSBLaunchAnimationDidFinishNotification" object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification * _Nonnull note) {
-                                    [[NSNotificationCenter defaultCenter] removeObserver:obs];
-                                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                                        NSLog(@"[ATV_AUTO] Launch animation finished, now connecting to: %@", dev.name);
-                                        [weakSelf connectToDevice:dev];
-                                    });
-                                }];
-                            } else {
-                                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                                    [weakSelf connectToDevice:dev];
-                                });
-                            }
-                            break;
-                        }
-                    }
-                }
             }
         });
     }];
@@ -142,10 +116,6 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
         return;
     }
     
-    if (!device.isMacDevice) {
-        [HSBModernRemoteBridge clearCredentialsForDevice:device.name];
-    }
-    
     self.connectingDeviceHost = device.host;
     [self.tableView reloadData];
     
@@ -190,8 +160,7 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
         NSString *msg = [NSString stringWithFormat:HSBLocalText(@"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。", @"未能与 “%@” 建立连接。\n\n• 如需遥控 Apple TV 全局系统：\n请点击【重试连接】，电视屏幕将弹出 4 位配对码，在手机输入即可完成永久绑定；\n\n• 如需控制电视上的【糖葫芦浏览器】网页：\n请在电视打开应用后，点击下方【扫码连接专属浏览器】。"), device.name];
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:HSBLocalText(@"电视连接指引", @"电视连接指引") message:msg preferredStyle:UIAlertControllerStyleAlert];
         __weak typeof(self) weakSelf = self;
-        [alert addAction:[UIAlertAction actionWithTitle:HSBLocalText(@"🔄 重试连接 (等待电视 PIN 码)", @"🔄 重试连接 (等待电视 PIN 码)") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            [HSBModernRemoteBridge clearCredentialsForDevice:device.name];
+        [alert addAction:[UIAlertAction actionWithTitle:HSBLocalText(@"🔄 重试连接", @"🔄 重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             [weakSelf connectToDevice:device];
         }]];
         [alert addAction:[UIAlertAction actionWithTitle:HSBLocalText(@"📷 扫码连接专属浏览器", @"📷 扫码连接专属浏览器") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {

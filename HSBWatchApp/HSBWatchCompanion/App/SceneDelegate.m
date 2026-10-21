@@ -9,6 +9,7 @@
 #import "AppDelegate.h"
 #import "HSBThemeManager.h"
 #import "HSBTVOSConnectionManager.h"
+#import "HSBWatchCompanion-Swift.h"
 
 @interface SceneDelegate ()
 
@@ -18,28 +19,42 @@
 
 
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)connectionOptions {
-    // Wrap the storyboard root VC in a NavigationController to enable push navigation
     if ([scene isKindOfClass:[UIWindowScene class]]) {
         UIWindowScene *windowScene = (UIWindowScene *)scene;
-        // self.window is already created by storyboard auto-init; grab the existing rootVC
-        UIViewController *rootVC = self.window.rootViewController;
-        if (rootVC && ![rootVC isKindOfClass:[UINavigationController class]]) {
+        if (!self.window) {
+            self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
+            UIStoryboard *sb = [UIStoryboard storyboardWithName:@"Main" bundle:nil];
+            UIViewController *rootVC = [sb instantiateInitialViewController];
             UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:rootVC];
             self.window.rootViewController = nav;
-            if (@available(iOS 13.0, *)) {
-                self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-            }
-            self.window.tintColor = [HSBThemeManager tanghuluBrandColor];
-            [self.window makeKeyAndVisible];
         } else {
-            if (@available(iOS 13.0, *)) {
-                self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            UIViewController *rootVC = self.window.rootViewController;
+            if (rootVC && ![rootVC isKindOfClass:[UINavigationController class]]) {
+                UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:rootVC];
+                self.window.rootViewController = nav;
             }
-            self.window.tintColor = [HSBThemeManager tanghuluBrandColor];
         }
+        if (@available(iOS 13.0, *)) {
+            self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        }
+        self.window.tintColor = [HSBThemeManager tanghuluBrandColor];
+        [self.window makeKeyAndVisible];
+        [HSBModernRemoteBridge startAutoDiscoveryAndConnect];
+        [HSBNativePINAlertPresenter ensureAutomationServerStarted];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handleAutomationNotification:)
+                                                     name:@"HSBExecuteAutomationURLNotification"
+                                                   object:nil];
     }
     for (UIOpenURLContext *context in connectionOptions.URLContexts) {
         [self handleRemotePairingURL:context.URL];
+    }
+}
+
+- (void)handleAutomationNotification:(NSNotification *)note {
+    NSURL *url = note.userInfo[@"url"];
+    if (url) {
+        [self handleRemotePairingURL:url];
     }
 }
 
@@ -55,6 +70,21 @@
         if ([[url.host lowercaseString] isEqualToString:@"pair"]) {
             NSLog(@"[SceneDelegate] Initiating connectToPairingURL with: %@", url);
             [[HSBTVOSConnectionManager sharedManager] connectToPairingURL:url];
+        } else if ([[url.host lowercaseString] isEqualToString:@"pin"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *code = nil;
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"code"]) {
+                    code = item.value;
+                }
+            }
+            if (code.length > 0) {
+                NSLog(@"[SceneDelegate] Received pairing PIN via URL scheme: %@", code);
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBSubmitPINAutomationNotification"
+                                                                    object:nil
+                                                                  userInfo:@{@"pin": code}];
+                [HSBModernRemoteBridge submitNativePIN:code completion:nil];
+            }
         } else if ([[url.host lowercaseString] isEqualToString:@"guide"]) {
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
             NSString *type = @"browser";
@@ -75,6 +105,9 @@
                 }
             }
             NSLog(@"[SceneDelegate] Received remote key command: %@", keyName);
+            if (keyName.length > 0) {
+                [HSBModernRemoteBridge sendCommandNamed:keyName];
+            }
             if ([keyName isEqualToString:@"right"]) {
                 [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionRight];
             } else if ([keyName isEqualToString:@"left"]) {
@@ -98,17 +131,77 @@
             } else if ([keyName isEqualToString:@"volume_down"]) {
                 [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionVolumeDown];
             }
+        } else if ([[url.host lowercaseString] isEqualToString:@"browser"] || [[url.host lowercaseString] isEqualToString:@"screen"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *action = nil;
+            NSString *urlVal = nil;
+            NSString *scriptVal = nil;
+            CGFloat dx = 0, dy = 0;
+            NSInteger modeVal = 1;
+            NSString *stateVal = @"began";
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"action"]) action = item.value;
+                if ([item.name isEqualToString:@"url"]) urlVal = item.value;
+                if ([item.name isEqualToString:@"script"]) scriptVal = item.value;
+                if ([item.name isEqualToString:@"dx"]) dx = [item.value doubleValue];
+                if ([item.name isEqualToString:@"dy"]) dy = [item.value doubleValue];
+                if ([item.name isEqualToString:@"mode"]) modeVal = [item.value integerValue];
+                if ([item.name isEqualToString:@"state"]) stateVal = item.value;
+            }
+            if ([action isEqualToString:@"refresh"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBRefreshScreenChannelNotification" object:nil];
+            } else if ([action isEqualToString:@"disconnect"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBDisconnectScreenChannelNotification" object:nil];
+            } else if ([action isEqualToString:@"forget"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBForgetScreenChannelNotification" object:nil];
+            } else if ([action isEqualToString:@"manage"] || [action isEqualToString:@"sheet"]) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBShowScreenManageSheetNotification" object:nil];
+            } else if ([action isEqualToString:@"open_url"] && urlVal.length > 0) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionOpenUrl withParams:@{@"url": urlVal}];
+            } else if ([action isEqualToString:@"scroll"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
+                    HSBRemotePayloadKeyAction: HSBRemoteSimulateActionMacScroll,
+                    @"dx": @(dx),
+                    @"dy": @(dy)
+                }];
+            } else if ([action isEqualToString:@"pan"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
+                    HSBRemotePayloadKeyAction: HSBRemoteSimulateActionMacPan,
+                    @"dx": @(dx),
+                    @"dy": @(dy)
+                }];
+            } else if ([action isEqualToString:@"drag"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
+                    HSBRemotePayloadKeyAction: HSBRemoteSimulateActionMacDrag,
+                    @"state": stateVal ?: @"began",
+                    @"dx": @(dx),
+                    @"dy": @(dy)
+                }];
+            } else if ([action isEqualToString:@"tap"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
+                    HSBRemotePayloadKeyAction: HSBRemoteSimulateActionMacTap,
+                    @"mode": @(modeVal)
+                }];
+            } else if ([action isEqualToString:@"execute_js"] && scriptVal.length > 0) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionExecuteJS withParams:@{@"script": scriptVal}];
+            } else if ([action isEqualToString:@"reload"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPageReload];
+            } else if ([action isEqualToString:@"home"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPageHome];
+            }
         } else if ([[url.host lowercaseString] isEqualToString:@"iptv"]) {
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
             NSString *actionName = nil;
             NSString *urlVal = nil;
             NSString *nameVal = nil;
             NSString *epgVal = nil;
+            NSString *channelId = nil;
             for (NSURLQueryItem *item in components.queryItems) {
                 if ([item.name isEqualToString:@"action"]) actionName = item.value;
                 if ([item.name isEqualToString:@"url"]) urlVal = item.value;
                 if ([item.name isEqualToString:@"name"]) nameVal = item.value;
                 if ([item.name isEqualToString:@"epg"]) epgVal = item.value;
+                if ([item.name isEqualToString:@"channel"]) channelId = item.value;
             }
             if ([actionName isEqualToString:@"import_source"] && urlVal.length > 0) {
                 NSMutableDictionary *payload = [NSMutableDictionary dictionary];
@@ -119,6 +212,60 @@
                     payload[@"epgURL"] = epgVal;
                 }
                 [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+            } else if ([actionName isEqualToString:@"channel_up"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionChannelUp];
+            } else if ([actionName isEqualToString:@"channel_down"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionChannelDown];
+            } else if ([actionName isEqualToString:@"play_channel"] && channelId.length > 0) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionIPTVPlayChannel withParams:@{@"channelId": channelId}];
+            } else if ([actionName isEqualToString:@"get_favorites"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionIPTVGetFavorites];
+            }
+        } else if ([[url.host lowercaseString] isEqualToString:@"pdf"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *action = nil;
+            CGFloat x = 0.5, y = 0.5;
+            NSString *color = @"#FF3B30";
+            CGFloat width = 4.0;
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"action"]) action = item.value;
+                if ([item.name isEqualToString:@"x"]) x = [item.value doubleValue];
+                if ([item.name isEqualToString:@"y"]) y = [item.value doubleValue];
+                if ([item.name isEqualToString:@"color"]) color = item.value;
+                if ([item.name isEqualToString:@"width"]) width = [item.value doubleValue];
+            }
+            if ([action isEqualToString:@"next"]) {
+                [HSBModernRemoteBridge sendCommandNamed:@"right"];
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionRight];
+            } else if ([action isEqualToString:@"prev"]) {
+                [HSBModernRemoteBridge sendCommandNamed:@"left"];
+                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionLeft];
+            } else if ([action isEqualToString:@"draw"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
+                    HSBRemotePayloadKeyAction: HSBRemoteSimulateActionPdfDraw,
+                    HSBRemotePayloadKeyType: @"point",
+                    HSBRemotePayloadKeyX: @(x),
+                    HSBRemotePayloadKeyY: @(y),
+                    HSBRemotePayloadKeyColor: color,
+                    HSBRemotePayloadKeyWidth: @(width)
+                }];
+            } else if ([action isEqualToString:@"clear"]) {
+                [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
+                    HSBRemotePayloadKeyAction: HSBRemoteSimulateActionPdfDraw,
+                    HSBRemotePayloadKeyType: HSBRemoteDrawTypeClear
+                }];
+            }
+        } else if ([[url.host lowercaseString] isEqualToString:@"app"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *bundleId = nil;
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"bundleId"] || [item.name isEqualToString:@"id"]) {
+                    bundleId = item.value;
+                }
+            }
+            if (bundleId.length > 0) {
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBAppLaunchedNotification"
+                                                                    object:bundleId];
             }
         }
     }
@@ -147,6 +294,7 @@
 
 - (void)sceneWillEnterForeground:(UIScene *)scene {
     [[HSBTVOSConnectionManager sharedManager] handleAppWillEnterForeground];
+    [HSBModernRemoteBridge startAutoDiscoveryAndConnect];
 }
 
 

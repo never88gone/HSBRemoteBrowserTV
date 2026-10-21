@@ -21,6 +21,18 @@ public final class RemoteCommandRouter {
     
     // MARK: - D-pad & Select
     public func sendDPad(direction: DPadDirection, action: KeyAction = .tap) {
+        if isCurrentTargetMac {
+            let cmd: String = {
+                switch direction {
+                case .up: return "up"
+                case .down: return "down"
+                case .left: return "left"
+                case .right: return "right"
+                }
+            }()
+            MacMediaCommandDispatcher.dispatchCommand(cmd)
+            return
+        }
         if HSBTVOSConnectionManager.shared().isConnected {
             let simAction: HSBRemoteSimulateAction = {
                 switch direction {
@@ -31,13 +43,6 @@ public final class RemoteCommandRouter {
                 }
             }()
             HSBTVOSConnectionManager.shared().sendSimulateAction(simAction)
-        }
-        if isCurrentTargetMac {
-            if direction == .left {
-                MacMediaCommandDispatcher.dispatchCommand("previous")
-            } else if direction == .right {
-                MacMediaCommandDispatcher.dispatchCommand("next")
-            }
         }
         switch currentMode {
         case .screenOnly:
@@ -81,6 +86,10 @@ public final class RemoteCommandRouter {
     }
     
     public func sendSelect(action: KeyAction = .tap) {
+        if isCurrentTargetMac {
+            MacMediaCommandDispatcher.dispatchCommand("select")
+            return
+        }
         if HSBTVOSConnectionManager.shared().isConnected {
             HSBTVOSConnectionManager.shared().sendSimulateAction(.select)
         }
@@ -99,6 +108,10 @@ public final class RemoteCommandRouter {
     
     // MARK: - Touchpad & Cursor
     public func sendCursorPan(dx: CGFloat, dy: CGFloat) {
+        if isCurrentTargetMac {
+            MacMediaCommandDispatcher.dispatchCommand("pan", params: ["dx": dx, "dy": dy])
+            return
+        }
         if currentMode == .nativeOnly {
             let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
             nativeClient.sendTouchEvent(phase: 2, point: pt)
@@ -108,6 +121,10 @@ public final class RemoteCommandRouter {
     }
     
     public func sendTap(mode: Int = 1, point: CGPoint? = nil) {
+        if isCurrentTargetMac {
+            MacMediaCommandDispatcher.dispatchCommand("tap")
+            return
+        }
         if currentMode == .nativeOnly {
             nativeClient.sendTouchEvent(phase: 1, point: point ?? CGPoint(x: 500, y: 500))
         } else {
@@ -116,6 +133,10 @@ public final class RemoteCommandRouter {
     }
     
     public func sendScroll(dx: CGFloat, dy: CGFloat) {
+        if isCurrentTargetMac {
+            MacMediaCommandDispatcher.dispatchCommand("scroll", params: ["dy": dy])
+            return
+        }
         let legacyMgr = HSBTVOSConnectionManager.shared()
         if screenClient.isConnected || legacyMgr.isConnected {
             screenClient.send(command: .scroll(dx: dx, dy: dy))
@@ -148,6 +169,10 @@ public final class RemoteCommandRouter {
     
     // MARK: - Text Input
     public func sendTextInput(text: String, isAtomicReplace: Bool = false) {
+        if isCurrentTargetMac {
+            MacMediaCommandDispatcher.dispatchCommand("text", params: ["text": text])
+            return
+        }
         if isAtomicReplace {
             let script = "if (document.activeElement && 'value' in document.activeElement) { document.activeElement.value = '\(text)'; document.activeElement.dispatchEvent(new Event('input', {bubbles:true})); }"
             coordinator.executeJavaScript(script, completion: nil)
@@ -159,6 +184,19 @@ public final class RemoteCommandRouter {
     }
     
     public func sendKeyCommand(key: SpecialKey) {
+        if isCurrentTargetMac {
+            switch key {
+            case .enter:
+                MacMediaCommandDispatcher.dispatchCommand("select")
+            case .escape:
+                MacMediaCommandDispatcher.dispatchCommand("back")
+            case .space:
+                MacMediaCommandDispatcher.dispatchCommand("text", params: ["text": " "])
+            case .backspace:
+                MacMediaCommandDispatcher.dispatchCommand("back")
+            }
+            return
+        }
         if currentMode == .nativeOnly {
             switch key {
             case .enter:
@@ -185,6 +223,35 @@ public final class RemoteCommandRouter {
     
     // MARK: - System Keys
     public func sendSystemKey(_ key: SystemKey) {
+        if isCurrentTargetMac {
+            switch key {
+            case .home:
+                MacMediaCommandDispatcher.dispatchCommand("home")
+            case .menu:
+                MacMediaCommandDispatcher.dispatchCommand("back")
+            case .volumeUp:
+                MacMediaCommandDispatcher.dispatchCommand("volume_up")
+            case .volumeDown:
+                MacMediaCommandDispatcher.dispatchCommand("volume_down")
+            case .mute:
+                MacMediaCommandDispatcher.dispatchCommand("mute")
+            case .playPause:
+                MacMediaCommandDispatcher.dispatchCommand("play_pause")
+            case .up:
+                MacMediaCommandDispatcher.dispatchCommand("up")
+            case .down:
+                MacMediaCommandDispatcher.dispatchCommand("down")
+            case .left:
+                MacMediaCommandDispatcher.dispatchCommand("left")
+            case .right:
+                MacMediaCommandDispatcher.dispatchCommand("right")
+            case .select:
+                MacMediaCommandDispatcher.dispatchCommand("select")
+            case .power:
+                MacMediaCommandDispatcher.dispatchCommand("mute")
+            }
+            return
+        }
         if HSBTVOSConnectionManager.shared().isConnected {
             switch key {
             case .home:

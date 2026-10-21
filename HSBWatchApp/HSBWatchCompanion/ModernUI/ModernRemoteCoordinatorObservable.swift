@@ -7,20 +7,25 @@ import SwiftUI
 import Combine
 
 @MainActor
-final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDelegate, RemoteTextInputManagerDelegate {
+final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDelegate, RemoteTextInputManagerDelegate, HSBBonjourDiscoveryDelegate {
     @Published var state: HSBConnectionState = .disconnected
     @Published var isHSBBrowserConnected: Bool = false
+    @Published var isHSBBrowserReconnecting: Bool = false
     @Published var browserDeviceName: String = ""
     @Published var isNativeConnected: Bool = false
     @Published var isTargetMac: Bool = false
     @Published var targetDeviceName: String = "Mac"
+    @Published var nearbyDiscoveredBrowserTV: String? = nil
+    
     private let coordinator: DualModeRemoteCoordinator
+    private let bonjourDiscovery = HSBBonjourDiscovery()
     
     init(coordinator: DualModeRemoteCoordinator) {
         self.coordinator = coordinator
         self.state = coordinator.currentState
         let legacyMgr = HSBTVOSConnectionManager.shared()
         self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
+        self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
         self.browserDeviceName = legacyMgr.deviceName ?? ""
         self.isNativeConnected = coordinator.nativeClient.isConnected
         self.isTargetMac = coordinator.isCurrentTargetMac
@@ -33,17 +38,62 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
             name: .HSBTVOSConnectionState,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleConnectionStateNotification(_:)),
+            name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRefreshScreenChannelNotification),
+            name: Notification.Name("HSBRefreshScreenChannelNotification"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDisconnectScreenChannelNotification),
+            name: Notification.Name("HSBDisconnectScreenChannelNotification"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleForgetScreenChannelNotification),
+            name: Notification.Name("HSBForgetScreenChannelNotification"),
+            object: nil
+        )
+        
+        bonjourDiscovery.delegate = self
+        bonjourDiscovery.startDiscovery()
     }
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        bonjourDiscovery.stopDiscovery()
+    }
+    
+    @objc private func handleConnectionStateNotification(_ note: Notification) {
+        DispatchQueue.main.async {
+            self.state = self.coordinator.currentState
+            let legacyMgr = HSBTVOSConnectionManager.shared()
+            self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
+            self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
+            self.browserDeviceName = legacyMgr.deviceName ?? ""
+            self.isNativeConnected = self.coordinator.nativeClient.isConnected
+            self.isTargetMac = self.coordinator.isCurrentTargetMac
+            if !self.coordinator.currentTargetDeviceName.isEmpty {
+                self.targetDeviceName = self.coordinator.currentTargetDeviceName
+            }
+        }
     }
     
     @objc private func handleTVOSConnectionNotification(_ note: Notification) {
         DispatchQueue.main.async {
             let legacyMgr = HSBTVOSConnectionManager.shared()
             self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
+            self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
             self.browserDeviceName = legacyMgr.deviceName ?? ""
+            self.isNativeConnected = self.coordinator.nativeClient.isConnected
         }
     }
     
@@ -52,12 +102,89 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
             self.state = state
             let legacyMgr = HSBTVOSConnectionManager.shared()
             self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
+            self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
             self.browserDeviceName = legacyMgr.deviceName ?? ""
             self.isNativeConnected = coordinator.nativeClient.isConnected
             self.isTargetMac = coordinator.isCurrentTargetMac
             if !coordinator.currentTargetDeviceName.isEmpty {
                 self.targetDeviceName = coordinator.currentTargetDeviceName
             }
+        }
+    }
+    
+    // MARK: - HSBBonjourDiscoveryDelegate (局域网大屏在线状态感知)
+    
+    nonisolated func bonjourDiscovery(_ discovery: HSBBonjourDiscovery, didFind device: HSBDiscoveredDevice) {
+        Task { @MainActor in
+            self.nearbyDiscoveredBrowserTV = device.name
+            let legacyMgr = HSBTVOSConnectionManager.shared()
+            if !legacyMgr.isConnected && !legacyMgr.isReconnecting {
+                let records = HSBTVOSConnectionManager.pairedTVRecords()
+                if !records.isEmpty {
+                    if case .service(let name, let type, let domain, _) = device.endpoint {
+                        let cEndpoint = nw_endpoint_create_bonjour_service(name, type, domain)
+                        legacyMgr.connect(to: cEndpoint, deviceName: device.name)
+                    }
+                }
+            }
+        }
+    }
+    
+    nonisolated func bonjourDiscovery(_ discovery: HSBBonjourDiscovery, didLose device: HSBDiscoveredDevice) {
+        Task { @MainActor in
+            if self.nearbyDiscoveredBrowserTV == device.name {
+                self.nearbyDiscoveredBrowserTV = nil
+            }
+        }
+    }
+    
+    // MARK: - Screen Channel Controls (大屏状态控制核心操作)
+    
+    /// 刷新并测试当前大屏通道
+    func refreshBrowserChannel() {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if legacyMgr.isConnected {
+            legacyMgr.handleAppWillEnterForeground()
+        } else {
+            legacyMgr.triggerImmediateReconnect()
+        }
+    }
+    
+    /// 主动断开大屏应用连接
+    func disconnectBrowserChannel() {
+        HSBTVOSConnectionManager.shared().disconnect()
+        coordinator.screenClient.disconnect()
+        self.isHSBBrowserConnected = false
+        self.isHSBBrowserReconnecting = false
+        self.browserDeviceName = ""
+    }
+    
+    /// 清除配对记录并准备重新扫码
+    func forgetPairedBrowserAndRescan() {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        legacyMgr.clearPairedTVRecords()
+        coordinator.screenClient.disconnect()
+        self.isHSBBrowserConnected = false
+        self.isHSBBrowserReconnecting = false
+        self.browserDeviceName = ""
+        NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
+    }
+    
+    @objc private func handleRefreshScreenChannelNotification() {
+        Task { @MainActor in
+            self.refreshBrowserChannel()
+        }
+    }
+    
+    @objc private func handleDisconnectScreenChannelNotification() {
+        Task { @MainActor in
+            self.disconnectBrowserChannel()
+        }
+    }
+    
+    @objc private func handleForgetScreenChannelNotification() {
+        Task { @MainActor in
+            self.forgetPairedBrowserAndRescan()
         }
     }
     

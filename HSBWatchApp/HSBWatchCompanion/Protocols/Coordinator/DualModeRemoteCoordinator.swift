@@ -24,10 +24,23 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     // 当前目标设备是否为 Mac 终端 (方案 A: 原生媒体控制)
     public var isCurrentTargetMac: Bool = false
     public var currentTargetDeviceName: String = ""
+    public var currentTargetHost: String = "127.0.0.1"
     
     public func setCurrentTarget(device: HSBDiscoveredAppleTV) {
         self.isCurrentTargetMac = device.isMacDevice
         self.currentTargetDeviceName = device.name
+        self.currentTargetHost = device.host
+        if device.isMacDevice {
+            self.nativeClient.disconnect()
+            MacMediaCommandDispatcher.currentTargetHost = device.host
+            self.currentMode = .nativeOnly
+            self.stateMachine.handle(event: .socketConnected(deviceName: device.name, mode: .nativeOnly))
+            NotificationCenter.default.post(
+                name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+                object: self,
+                userInfo: ["state": HSBConnectionState.ready(deviceName: device.name, mode: .nativeOnly)]
+            )
+        }
     }
     
     public var currentState: HSBConnectionState {
@@ -119,9 +132,42 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         nativeClient.connect(host: host, deviceName: deviceName, port: port)
     }
     
+    // MARK: - Auto Discovery & Quick Reconnect
+    @MainActor
+    public func startAutoDiscoveryAndConnect() {
+        guard !nativeClient.isConnected, !nativeClient.isPairing else {
+            return
+        }
+        
+        // 1. 如果有上次成功连接的 IP 与名字，且已有配对凭据，先尝试快速重连
+        if let lastHost = UserDefaults.standard.string(forKey: "HSBLastConnectedTVHost"),
+           let lastName = UserDefaults.standard.string(forKey: "HSBLastConnectedTVName"),
+           nativeClient.credentialStore.hasCredentials(for: lastName) {
+            NSLog("[DualMode] Quick reconnecting to cached Apple TV: %@ at %@", lastName, lastHost)
+            currentTargetDeviceName = lastName
+            connectToNative(host: lastHost, deviceName: lastName)
+        }
+        
+        // 2. 同时启动局域网 Bonjour 硬件扫描，供设备列表选择
+        NSLog("[DualMode] Starting Apple TV Bonjour hardware scan...")
+        HSBAppleTVDiscovery.shared.startScanning { [weak self] devices in
+            guard let self = self else { return }
+            guard !self.nativeClient.isConnected, !self.nativeClient.isPairing else { return }
+            guard !self.isCurrentTargetMac else { return }
+            
+            let tvCandidates = devices.filter { !$0.isMacDevice }
+            // 仅对已配对过的设备自动恢复连接
+            if let paired = tvCandidates.first(where: { self.nativeClient.credentialStore.hasCredentials(for: $0.name) }) {
+                NSLog("[DualMode] Auto-reconnecting to paired device: %@", paired.name)
+                self.currentTargetDeviceName = paired.name
+                self.connectToNative(host: paired.host, deviceName: paired.name, port: paired.port)
+            }
+        }
+    }
+    
     public func disconnectAll() {
         screenClient.disconnect()
-        nativeClient.disconnect()
+        nativeClient.disconnect(userInitiated: true)
         let legacyMgr = HSBTVOSConnectionManager.shared()
         if legacyMgr.isConnected {
             legacyMgr.disconnect()
@@ -253,6 +299,7 @@ extension DualModeRemoteCoordinator: HSBBrowserProtocolClientDelegate {
 
 extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
     public func nativeClient(_ client: AppleTVNativeClient, didChangeState state: HSBConnectionState) {
+        NSLog("[DualMode] nativeClient didChangeState: %@", "\(state)")
         if currentMode == .nativeOnly || currentMode == .dual {
             switch state {
             case .ready(let name, _):
@@ -260,8 +307,18 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
                     self.isCurrentTargetMac = true
                 }
                 self.currentTargetDeviceName = name
+                UserDefaults.standard.set(name, forKey: "HSBLastConnectedTVName")
+                if let h = client.currentHost {
+                    UserDefaults.standard.set(h, forKey: "HSBLastConnectedTVHost")
+                }
                 let targetMode: HSBRemoteMode = (currentMode == .dual && screenClient.isConnected) ? .dual : .nativeOnly
                 stateMachine.handle(event: .socketConnected(deviceName: name, mode: targetMode))
+                delegate?.coordinator(self, didChangeState: .ready(deviceName: name, mode: targetMode))
+                NotificationCenter.default.post(
+                    name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+                    object: self,
+                    userInfo: ["state": HSBConnectionState.ready(deviceName: name, mode: targetMode)]
+                )
             case .pairing(_, let pinNeeded):
                 stateMachine.handle(event: .pairingRequired(pinNeeded: pinNeeded))
             case .failed(let err):

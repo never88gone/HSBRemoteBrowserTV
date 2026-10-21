@@ -14,7 +14,9 @@ public final class CompanionKeepaliveManager {
     public func start() {
         stop()
         let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + 25.0, repeating: 25.0)
+        // 关键保活：Apple TV (tvOS) 默认会在无操作 30 秒左右断开 TCP 空闲连接。
+        // 将心跳周期缩短至 10 秒，持续发送活跃探测包，保持连接长效稳定。
+        timer.schedule(deadline: .now() + 10.0, repeating: 10.0)
         timer.setEventHandler { [weak self] in
             guard let self, let session = self.session else { return }
             let txn = session.nextTxn()
@@ -25,7 +27,7 @@ public final class CompanionKeepaliveManager {
                 // keyboard is alive, and racing the poll's stale-UUID window
                 // against a user send breaks sendText with sessionUUIDMissing.
                 if let last = session.lastTextOpAt,
-                   Date().timeIntervalSince(last) < 25 {
+                   Date().timeIntervalSince(last) < 10 {
                     return
                 }
                 let stopTxn = session.nextTxn()

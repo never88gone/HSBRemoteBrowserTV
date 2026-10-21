@@ -25,6 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)connectToPairingURL:(NSURL *)pairingURL;
 - (BOOL)connectToLastPairedTV;
 - (void)disconnect;
+- (void)clearPairedTVRecords;
 
 /// 应用回到前台唤起时调用：检测连接健康，僵尸连接秒级自愈并快速重连
 - (void)handleAppWillEnterForeground;

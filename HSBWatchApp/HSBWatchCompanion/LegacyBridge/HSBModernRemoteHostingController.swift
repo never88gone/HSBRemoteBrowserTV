@@ -22,10 +22,9 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         self.title = "智能遥控器"
         self.view.backgroundColor = .clear
         
-        // push 场景下系统已提供返回按钮；modal 场景由外部设置关闭按钮。
-        // 仅当两者都不存在时才补充自定义返回，避免出现两个返回按钮。
+        let isRoot = (self.navigationController?.viewControllers.first == self)
         let hasSystemBack = (self.navigationController?.viewControllers.count ?? 0) > 1
-        if !hasSystemBack && self.navigationItem.leftBarButtonItem == nil {
+        if !isRoot && !hasSystemBack && self.navigationItem.leftBarButtonItem == nil {
             let backItem = UIBarButtonItem(
                 image: UIImage(systemName: "chevron.left"),
                 style: .plain,
@@ -87,6 +86,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         super.viewDidAppear(animated)
         // 禁用侧滑返回手势，防止用户在触控板、画板或遥控按键上滑动时误触发页面退出
         self.navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+        DualModeRemoteCoordinator.shared.startAutoDiscoveryAndConnect()
     }
     
     public override func viewWillDisappear(_ animated: Bool) {
@@ -97,6 +97,10 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
 }
 
 @objc public final class HSBModernRemoteBridge: NSObject {
+    
+    @objc @MainActor public static func startAutoDiscoveryAndConnect() {
+        DualModeRemoteCoordinator.shared.startAutoDiscoveryAndConnect()
+    }
     
     @objc @MainActor public static func createModernRemoteViewController() -> UIViewController {
         return HSBModernRemoteHostingController()
@@ -135,23 +139,25 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         timeout: TimeInterval = 15.0,
         completion: ((Bool, String?) -> Void)? = nil
     ) {
-        // 1. 如果已连通当前设备，直接主线程完成
+        // 1. 如果原生通道已连通当前设备，直接主线程完成
         let isNative = DualModeRemoteCoordinator.shared.nativeClient.isConnected
-        let isScreen = HSBTVOSConnectionManager.shared().isConnected || DualModeRemoteCoordinator.shared.screenClient.isConnected
         let currentHost = DualModeRemoteCoordinator.shared.nativeClient.currentHost
-        if (isNative || isScreen), (currentHost == device.host || currentHost == nil) {
+        if isNative, currentHost == device.host {
             DispatchQueue.main.async {
                 completion?(true, nil)
             }
             return
         }
         
-        // 方案 A：针对 macOS 原生媒体终端直连，设置目标设备并就绪
+        // 方案 A：针对 macOS 原生系统与媒体终端直连，设置目标设备并就绪
         if device.isMacDevice {
             DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)
             DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                completion?(true, nil)
+            MacMediaCommandDispatcher.verifyConnection(host: device.host) { isOnline in
+                DispatchQueue.main.async {
+                    NSLog("[MacRemote] Connection verification to Mac %@ (host: %@) result: %d", device.name, device.host, isOnline)
+                    completion?(true, nil)
+                }
             }
             return
         }
@@ -354,7 +360,8 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     }
     
     @objc @MainActor public static func isUnifiedConnected() -> Bool {
-        return DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+        return (DualModeRemoteCoordinator.shared.isCurrentTargetMac && !DualModeRemoteCoordinator.shared.currentTargetHost.isEmpty) ||
+               DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
                HSBTVOSConnectionManager.shared().isConnected ||
                DualModeRemoteCoordinator.shared.screenClient.isConnected
     }
@@ -367,6 +374,41 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         DualModeRemoteCoordinator.shared.screenClient.send(
             command: .translationResult(requestId: requestId, result: result)
         )
+    }
+    
+    @objc @MainActor public static func sendCommandNamed(_ keyName: String) {
+        let coordinator = DualModeRemoteCoordinator.shared
+        let name = keyName.lowercased()
+        switch name {
+        case "up":
+            coordinator.sendDPad(direction: .up, action: .tap)
+        case "down":
+            coordinator.sendDPad(direction: .down, action: .tap)
+        case "left":
+            coordinator.sendDPad(direction: .left, action: .tap)
+        case "right":
+            coordinator.sendDPad(direction: .right, action: .tap)
+        case "select", "enter", "ok":
+            coordinator.sendSelect(action: .tap)
+        case "menu", "back":
+            coordinator.sendSystemKey(.menu)
+        case "home":
+            coordinator.sendSystemKey(.home)
+        case "play", "pause", "playpause":
+            coordinator.sendSystemKey(.playPause)
+        case "forward", "seek_forward":
+            coordinator.sendDPad(direction: .right, action: .tap)
+        case "backward", "seek_backward":
+            coordinator.sendDPad(direction: .left, action: .tap)
+        case "volume_up":
+            coordinator.sendSystemKey(.volumeUp)
+        case "volume_down":
+            coordinator.sendSystemKey(.volumeDown)
+        case "mute":
+            coordinator.sendSystemKey(.mute)
+        default:
+            break
+        }
     }
 }
 
