@@ -1,6 +1,10 @@
-name: CI Build Check (Open Source PR)
+name: CI Build Check
 
 on:
+  push:
+    branches:
+      - main
+      - master
   pull_request:
     branches:
       - main
@@ -22,13 +26,17 @@ jobs:
         with:
           xcode-version: 'latest-stable'
 
+      - name: Trust Xcode Macros and Plugins
+        run: |
+          defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+          defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidation -bool YES
+
       - name: Build HSBWatchCompanion (No Code Sign)
         working-directory: HSBWatchApp
         run: |
           xcodebuild -project HSBWatchApp.xcodeproj \
             -scheme HSBWatchCompanion \
             -destination 'generic/platform=iOS' \
-            -disableAutomaticPackageResolution \
             build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
