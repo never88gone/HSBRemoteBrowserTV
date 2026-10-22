@@ -1,3 +1,10 @@
+//
+//  AppVersion.xcconfig
+//  HSBWatchCompanion
+//
+
+// 软件对外的营销版本号 (面向用户的语义化版本，例如 1.0.0)
 MARKETING_VERSION = 1.0.0
-GITHUB_VERSION = 20261022102500
-BUILD_VERSION = 20261022102500
+
+// 本地默认构建编号 (云端 Release 构建时由 CI 自动生成并动态覆盖，无需在此写死)
+CURRENT_PROJECT_VERSION = 1

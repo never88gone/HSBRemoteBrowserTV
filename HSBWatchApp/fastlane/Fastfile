@@ -139,12 +139,16 @@ platform :ios do
     ipa_file = Dir.glob(File.join(repo_root, "Artifacts/AppStore/*/ios/export/*.ipa")).max_by { |f| File.mtime(f) }
     UI.user_error!("No exported IPA found in #{File.join(repo_root, 'Artifacts/AppStore')}") unless ipa_file
 
-    api_key = get_asc_api_key
-    upload_to_testflight(
-      api_key: api_key,
-      skip_waiting_for_build_processing: true,
-      skip_submission: true,
-      ipa: ipa_file
-    )
+    if ENV["SKIP_TESTFLIGHT"] == "true"
+      UI.success("⏭️ 已按要求跳过 TestFlight 上传 (SKIP_TESTFLIGHT=true)，IPA 已打包生成: #{ipa_file}")
+    else
+      api_key = get_asc_api_key
+      upload_to_testflight(
+        api_key: api_key,
+        skip_waiting_for_build_processing: true,
+        skip_submission: true,
+        ipa: ipa_file
+      )
+    end
   end
 end

@@ -195,8 +195,11 @@ echo "==> 正在执行独立法医级签名与合规性检查..."
 APP_VERSION="$(read_plist "$APP_PATH" CFBundleShortVersionString)"
 APP_BUILD="$(read_plist "$APP_PATH" CFBundleVersion)"
 
+EXPECTED_MARKETING_VERSION=$(grep -E "^MARKETING_VERSION\s*=" "$ROOT_DIR/HSBWatchApp/HSBWatchCompanion/AppVersion.xcconfig" 2>/dev/null | cut -d'=' -f2 | tr -d '[:space:]' || echo "1.0.0")
+EXPECTED_MARKETING_VERSION="${EXPECTED_MARKETING_VERSION:-1.0.0}"
+
 assert_equal "iOS bundle identifier" "$(read_plist "$APP_PATH" CFBundleIdentifier)" "$EXPECTED_BUNDLE_ID"
-assert_equal "iOS marketing version" "$APP_VERSION" "1.0.0"
+assert_equal "iOS marketing version" "$APP_VERSION" "$EXPECTED_MARKETING_VERSION"
 assert_equal "iOS build number" "$APP_BUILD" "$BUILD_NUMBER"
 assert_equal "iOS export-compliance flag" "$(read_plist "$APP_PATH" ITSAppUsesNonExemptEncryption)" "false"
 assert_privacy_manifest "$APP_PATH" "iOS app"

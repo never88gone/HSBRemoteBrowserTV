@@ -5,15 +5,17 @@ on:
     branches:
       - main
       - master
-    paths:
-      - 'HSBWatchApp/HSBWatchCompanion/AppVersion.xcconfig'
-      - '.github/workflows/deploy.yml'
-      - 'HSBWatchApp/fastlane/**'
-      - 'script/**'
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
-      force_deploy:
-        description: '强制执行打包与 TestFlight 发布 (忽略版本号变动检查)'
+      build_number:
+        description: '自定义构建编号 (留空则云端自动按时间戳递增生成，例如 20261022104500)'
+        required: false
+        type: string
+        default: ''
+      skip_testflight:
+        description: '仅执行打包构建，跳过上传至 TestFlight'
         required: false
         type: boolean
         default: false
@@ -26,7 +28,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
           submodules: recursive
 
       - name: Set up Xcode version
@@ -39,39 +40,40 @@ jobs:
           defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
           defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidation -bool YES
 
-      - name: Check Version Change or Manual Trigger
-        id: check_trigger
+      - name: Generate Dynamic Build Number
+        id: build_meta
         run: |
           PATH_CONFIG="HSBWatchApp/HSBWatchCompanion/AppVersion.xcconfig"
-          curr_val=$(grep -E "^GITHUB_VERSION\s*=" "$PATH_CONFIG" | cut -d'=' -f2 | tr -d '[:space:]')
-          if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            prev_content=$(git show HEAD~1:"$PATH_CONFIG" 2>/dev/null || echo "")
-            prev_val=$(echo "$prev_content" | grep -E "^GITHUB_VERSION\s*=" | cut -d'=' -f2 | tr -d '[:space:]')
-          else
-            prev_val=""
-          fi
-          echo "Old version: '$prev_val', New version: '$curr_val'"
+          MARKETING_VER=$(grep -E "^MARKETING_VERSION\s*=" "$PATH_CONFIG" 2>/dev/null | cut -d'=' -f2 | tr -d '[:space:]' || echo "1.0.0")
+          MARKETING_VER="${MARKETING_VER:-1.0.0}"
           
-          FORCE_RUN="${{ github.event.inputs.force_deploy }}"
-          if [ "$FORCE_RUN" = "true" ]; then
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
-            echo "🚀 手动触发：已开启强制打包发布 (force_deploy = true)"
-          elif [ -n "$curr_val" ] && [ "$curr_val" != "$prev_val" ]; then
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
-            echo "✅ 检测到版本号更新 ($prev_val -> $curr_val)，触发自动发布"
+          INPUT_BUILD="${{ github.event.inputs.build_number }}"
+          if [ -n "$INPUT_BUILD" ]; then
+            AUTO_BUILD="$INPUT_BUILD"
+            echo "🔧 使用手动指定的 Build Number: $AUTO_BUILD"
           else
-            echo "should_deploy=false" >> $GITHUB_OUTPUT
-            echo "⏸️ 未检测到版本号变更且未指定强制发布，跳过本次打包"
+            # 自动生成精确单调递增时间戳作为构建号 (格式: YYYYMMDDHHMMSS)
+            AUTO_BUILD=$(date +"%Y%m%d%H%M%S")
+            echo "🚀 自动动态生成单调递增 Build Number: $AUTO_BUILD"
           fi
           
-          # 无论触发方式，统一注入当前精准时间版本号
-          EFFECTIVE_BUILD="${curr_val:-$(date +"%Y%m%d%H%M%S")}"
-          echo "BUILD_NUMBER=$EFFECTIVE_BUILD" >> $GITHUB_ENV
-          echo "THLBROWSER_BUILD_NUMBER=$EFFECTIVE_BUILD" >> $GITHUB_ENV
-          echo "📌 生效构建编号: $EFFECTIVE_BUILD"
+          echo "BUILD_NUMBER=$AUTO_BUILD" >> $GITHUB_ENV
+          echo "THLBROWSER_BUILD_NUMBER=$AUTO_BUILD" >> $GITHUB_ENV
+          echo "MARKETING_VERSION=$MARKETING_VER" >> $GITHUB_ENV
+          echo "SKIP_TESTFLIGHT=${{ github.event.inputs.skip_testflight || 'false' }}" >> $GITHUB_ENV
+          
+          echo "=========================================="
+          echo "📱 目标营销版本 (Marketing Version): $MARKETING_VER"
+          echo "🔢 动态构建编号 (Build Number):      $AUTO_BUILD"
+          echo "📤 跳过 TestFlight 上传:            ${{ github.event.inputs.skip_testflight || 'false' }}"
+          echo "=========================================="
+          
+          echo "### 🚀 Release 构建配置" >> $GITHUB_STEP_SUMMARY
+          echo "- **营销版本 (Marketing Version)**: \`$MARKETING_VER\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **动态构建号 (Build Number)**: \`$AUTO_BUILD\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **触发类型**: \`${{ github.event_name }}\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify Required Secrets
-        if: steps.check_trigger.outputs.should_deploy == 'true'
         env:
           CERT_B64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           PROV_B64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
@@ -83,13 +85,15 @@ jobs:
             echo "  - BUILD_CERTIFICATE_BASE64"
             echo "  - BUILD_PROVISION_PROFILE_BASE64"
             echo "  - APP_STORE_CONNECT_KEY_ID"
-            echo "参考本地模版: fastlane/github_secrets.env"
+            echo "  - APP_STORE_CONNECT_ISSUER_ID"
+            echo "  - APP_STORE_CONNECT_KEY_CONTENT"
+            echo "  - P12_PASSWORD"
+            echo "参考本地模板: fastlane/github_secrets.env"
             exit 1
           fi
           echo "✅ 基础发布密钥校验通过"
 
       - name: Install Apple Certificate and Provisioning Profile
-        if: steps.check_trigger.outputs.should_deploy == 'true'
         env:
           BUILD_CERT_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASS: ${{ secrets.P12_PASSWORD }}
@@ -132,14 +136,13 @@ jobs:
           fi
 
       - name: Set up Ruby and Bundler
-        if: steps.check_trigger.outputs.should_deploy == 'true'
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
           bundler-cache: true
+          working-directory: HSBWatchApp
 
       - name: Run Fastlane Beta (Archive & TestFlight Upload)
-        if: steps.check_trigger.outputs.should_deploy == 'true'
         working-directory: HSBWatchApp
         env:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
@@ -148,12 +151,20 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
           THLBROWSER_BUILD_NUMBER: ${{ env.THLBROWSER_BUILD_NUMBER }}
+          SKIP_TESTFLIGHT: ${{ env.SKIP_TESTFLIGHT }}
         run: |
-          gem install fastlane --no-document
-          fastlane beta
+          bundle exec fastlane beta
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appstore-ipa-${{ env.BUILD_NUMBER }}
+          path: Artifacts/AppStore/*/ios/export/*.ipa
+          if-no-files-found: ignore
 
       - name: Cleanup Temporary Keychain
-        if: always() && steps.check_trigger.outputs.should_deploy == 'true'
+        if: always()
         run: |
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           if [ -f "$KEYCHAIN_PATH" ]; then
