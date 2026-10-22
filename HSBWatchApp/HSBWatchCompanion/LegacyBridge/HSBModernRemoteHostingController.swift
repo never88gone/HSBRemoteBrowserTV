@@ -17,6 +17,10 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         fatalError("init(coder:) has not been implemented")
     }
     
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
     public override func viewDidLoad() {
         super.viewDidLoad()
         self.title = "智能遥控器"
@@ -63,7 +67,13 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     }
     
     @objc private func didTapBackButton() {
-        self.navigationController?.popViewController(animated: true)
+        if Thread.isMainThread {
+            self.navigationController?.popViewController(animated: true)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.navigationController?.popViewController(animated: true)
+            }
+        }
     }
     
     @objc private func didTapKeyboardToggle() {

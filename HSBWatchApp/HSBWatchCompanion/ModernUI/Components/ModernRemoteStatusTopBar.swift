@@ -26,90 +26,111 @@ struct ModernRemoteStatusTopBar: View {
         HStack(spacing: 8) {
             Spacer()
             
-            // 1.1 大屏通道状态 (糖葫芦浏览器/专有控制/双指滚动/高级菜单)
-            Button(action: {
-                lightHaptic.impactOccurred()
-                if coordinatorObserver.isHSBBrowserConnected {
-                    showingBrowserManageActionSheet = true
-                } else {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        showingBrowserGuide = true
+            if coordinatorObserver.isTargetMac {
+                // Mac 原生系统直控专属状态条 (彻底消除非电视大屏的虚假显示)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 7, height: 7)
+                    Image(systemName: "desktopcomputer")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.green)
+                    Text("Mac系统直控: \(coordinatorObserver.targetDeviceName.isEmpty ? "Mac电脑" : coordinatorObserver.targetDeviceName)")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+                }
+                .padding(.vertical, 5)
+                .padding(.horizontal, 14)
+                .background(
+                    Capsule()
+                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                )
+            } else {
+                // 1.1 大屏通道状态 (糖葫芦浏览器/专有控制/双指滚动/高级菜单)
+                Button(action: {
+                    lightHaptic.impactOccurred()
+                    if coordinatorObserver.isHSBBrowserConnected {
+                        showingBrowserManageActionSheet = true
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showingBrowserGuide = true
+                        }
                     }
+                }) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(browserStatusColor)
+                            .frame(width: 6, height: 6)
+                        Text(browserStatusText)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(coordinatorObserver.isHSBBrowserConnected ? .primary : (coordinatorObserver.isHSBBrowserReconnecting ? .orange : .secondary))
+                    }
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 10)
+                    .background(
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                    )
                 }
-            }) {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(browserStatusColor)
-                        .frame(width: 6, height: 6)
-                    Text(browserStatusText)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(coordinatorObserver.isHSBBrowserConnected ? .primary : (coordinatorObserver.isHSBBrowserReconnecting ? .orange : .secondary))
+                .buttonStyle(PlainButtonStyle())
+                .actionSheet(isPresented: $showingBrowserManageActionSheet) {
+                    ActionSheet(
+                        title: Text("大屏通道控制 (\(coordinatorObserver.browserDeviceName.isEmpty ? "糖葫芦浏览器" : coordinatorObserver.browserDeviceName))"),
+                        message: Text("当前已建立 TLS 1.2 加密长连接专线 (端口 56789)，支持触控板滑动、双指滚动与 EPG 协同。"),
+                        buttons: [
+                            .default(Text("🔄 刷新与测试大屏通道")) {
+                                lightHaptic.impactOccurred()
+                                coordinatorObserver.refreshBrowserChannel()
+                            },
+                            .default(Text("📱 重新扫码配对新大屏")) {
+                                lightHaptic.impactOccurred()
+                                coordinatorObserver.forgetPairedBrowserAndRescan()
+                            },
+                            .destructive(Text("🚫 断开大屏连接")) {
+                                lightHaptic.impactOccurred()
+                                coordinatorObserver.disconnectBrowserChannel()
+                            },
+                            .cancel(Text("取消"))
+                        ]
+                    )
                 }
-                .padding(.vertical, 5)
-                .padding(.horizontal, 10)
-                .background(
-                    Capsule()
-                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            .actionSheet(isPresented: $showingBrowserManageActionSheet) {
-                ActionSheet(
-                    title: Text("大屏通道控制 (\(coordinatorObserver.browserDeviceName.isEmpty ? "糖葫芦浏览器" : coordinatorObserver.browserDeviceName))"),
-                    message: Text("当前已建立 TLS 1.2 加密长连接专线 (端口 56789)，支持触控板滑动、双指滚动与 EPG 协同。"),
-                    buttons: [
-                        .default(Text("🔄 刷新与测试大屏通道")) {
-                            lightHaptic.impactOccurred()
-                            coordinatorObserver.refreshBrowserChannel()
-                        },
-                        .default(Text("📱 重新扫码配对新大屏")) {
-                            lightHaptic.impactOccurred()
-                            coordinatorObserver.forgetPairedBrowserAndRescan()
-                        },
-                        .destructive(Text("🚫 断开大屏连接")) {
-                            lightHaptic.impactOccurred()
-                            coordinatorObserver.disconnectBrowserChannel()
-                        },
-                        .cancel(Text("取消"))
-                    ]
-                )
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBShowScreenManageSheetNotification"))) { _ in
-                self.showingBrowserManageActionSheet = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBDismissScreenManageSheetNotification"))) { _ in
-                self.showingBrowserManageActionSheet = false
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBRefreshScreenChannelNotification"))) { _ in
-                self.showingBrowserManageActionSheet = false
-            }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBDisconnectScreenChannelNotification"))) { _ in
-                self.showingBrowserManageActionSheet = false
-            }
-            
-            // 1.2 Apple TV 系统原生通道状态 (Home/电源/全局控制)
-            Button(action: {
-                lightHaptic.impactOccurred()
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    showingSystemGuide = true
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBShowScreenManageSheetNotification"))) { _ in
+                    self.showingBrowserManageActionSheet = true
                 }
-            }) {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(systemStatusColor)
-                        .frame(width: 6, height: 6)
-                    Text(systemStatusText)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(coordinatorObserver.isNativeConnected ? .primary : .secondary)
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBDismissScreenManageSheetNotification"))) { _ in
+                    self.showingBrowserManageActionSheet = false
                 }
-                .padding(.vertical, 5)
-                .padding(.horizontal, 10)
-                .background(
-                    Capsule()
-                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                )
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBRefreshScreenChannelNotification"))) { _ in
+                    self.showingBrowserManageActionSheet = false
+                }
+                .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBDisconnectScreenChannelNotification"))) { _ in
+                    self.showingBrowserManageActionSheet = false
+                }
+                
+                // 1.2 Apple TV 系统原生通道状态 (Home/电源/全局控制)
+                Button(action: {
+                    lightHaptic.impactOccurred()
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showingSystemGuide = true
+                    }
+                }) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(systemStatusColor)
+                            .frame(width: 6, height: 6)
+                        Text(systemStatusText)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(coordinatorObserver.isNativeConnected ? .primary : .secondary)
+                    }
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 10)
+                    .background(
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
             
             Spacer()
         }
@@ -119,7 +140,9 @@ struct ModernRemoteStatusTopBar: View {
     
     // MARK: - Dual Channel Status Displays (大屏通道 & 系统原生通道)
     private var browserStatusColor: Color {
-        if coordinatorObserver.isTargetMac || coordinatorObserver.isHSBBrowserConnected {
+        if coordinatorObserver.isTargetMac {
+            return .gray
+        } else if coordinatorObserver.isHSBBrowserConnected {
             return .green
         } else if coordinatorObserver.isHSBBrowserReconnecting {
             return .orange
@@ -132,7 +155,7 @@ struct ModernRemoteStatusTopBar: View {
     
     private var browserStatusText: String {
         if coordinatorObserver.isTargetMac {
-            return "大屏: 已连接"
+            return "大屏: 未连接"
         }
         if coordinatorObserver.isHSBBrowserConnected {
             let name = coordinatorObserver.browserDeviceName.isEmpty ? "已连接" : coordinatorObserver.browserDeviceName
@@ -164,7 +187,8 @@ struct ModernRemoteStatusTopBar: View {
     
     private var systemStatusText: String {
         if coordinatorObserver.isTargetMac {
-            return "系统: 已连接"
+            let name = (!coordinatorObserver.targetDeviceName.isEmpty && coordinatorObserver.targetDeviceName != "Mac") ? coordinatorObserver.targetDeviceName : "Mac电脑"
+            return "Mac: \(name)"
         }
         if coordinatorObserver.isNativeConnected {
             let name = (!coordinatorObserver.targetDeviceName.isEmpty && coordinatorObserver.targetDeviceName != "Mac") ? coordinatorObserver.targetDeviceName : "已连接"

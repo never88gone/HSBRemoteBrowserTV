@@ -24,12 +24,20 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
         self.coordinator = coordinator
         self.state = coordinator.currentState
         let legacyMgr = HSBTVOSConnectionManager.shared()
-        self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
-        self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
-        self.browserDeviceName = legacyMgr.deviceName ?? ""
-        self.isNativeConnected = coordinator.nativeClient.isConnected
         self.isTargetMac = coordinator.isCurrentTargetMac
         self.targetDeviceName = coordinator.currentTargetDeviceName.isEmpty ? "Mac" : coordinator.currentTargetDeviceName
+        
+        if coordinator.isCurrentTargetMac {
+            self.isHSBBrowserConnected = false
+            self.isHSBBrowserReconnecting = false
+            self.browserDeviceName = ""
+            self.isNativeConnected = true
+        } else {
+            self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
+            self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
+            self.browserDeviceName = legacyMgr.deviceName ?? ""
+            self.isNativeConnected = coordinator.nativeClient.isConnected
+        }
         coordinator.delegate = self
         
         NotificationCenter.default.addObserver(
@@ -69,18 +77,26 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
     
     deinit {
         NotificationCenter.default.removeObserver(self)
-        bonjourDiscovery.stopDiscovery()
+        bonjourDiscovery.delegate = nil
+        bonjourDiscovery.cancelDiscoverySync()
     }
     
     @objc private func handleConnectionStateNotification(_ note: Notification) {
         DispatchQueue.main.async {
             self.state = self.coordinator.currentState
-            let legacyMgr = HSBTVOSConnectionManager.shared()
-            self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
-            self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
-            self.browserDeviceName = legacyMgr.deviceName ?? ""
-            self.isNativeConnected = self.coordinator.nativeClient.isConnected
             self.isTargetMac = self.coordinator.isCurrentTargetMac
+            if self.coordinator.isCurrentTargetMac {
+                self.isHSBBrowserConnected = false
+                self.isHSBBrowserReconnecting = false
+                self.browserDeviceName = ""
+                self.isNativeConnected = true
+            } else {
+                let legacyMgr = HSBTVOSConnectionManager.shared()
+                self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
+                self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
+                self.browserDeviceName = legacyMgr.deviceName ?? ""
+                self.isNativeConnected = self.coordinator.nativeClient.isConnected
+            }
             if !self.coordinator.currentTargetDeviceName.isEmpty {
                 self.targetDeviceName = self.coordinator.currentTargetDeviceName
             }
@@ -89,6 +105,11 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
     
     @objc private func handleTVOSConnectionNotification(_ note: Notification) {
         DispatchQueue.main.async {
+            guard !self.coordinator.isCurrentTargetMac else {
+                self.isHSBBrowserConnected = false
+                self.isHSBBrowserReconnecting = false
+                return
+            }
             let legacyMgr = HSBTVOSConnectionManager.shared()
             self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
             self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
@@ -100,12 +121,19 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
     func coordinator(_ coordinator: DualModeRemoteCoordinator, didChangeState state: HSBConnectionState) {
         DispatchQueue.main.async {
             self.state = state
-            let legacyMgr = HSBTVOSConnectionManager.shared()
-            self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
-            self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
-            self.browserDeviceName = legacyMgr.deviceName ?? ""
-            self.isNativeConnected = coordinator.nativeClient.isConnected
             self.isTargetMac = coordinator.isCurrentTargetMac
+            if coordinator.isCurrentTargetMac {
+                self.isHSBBrowserConnected = false
+                self.isHSBBrowserReconnecting = false
+                self.browserDeviceName = ""
+                self.isNativeConnected = true
+            } else {
+                let legacyMgr = HSBTVOSConnectionManager.shared()
+                self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
+                self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
+                self.browserDeviceName = legacyMgr.deviceName ?? ""
+                self.isNativeConnected = coordinator.nativeClient.isConnected
+            }
             if !coordinator.currentTargetDeviceName.isEmpty {
                 self.targetDeviceName = coordinator.currentTargetDeviceName
             }

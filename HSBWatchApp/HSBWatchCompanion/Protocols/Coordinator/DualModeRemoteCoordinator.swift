@@ -77,6 +77,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     @objc private func handleUnifiedConnectionStateChanged(_ note: Notification) {
+        guard !isCurrentTargetMac else {
+            return
+        }
         let legacyMgr = HSBTVOSConnectionManager.shared()
         let deviceName = legacyMgr.deviceName ?? "Apple TV"
         
@@ -135,6 +138,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     // MARK: - Auto Discovery & Quick Reconnect
     @MainActor
     public func startAutoDiscoveryAndConnect() {
+        guard !isCurrentTargetMac else {
+            return
+        }
         guard !nativeClient.isConnected, !nativeClient.isPairing else {
             return
         }
@@ -152,8 +158,8 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         NSLog("[DualMode] Starting Apple TV Bonjour hardware scan...")
         HSBAppleTVDiscovery.shared.startScanning { [weak self] devices in
             guard let self = self else { return }
-            guard !self.nativeClient.isConnected, !self.nativeClient.isPairing else { return }
             guard !self.isCurrentTargetMac else { return }
+            guard !self.nativeClient.isConnected, !self.nativeClient.isPairing else { return }
             
             let tvCandidates = devices.filter { !$0.isMacDevice }
             // 仅对已配对过的设备自动恢复连接
@@ -172,6 +178,9 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         if legacyMgr.isConnected {
             legacyMgr.disconnect()
         }
+        self.isCurrentTargetMac = false
+        self.currentTargetDeviceName = ""
+        self.currentTargetHost = ""
         stateMachine.handle(event: .requestDisconnect(reason: "User requested disconnect"))
     }
     

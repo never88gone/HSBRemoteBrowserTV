@@ -216,6 +216,11 @@ public struct ModernRemoteContainerView: View {
         .onAppear {
             setupTextInputManager()
             
+            // 若当前目标为 Mac 电脑，严格跳过 Apple TV 与 TV 浏览器大屏通道的自动重连
+            guard !coordinatorObserver.isTargetMac && !DualModeRemoteCoordinator.shared.isCurrentTargetMac else {
+                return
+            }
+            
             // 1. 原生 Apple TV 硬件通道自动扫描与连接
             if !coordinatorObserver.isNativeConnected {
                 startNativeAppleTVAutoConnect()
@@ -283,7 +288,10 @@ public struct ModernRemoteContainerView: View {
         ZStack {
             if coordinatorObserver.isTargetMac {
                 // 方案 A：macOS 原生媒体控制中心 (免装软件原生直连)
-                MacOSMediaRemoteView(deviceName: coordinatorObserver.targetDeviceName)
+                MacOSMediaRemoteView(deviceName: coordinatorObserver.targetDeviceName) {
+                    DualModeRemoteCoordinator.shared.disconnectAll()
+                    NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
+                }
             } else if selectedControlTab == 0 {
                 // Tab 1: 系统遥控 (Apple TV 原生 D-pad 轮盘与一体化控制岛)
                 let dpadSize: CGFloat = availableHeight < 680 ? 200 : 215

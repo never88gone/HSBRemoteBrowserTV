@@ -137,8 +137,18 @@ public final class HSBBonjourDiscovery: NSObject, ObservableObject {
     }
     
     deinit {
-        stopDiscovery()
+        cancelDiscoverySync()
         pathMonitor.cancel()
+    }
+    
+    /// 同步取消扫描器与计时器，无异步 block，安全支持在 deinit 或主线程调用
+    public func cancelDiscoverySync() {
+        cancelDebounceTimer()
+        if let browser = self.browser {
+            browser.cancel()
+            self.browser = nil
+        }
+        self.isScanning = false
     }
     
     // MARK: - Network Path Monitoring

@@ -42,6 +42,7 @@ public struct MacOSMediaRemoteView: View {
                     haptic.impactOccurred()
                     DualModeRemoteCoordinator.shared.disconnectAll()
                     onDismiss?()
+                    NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -596,8 +597,11 @@ public struct MacOSMediaRemoteView: View {
     }
     
     private func checkMacStatus() {
-        guard let url = URL(string: "http://\(MacMediaCommandDispatcher.currentTargetHost):49888/status") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        let host = MacMediaCommandDispatcher.currentTargetHost.isEmpty ? "127.0.0.1" : MacMediaCommandDispatcher.currentTargetHost
+        guard let url = URL(string: "http://\(host):49888/status") else { return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 1.5
+        URLSession.shared.dataTask(with: req) { data, _, _ in
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 let musicRunning = json["music_running"] as? Bool ?? false
