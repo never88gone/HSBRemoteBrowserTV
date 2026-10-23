@@ -17,16 +17,9 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
     private weak var currentAlertController: UIAlertController?
     private var pendingCompletion: ((String) -> Void)?
     @objc public private(set) var isPresenting: Bool = false
-    private var automationListener: NWListener?
     
     private override init() {
         super.init()
-        NotificationCenter.default.addObserver(forName: Notification.Name("HSBSubmitPINAutomationNotification"), object: nil, queue: .main) { [weak self] note in
-            if let pin = note.userInfo?["pin"] as? String {
-                self?.submitPINDirectly(pin)
-            }
-        }
-        startAutomationServer()
     }
     
     /// 获取最顶层可用于 present 的有效宿主视图控制器（避开 UIAlertController 冲突）
@@ -218,138 +211,15 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         return updatedText.count <= 4
     }
     
-    // MARK: - Automation APIs
+    // MARK: - Programmatic Submission
     
-    /// 自动化测试与远程注入：自动填充并提交 PIN 码
+    /// 编程式填充并提交 PIN 码
     @objc public func submitPINDirectly(_ pin: String) {
-        NSLog("[ATV_AUTO] submitPINDirectly called with PIN: %@", pin)
         self.currentAlertController?.textFields?.first?.text = pin
         self.dismissAlert(animated: true) {
             let comp = self.pendingCompletion
             self.pendingCompletion = nil
             comp?(pin)
         }
-    }
-    
-    @objc public static func ensureAutomationServerStarted() {
-        _ = HSBNativePINAlertPresenter.shared
-    }
-    
-    private func startAutomationServer(port: UInt16 = 49889) {
-        guard let p = NWEndpoint.Port(rawValue: port),
-              let listener = try? NWListener(using: .tcp, on: p) else { return }
-        self.automationListener = listener
-        listener.newConnectionHandler = { [weak self] conn in
-            conn.start(queue: .main)
-            conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, _, _ in
-                var responseBody = "OK"
-                if let data = data, let reqStr = String(data: data, encoding: .utf8) {
-                    if let range = reqStr.range(of: "code=") {
-                        let sub = reqStr[range.upperBound...]
-                        let code = String(sub.prefix(4))
-                        if code.count == 4 {
-                            NSLog("[ATV_AUTO] Automation server received PIN code: %@", code)
-                            Task { @MainActor in
-                                self?.submitPINDirectly(code)
-                            }
-                        }
-                    } else if let range = reqStr.range(of: "target=") ?? reqStr.range(of: "url=") {
-                        let sub = reqStr[range.upperBound...]
-                        let line = sub.components(separatedBy: " ").first?.components(separatedBy: "\r\n").first ?? ""
-                        if let decodedStr = line.removingPercentEncoding,
-                           let targetURL = URL(string: decodedStr) {
-                            NSLog("[ATV_AUTO] Automation server executing URL: %@", targetURL.absoluteString)
-                            Task { @MainActor in
-                                NotificationCenter.default.post(
-                                    name: Notification.Name("HSBExecuteAutomationURLNotification"),
-                                    object: nil,
-                                    userInfo: ["url": targetURL]
-                                )
-                                UIApplication.shared.open(targetURL, options: [:], completionHandler: nil)
-                            }
-                        }
-                    } else if reqStr.contains("GET /connect_mac") {
-                        Task { @MainActor in
-                            self?.dismissAlert(animated: true, completion: nil)
-                            let macDev: HSBDiscoveredAppleTV
-                            if let mac = HSBAppleTVDiscovery.shared.discoveredDevices.first(where: { $0.isMacDevice }) {
-                                macDev = mac
-                            } else {
-                                macDev = HSBDiscoveredAppleTV(
-                                    id: "local_mac",
-                                    name: "never88gone 的 Mac Studio",
-                                    host: "127.0.0.1",
-                                    port: 49888,
-                                    modelName: "Mac Studio",
-                                    isNativeAppleTV: false,
-                                    isBrowserApp: false
-                                )
-                            }
-                            NSLog("[ATV_AUTO] Connecting to Mac: %@", macDev.name)
-                            HSBModernRemoteBridge.connectToDiscoveredDevice(macDev) { success, _ in
-                                NSLog("[ATV_AUTO] Connect to Mac result: %d", success)
-                                NotificationCenter.default.post(
-                                    name: Notification.Name("HSBOpenRemoteControlNotification"),
-                                    object: nil,
-                                    userInfo: ["device": macDev]
-                                )
-                            }
-                        }
-                    } else if reqStr.contains("GET /send_key") {
-                        Task { @MainActor in
-                            if let range = reqStr.range(of: "name=") {
-                                let sub = reqStr[range.upperBound...]
-                                let name = sub.components(separatedBy: " ").first?.components(separatedBy: "\r\n").first ?? ""
-                                NSLog("[ATV_AUTO] Sending remote key: %@", name)
-                                switch name {
-                                case "volume_up": DualModeRemoteCoordinator.shared.sendSystemKey(.volumeUp)
-                                case "volume_down": DualModeRemoteCoordinator.shared.sendSystemKey(.volumeDown)
-                                case "mute": DualModeRemoteCoordinator.shared.sendSystemKey(.mute)
-                                case "play_pause": DualModeRemoteCoordinator.shared.sendSystemKey(.playPause)
-                                case "up": DualModeRemoteCoordinator.shared.sendDPad(direction: .up)
-                                case "down": DualModeRemoteCoordinator.shared.sendDPad(direction: .down)
-                                case "left": DualModeRemoteCoordinator.shared.sendDPad(direction: .left)
-                                case "right": DualModeRemoteCoordinator.shared.sendDPad(direction: .right)
-                                case "select", "ok": DualModeRemoteCoordinator.shared.sendSelect()
-                                case "tap": DualModeRemoteCoordinator.shared.sendTap()
-                                case "pan": DualModeRemoteCoordinator.shared.sendCursorPan(dx: 25.0, dy: 25.0)
-                                case "scroll": DualModeRemoteCoordinator.shared.sendScroll(dx: 0, dy: 5.0)
-                                default: break
-                                }
-                            }
-                        }
-                    } else if reqStr.contains("GET /dismiss") {
-                        Task { @MainActor in
-                            self?.dismissAlert(animated: true, completion: nil)
-                        }
-                    } else if reqStr.contains("GET /exit_remote") {
-                        Task { @MainActor in
-                            self?.dismissAlert(animated: true, completion: nil)
-                            NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
-                        }
-                    } else if reqStr.contains("GET /scroll_home_bottom") {
-                        Task { @MainActor in
-                            NotificationCenter.default.post(name: Notification.Name("HSBHomeScrollToBottomNotification"), object: nil)
-                        }
-                    } else if reqStr.contains("GET /scroll_home_top") {
-                        Task { @MainActor in
-                            NotificationCenter.default.post(name: Notification.Name("HSBHomeScrollToTopNotification"), object: nil)
-                        }
-                    } else if reqStr.contains("GET /status") {
-                        let isNative = DualModeRemoteCoordinator.shared.nativeClient.isConnected
-                        let isScreen = DualModeRemoteCoordinator.shared.screenClient.isConnected || HSBTVOSConnectionManager.shared().isConnected
-                        let target = DualModeRemoteCoordinator.shared.currentTargetDeviceName
-                        let isMac = DualModeRemoteCoordinator.shared.isCurrentTargetMac
-                        responseBody = "{\"native\":\(isNative),\"screen\":\(isScreen),\"target\":\"\(target)\",\"isMac\":\(isMac)}"
-                    }
-                }
-                let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(responseBody.utf8.count)\r\n\r\n\(responseBody)"
-                conn.send(content: resp.data(using: .utf8), completion: .contentProcessed({ _ in
-                    conn.cancel()
-                }))
-            }
-        }
-        listener.start(queue: .main)
-        NSLog("[ATV_AUTO] Automation test server started on port %u", port)
     }
 }

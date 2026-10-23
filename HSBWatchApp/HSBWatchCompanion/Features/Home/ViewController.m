@@ -67,9 +67,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchReachabilityChanged:) name:HSBWatchSessionReachabilityDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchActionReceived:) name:HSBWatchActionReceivedNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLaunchAnimationDidFinish:) name:@"HSBLaunchAnimationDidFinishNotification" object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleHomeScrollToBottom:) name:@"HSBHomeScrollToBottomNotification" object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleHomeScrollToTop:) name:@"HSBHomeScrollToTopNotification" object:nil];
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleOpenRemoteControl:) name:@"HSBOpenRemoteControlNotification" object:nil];
     [self applyThemeStyle];
     
     if (@available(iOS 14.0, *)) {
@@ -392,36 +389,6 @@ static inline NSString * L(NSString *en, NSString *zh) {
 
 - (void)qrCodeScannerDidCancel:(HSBQRCodeScannerViewController *)scanner {
     [scanner dismissViewControllerAnimated:YES completion:nil];
-}
-
-#pragma mark - Home Scroll Handlers
-
-- (void)handleHomeScrollToBottom:(NSNotification *)note {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        CGFloat bottomY = self.scrollView.contentSize.height - self.scrollView.bounds.size.height + self.scrollView.adjustedContentInset.bottom;
-        if (bottomY > 0) {
-            [self.scrollView setContentOffset:CGPointMake(0, bottomY) animated:YES];
-        }
-    });
-}
-
-- (void)handleHomeScrollToTop:(NSNotification *)note {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self.scrollView setContentOffset:CGPointMake(0, -self.scrollView.adjustedContentInset.top) animated:YES];
-    });
-}
-
-- (void)handleOpenRemoteControl:(NSNotification *)note {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        HSBDiscoveredAppleTV *device = note.userInfo[@"device"];
-        if (self.presentedViewController) {
-            [self.presentedViewController dismissViewControllerAnimated:NO completion:^{
-                [self pushToModernRemoteWithDevice:device];
-            }];
-        } else {
-            [self pushToModernRemoteWithDevice:device];
-        }
-    });
 }
 
 @end

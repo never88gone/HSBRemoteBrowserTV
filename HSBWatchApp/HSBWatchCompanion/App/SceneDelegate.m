@@ -40,21 +40,9 @@
         self.window.tintColor = [HSBThemeManager tanghuluBrandColor];
         [self.window makeKeyAndVisible];
         [HSBModernRemoteBridge startAutoDiscoveryAndConnect];
-        [HSBNativePINAlertPresenter ensureAutomationServerStarted];
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(handleAutomationNotification:)
-                                                     name:@"HSBExecuteAutomationURLNotification"
-                                                   object:nil];
     }
     for (UIOpenURLContext *context in connectionOptions.URLContexts) {
         [self handleRemotePairingURL:context.URL];
-    }
-}
-
-- (void)handleAutomationNotification:(NSNotification *)note {
-    NSURL *url = note.userInfo[@"url"];
-    if (url) {
-        [self handleRemotePairingURL:url];
     }
 }
 
@@ -80,9 +68,6 @@
             }
             if (code.length > 0) {
                 NSLog(@"[SceneDelegate] Received pairing PIN via URL scheme: %@", code);
-                [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBSubmitPINAutomationNotification"
-                                                                    object:nil
-                                                                  userInfo:@{@"pin": code}];
                 [HSBModernRemoteBridge submitNativePIN:code completion:nil];
             }
         } else if ([[url.host lowercaseString] isEqualToString:@"guide"]) {
