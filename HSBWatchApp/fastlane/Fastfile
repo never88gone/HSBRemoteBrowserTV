@@ -169,6 +169,7 @@ platform :ios do
         skip_binary_upload: true,
         skip_screenshots: false,
         overwrite_screenshots: true,
+        reject_if_possible: true,
         force: true,
         submit_for_review: true,
         automatic_release: true,
