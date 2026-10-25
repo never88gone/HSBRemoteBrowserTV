@@ -50,6 +50,10 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             target: self,
             action: #selector(didTapScanQRCode)
         )
+        keyboardItem.accessibilityIdentifier = "nav_keyboard_button"
+        keyboardItem.accessibilityLabel = "打字输入"
+        scanItem.accessibilityIdentifier = "nav_scan_button"
+        scanItem.accessibilityLabel = "扫码连接大屏"
         self.navigationItem.rightBarButtonItems = [keyboardItem, scanItem]
         
         NotificationCenter.default.addObserver(
@@ -64,15 +68,30 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             name: Notification.Name("HSBOpenQRCodeScannerNotification"),
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTrackpadFullScreenChanged(_:)),
+            name: Notification.Name("HSBTrackpadFullScreenChangedNotification"),
+            object: nil
+        )
+    }
+    
+    @objc private func handleTrackpadFullScreenChanged(_ note: Notification) {
+        let isFull = (note.userInfo?["isFullScreen"] as? Bool) ?? false
+        let shouldHide = isFull || DualModeRemoteCoordinator.shared.isCurrentTargetMac
+        self.navigationController?.setNavigationBarHidden(shouldHide, animated: true)
     }
     
     @objc private func didTapBackButton() {
-        if Thread.isMainThread {
+        let popBlock = { [weak self] in
+            guard let self = self else { return }
+            self.navigationController?.setNavigationBarHidden(false, animated: true)
             self.navigationController?.popViewController(animated: true)
+        }
+        if Thread.isMainThread {
+            popBlock()
         } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.navigationController?.popViewController(animated: true)
-            }
+            DispatchQueue.main.async(execute: popBlock)
         }
     }
     
@@ -90,18 +109,26 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         self.hidesBottomBarWhenPushed = true
+        // 若当前目标为 Mac，MacOSMediaRemoteView 已内置一体化顶部栏（含断开、设备状态与打字），隐藏外层系统导航栏避免按钮重复
+        if DualModeRemoteCoordinator.shared.isCurrentTargetMac {
+            self.navigationController?.setNavigationBarHidden(true, animated: animated)
+        }
     }
     
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // 禁用侧滑返回手势，防止用户在触控板、画板或遥控按键上滑动时误触发页面退出
         self.navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+        if DualModeRemoteCoordinator.shared.isCurrentTargetMac {
+            self.navigationController?.setNavigationBarHidden(true, animated: false)
+        }
         DualModeRemoteCoordinator.shared.startAutoDiscoveryAndConnect()
     }
     
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        // 离开遥控器页面时恢复系统边缘返回手势
+        // 离开遥控器页面时恢复系统导航栏与边缘返回手势
+        self.navigationController?.setNavigationBarHidden(false, animated: animated)
         self.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 }

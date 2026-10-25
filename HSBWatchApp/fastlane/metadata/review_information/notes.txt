@@ -2,19 +2,27 @@ Dear Apple App Review Team,
 
 Thank you for reviewing Tanghulu Smart Remote!
 
-[How to Test Without External TV Devices]:
-This app is designed to work with Apple TV and Mac displays. To make your review process convenient and comprehensive, especially if your testing environment does not have an Apple TV running on the local Wi-Fi:
+[How to Test Without External TV / Mac Hardware]:
+This application is designed as a wireless companion controller for Apple TV, Mac, and smart screen displays. To ensure a smooth, complete, and convenient review experience—even if your testing environment does not have an Apple TV or Mac running on the local Wi-Fi:
+
 1. Launch the app on iPhone.
-2. On the main screen, tap the Apple TV Remote icon on the top-right navigation bar.
-3. This opens the complete modern remote controller with 3 interactive scenes:
-   - Tab 0 (System): 270pt D-Pad directional navigation, OK button, media controls (seek 10s, play/pause), system keys (Home, Back, Mute, Standby), and volume buttons.
-   - Tab 1 (IPTV): Channel CH+/- and volume VOL+/- stepping towers, quick channel direct-play, and numeric keypad.
-   - Tab 2 (PDF): Presentation slide turners, first/last page jumping, and live drawing whiteboard with multi-color palette and undo support.
-4. All touch controls and buttons are fully interactive with haptic feedback even when disconnected from a television.
+2. On the main home screen, tap the Apple TV Remote icon located on the top-right navigation bar (the modern remote controller icon next to Settings and QR scanner).
+3. This directly opens the full-featured modern remote controller interface, allowing you to test and evaluate all interactive capabilities:
+   - System Remote Tab: 270pt tactile D-pad directional navigation wheel, center OK confirmation, media playback controls (seek 10s backward/forward, play/pause), system hardware keys (Home, Menu, Mute, Standby), and volume stepper buttons. Every interaction delivers realistic iOS Taptic Engine feedback.
+   - Touchpad Tab: Precision wireless trackpad simulating mouse cursor gliding, two-finger smooth scrolling, left/right clicks, and an intuitive "Fullscreen" button (top-right of trackpad) to toggle immersive fullscreen trackpad mode.
+   - IPTV Tab: Classic dual-tower CH+/- and VOL+/- controls, quick channel shortcuts, and numeric keypad dialing.
+   - PDF Presentation Tab: Presentation slide turners, first/last slide jumping, and an interactive drawing whiteboard supporting multi-color drawing and stroke undo.
+   - Text Input Drawer: Tap the keyboard button in the navigation bar to pull up the text input drawer, supporting synchronized text sending and the native Backspace key.
+4. From the main screen, tap the Gear icon (top-right) to access Settings, including On-Device AI Model Center, Translation settings, and the in-app Privacy Policy.
 
 [Real Hardware Pairing (Optional)]:
-If you wish to test physical Bonjour pairing, launch companion display app on an Apple TV or Mac on the same Wi-Fi network. The app will automatically discover and connect within seconds.
+If you wish to test with physical devices:
+- Apple TV: Ensure the Apple TV is on the same Wi-Fi network. The app automatically scans via Bonjour and displays the device card. Tap to pair via on-screen 4-digit PIN.
+- Mac: When a Mac running the companion service is on the local network, it appears automatically with an immediate direct control pipeline.
 
-No subscription or login account is required to use this application.
+[Compliance & Account Notes]:
+- No user login or registration is required.
+- No in-app purchases or recurring subscriptions are required. All features are fully unlocked.
+- Zero personal data is collected or transmitted outside the local device (in full compliance with Guideline 5.1).
 
-Thank you very much for your review and guidance!
+Thank you very much for your time and guidance! If you have any questions, please feel free to contact us.

@@ -253,7 +253,9 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         }
         
         // 处理主机名与端口：优先从 Bonjour 解析出的 sockaddr 数据中提取真实 IPv4 数字地址，避免 mDNS 寻址失败
-        var resolvedIPv4: String? = nil
+        // 关键寻址算法：优先选择局域网真实可路由 IP (192.168.x.x / 10.x.x.x / 172.16-31.x.x)，严禁误选 USB 调试隧道虚拟网卡 (198.18.x.x) 或本地链路 (169.254.x.x)
+        var bestIPv4: String? = nil
+        var fallbackIPv4: String? = nil
         if let addresses = service.addresses {
             for addrData in addresses {
                 addrData.withUnsafeBytes { rawPtr in
@@ -263,17 +265,30 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
                         var ipBuf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
                         var sinAddr = sin.pointee.sin_addr
                         if inet_ntop(AF_INET, &sinAddr, &ipBuf, socklen_t(INET_ADDRSTRLEN)) != nil {
-                            resolvedIPv4 = String(cString: ipBuf)
+                            let ip = String(cString: ipBuf)
+                            if ip.starts(with: "192.168.") || ip.starts(with: "10.") || ip.starts(with: "172.") {
+                                bestIPv4 = ip
+                            } else if !ip.starts(with: "198.18.") && !ip.starts(with: "169.254.") && !ip.starts(with: "127.") {
+                                if bestIPv4 == nil { bestIPv4 = ip }
+                            } else {
+                                if fallbackIPv4 == nil { fallbackIPv4 = ip }
+                            }
                         }
                     }
                 }
-                if resolvedIPv4 != nil { break }
             }
         }
+        let resolvedIPv4 = bestIPv4 ?? fallbackIPv4
         
         var host = resolvedIPv4 ?? service.hostName ?? "\(serviceName).local"
         if host.hasSuffix(".") {
             host = String(host.dropLast())
+        }
+        // 若 host 包含中文或空格，安全过滤以确保 URLComponents 可用
+        if host.contains(" ") || host.range(of: "\\p{Han}", options: .regularExpression) != nil {
+            if let hn = service.hostName, !hn.isEmpty {
+                host = hn.hasSuffix(".") ? String(hn.dropLast()) : hn
+            }
         }
         let port = service.port > 0 ? UInt16(service.port) : 49152
         

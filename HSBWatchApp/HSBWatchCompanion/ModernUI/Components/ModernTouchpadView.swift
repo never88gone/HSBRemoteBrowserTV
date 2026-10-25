@@ -11,6 +11,7 @@ import SwiftUI
 import UIKit
 
 public struct ModernTouchpadView: View {
+    public var isFullScreen: Binding<Bool>?
     public var onPan: ((CGFloat, CGFloat) -> Void)?
     public var onTap: ((Int, CGPoint?) -> Void)?
     public var onScroll: ((CGFloat, CGFloat) -> Void)?
@@ -30,14 +31,17 @@ public struct ModernTouchpadView: View {
     @State private var isTouching: Bool = false
     
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
     
     public init(
+        isFullScreen: Binding<Bool>? = nil,
         onPan: ((CGFloat, CGFloat) -> Void)? = nil,
         onTap: ((Int, CGPoint?) -> Void)? = nil,
         onScroll: ((CGFloat, CGFloat) -> Void)? = nil,
         onDrag: ((DragState, CGFloat, CGFloat) -> Void)? = nil,
         onZoom: ((CGFloat) -> Void)? = nil
     ) {
+        self.isFullScreen = isFullScreen
         self.onPan = onPan
         self.onTap = onTap
         self.onScroll = onScroll
@@ -110,16 +114,59 @@ public struct ModernTouchpadView: View {
                         onZoom?(scale)
                     },
                     onTouchStateChanged: { touching, loc in
+                        let wasTouching = self.isTouching
                         self.isTouching = touching
                         self.lastTouchLocation = loc
-                        if touching {
+                        if touching && !wasTouching {
                             stopInertia()
                             lightHaptic.prepare()
-                        } else {
+                        } else if !touching {
                             self.isInTwoFingerScroll = false
                         }
                     }
                 )
+                
+                // 右上角全屏触控切换按钮 (置于手势层上方，确保点击即刻触发全屏/退出全屏)
+                if let fullScreenBinding = isFullScreen {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                mediumHaptic.impactOccurred()
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                    fullScreenBinding.wrappedValue.toggle()
+                                }
+                                NotificationCenter.default.post(
+                                    name: Notification.Name("HSBTrackpadFullScreenChangedNotification"),
+                                    object: nil,
+                                    userInfo: ["isFullScreen": fullScreenBinding.wrappedValue]
+                                )
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: fullScreenBinding.wrappedValue ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(fullScreenBinding.wrappedValue ? "退出全屏" : "全屏")
+                                        .font(.system(size: 11.5, weight: .semibold))
+                                }
+                                .foregroundColor(.white.opacity(0.92))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    Capsule()
+                                        .fill(fullScreenBinding.wrappedValue ? Color(red: 224.0 / 255.0, green: 36.0 / 255.0, blue: 56.0 / 255.0).opacity(0.88) : Color.black.opacity(0.45))
+                                        .overlay(
+                                            Capsule().stroke(Color.white.opacity(0.18), lineWidth: 1)
+                                        )
+                                )
+                            }
+                            .accessibilityIdentifier(fullScreenBinding.wrappedValue ? "mac_exit_fullscreen_trackpad_button" : "mac_fullscreen_trackpad_button")
+                            .accessibilityLabel(fullScreenBinding.wrappedValue ? "退出全屏" : "全屏触控")
+                        }
+                        .padding(.top, 10)
+                        .padding(.trailing, 12)
+                        Spacer()
+                    }
+                }
             }
         }
     }
@@ -281,8 +328,12 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
             
             switch recognizer.state {
             case .began:
+                let initial = recognizer.translation(in: view)
                 recognizer.setTranslation(.zero, in: view)
                 parent.onTouchStateChanged(true, loc)
+                if abs(initial.x) > 0.1 || abs(initial.y) > 0.1 {
+                    parent.onOneFingerPan(initial.x, initial.y)
+                }
             case .changed:
                 let translation = recognizer.translation(in: view)
                 recognizer.setTranslation(.zero, in: view)

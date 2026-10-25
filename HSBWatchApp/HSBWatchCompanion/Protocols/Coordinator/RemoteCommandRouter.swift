@@ -191,9 +191,9 @@ public final class RemoteCommandRouter {
             case .escape:
                 MacMediaCommandDispatcher.dispatchCommand("back")
             case .space:
-                MacMediaCommandDispatcher.dispatchCommand("text", params: ["text": " "])
+                MacMediaCommandDispatcher.dispatchCommand("space")
             case .backspace:
-                MacMediaCommandDispatcher.dispatchCommand("back")
+                MacMediaCommandDispatcher.dispatchCommand("backspace")
             }
             return
         }

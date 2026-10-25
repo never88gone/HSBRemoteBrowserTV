@@ -105,6 +105,8 @@ public struct ModernDPadView: View {
                 .scaleEffect(isCenterPressed ? 0.94 : 1.0)
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityIdentifier("dpad_ok_button")
+            .accessibilityLabel("确定")
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
@@ -167,6 +169,10 @@ public struct ModernDPadView: View {
                 .contentShape(Rectangle())
         }
         .offset(offset)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(directionLabel(for: direction))
+        .accessibilityIdentifier(directionIdentifier(for: direction))
+        .accessibilityAddTraits(.isButton)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
@@ -193,6 +199,25 @@ public struct ModernDPadView: View {
         case .down: return "chevron.down"
         case .left: return "chevron.left"
         case .right: return "chevron.right"
+        }
+    }
+    
+    private func directionLabel(for direction: DPadDirection) -> String {
+        switch direction {
+        case .up: return "向上"
+        case .down: return "向下"
+        case .left: return "向左"
+        case .right: return "向右"
+        }
+    }
+    
+    /// 显式无障碍标识 (@objc enum 的字符串插值不会输出 case 名，不能直接拼接)
+    private func directionIdentifier(for direction: DPadDirection) -> String {
+        switch direction {
+        case .up: return "dpad_up"
+        case .down: return "dpad_down"
+        case .left: return "dpad_left"
+        case .right: return "dpad_right"
         }
     }
 }

@@ -15,6 +15,7 @@ public struct ModernRemoteContainerView: View {
     // 遥控器情境微操模式 (0: 系统轮盘, 1: 触控板, 2: IPTV, 3: PDF演讲)
     @State private var selectedControlTab: Int = 0
     @State private var isKeyboardPresented: Bool = false
+    @State private var isTrackpadFullScreen: Bool = false
     @State private var showingBrowserGuide: Bool = false
     @State private var showingSystemGuide: Bool = false
     
@@ -31,27 +32,29 @@ public struct ModernRemoteContainerView: View {
         ZStack {
             // 主内容容器：使用 GeometryReader 获取可用安全区尺寸，严格遵循 Safe Area
             GeometryReader { geometry in
-                VStack(spacing: geometry.size.height < 700 ? 6 : 10) {
-                    // 1. 顶部紧凑双模流线型状态栏 (居中双胶囊排布：大屏通道 + 系统原生通道)
-                    ModernRemoteStatusTopBar(
-                        coordinatorObserver: coordinatorObserver,
-                        showingBrowserGuide: $showingBrowserGuide,
-                        showingSystemGuide: $showingSystemGuide
-                    )
-                    
-                    // 2. 主导航 Tab 切换栏 (双主轴架构：【遥控】与【应用生态】)
-                    Picker("主导航", selection: $selectedMainTab) {
-                        Text("遥控").tag(0)
-                        Text("应用生态").tag(1)
+                VStack(spacing: (isTrackpadFullScreen || coordinatorObserver.isTargetMac) ? 2 : (geometry.size.height < 700 ? 6 : 10)) {
+                    if !isTrackpadFullScreen && !coordinatorObserver.isTargetMac {
+                        // 1. 顶部紧凑双模流线型状态栏 (居中双胶囊排布：大屏通道 + 系统原生通道)
+                        ModernRemoteStatusTopBar(
+                            coordinatorObserver: coordinatorObserver,
+                            showingBrowserGuide: $showingBrowserGuide,
+                            showingSystemGuide: $showingSystemGuide
+                        )
+                        
+                        // 2. 主导航 Tab 切换栏 (双主轴架构：【遥控】与【应用生态】)
+                        Picker("主导航", selection: $selectedMainTab) {
+                            Text("遥控").tag(0)
+                            Text("应用生态").tag(1)
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .padding(.horizontal, 16)
                     }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .padding(.horizontal, 16)
                     
                     // 3. 主体内容区：遥控操作台 vs 应用生态网格
-                    if selectedMainTab == 0 {
+                    if selectedMainTab == 0 || isTrackpadFullScreen || coordinatorObserver.isTargetMac {
                         // 遥控操作台 (含情境微操模式切换与交互面板)
-                        VStack(spacing: geometry.size.height < 700 ? 6 : 8) {
-                            if !coordinatorObserver.isTargetMac {
+                        VStack(spacing: isTrackpadFullScreen ? 2 : (geometry.size.height < 700 ? 6 : 8)) {
+                            if !coordinatorObserver.isTargetMac && !isTrackpadFullScreen {
                                 Picker("遥控形态", selection: $selectedControlTab) {
                                     Text("系统").tag(0)
                                     Text("触控").tag(1)
@@ -116,8 +119,8 @@ public struct ModernRemoteContainerView: View {
                         }
                     }
                 }
-                .padding(.top, 4)
-                .padding(.bottom, 6)
+                .padding(.top, isTrackpadFullScreen ? 0 : 4)
+                .padding(.bottom, isTrackpadFullScreen ? 2 : 6)
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
             }
             
@@ -134,11 +137,17 @@ public struct ModernRemoteContainerView: View {
                     ModernKeyboardInputView(
                         isPresented: $isKeyboardPresented,
                         onTextChange: { text, isMarked in
-                            textInputManager.handleTextChanged(newText: text, hasMarkedText: isMarked)
+                            if !coordinatorObserver.isTargetMac {
+                                textInputManager.handleTextChanged(newText: text, hasMarkedText: isMarked)
+                            }
                         },
-                        onSubmit: {
-                            DualModeRemoteCoordinator.shared.sendKeyCommand(key: .enter)
-                            isKeyboardPresented = false
+                        onSubmitText: { committedText in
+                            if coordinatorObserver.isTargetMac {
+                                DualModeRemoteCoordinator.shared.sendTextInput(text: committedText)
+                            } else {
+                                textInputManager.handleTextChanged(newText: committedText, hasMarkedText: false)
+                                DualModeRemoteCoordinator.shared.sendKeyCommand(key: .enter)
+                            }
                         }
                     )
                     .padding(.horizontal, 16)
@@ -243,6 +252,13 @@ public struct ModernRemoteContainerView: View {
             withAnimation(.easeInOut(duration: 0.25)) {
                 lightHaptic.impactOccurred()
                 isKeyboardPresented.toggle()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBTrackpadFullScreenChangedNotification"))) { note in
+            if let full = note.userInfo?["isFullScreen"] as? Bool {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    isTrackpadFullScreen = full
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBShowGuideModalNotification"))) { note in

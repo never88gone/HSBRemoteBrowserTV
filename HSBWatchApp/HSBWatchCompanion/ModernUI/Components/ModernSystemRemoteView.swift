@@ -85,6 +85,8 @@ public struct ModernSystemRemoteView: View {
                         .foregroundColor(.primary)
                         .cornerRadius(10)
                     }
+                    .accessibilityIdentifier("volume_down_button")
+                    .accessibilityLabel("音量 -")
                     
                     Button {
                         lightHaptic.impactOccurred()
@@ -102,6 +104,8 @@ public struct ModernSystemRemoteView: View {
                         .foregroundColor(.primary)
                         .cornerRadius(10)
                     }
+                    .accessibilityIdentifier("volume_up_button")
+                    .accessibilityLabel("音量 +")
                 }
             }
             .padding(12)
@@ -142,6 +146,8 @@ public struct ModernSystemRemoteView: View {
                     .stroke(isPrimary ? Color.accentColor.opacity(0.4) : Color.white.opacity(0.06), lineWidth: 1)
             )
         }
+        .accessibilityIdentifier("media_\(title)")
+        .accessibilityLabel(title)
     }
     
     @ViewBuilder
@@ -170,5 +176,7 @@ public struct ModernSystemRemoteView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("system_\(label)")
+        .accessibilityLabel(label)
     }
 }

@@ -1,4 +1,5 @@
-1. All-new fullscreen multi-scene smart remote with ergonomic layout;
-2. Enhanced D-Pad wheel and Control Island tactile experience;
-3. Added screen connection guide and quick offline exploration;
-4. Optimized IPTV channel tuning, media controls, and presentation drawing features.
+1. [New Feature] Native Mac remote control with ultra-smooth wireless trackpad, continuous two-finger scrolling, and hardware HID event dispatch;
+2. [New Feature] One-tap Fullscreen Trackpad mode for an expansive, uninterrupted touch surface;
+3. [Enhanced] Full support for macOS native Backspace/Delete key and synchronized typing;
+4. [Refined UI] Streamlined interface design eliminating redundant top bars and duplicated buttons;
+5. [Performance] Faster Bonjour multicast discovery and optimized single-flight in-flight backpressure pipeline.

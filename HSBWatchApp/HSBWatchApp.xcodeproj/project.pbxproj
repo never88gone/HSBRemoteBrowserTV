@@ -11,7 +11,9 @@
 		382CD70D2F7CDE8E0015A355 /* HSBWatchApp Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 3803AE422F0D10490047BF4A /* HSBWatchApp Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		89EBB536C6156798136CD15D /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = D7FF7F261299DCA0B78130BE /* Tokenizers */; };
 		961214DDCBD6877D41E08AC6 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 236701DB30053D1055359898 /* MLXLLM */; };
+		B70BCA9781EABE93D6049A9E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B0E58249C9D0D484CB86A8E1 /* Foundation.framework */; };
 		C68B7B919852504422D0B461 /* MLXHuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = 52DCD2C0FEC2078986ACE36F /* MLXHuggingFace */; };
+		D4D63D436621C7606E12EBBD /* HSBWatchCompanionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D25ED52F8F4D19EF0A90919 /* HSBWatchCompanionUITests.swift */; };
 		DEE690F0D8E6C4078EFF1C13 /* HuggingFace in Frameworks */ = {isa = PBXBuildFile; productRef = A0FC6324C5888A8DAD3893C1 /* HuggingFace */; };
 /* End PBXBuildFile section */
 
@@ -22,6 +24,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 3803AE412F0D10490047BF4A;
 			remoteInfo = "HSBWatchApp Watch App";
+		};
+		D95773D5CC1DCCFDA8F79FE9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3803AE362F0D10490047BF4A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 382CD6EE2F7CDE640015A355;
+			remoteInfo = HSBWatchCompanion;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -43,6 +52,9 @@
 		3803AE422F0D10490047BF4A /* HSBWatchApp Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HSBWatchApp Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		382CD6EF2F7CDE640015A355 /* HSBWatchCompanion.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HSBWatchCompanion.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		382CD7FF2F7CDE660015A355 /* AppVersion.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = AppVersion.xcconfig; path = HSBWatchCompanion/AppVersion.xcconfig; sourceTree = "<group>"; };
+		9D25ED52F8F4D19EF0A90919 /* HSBWatchCompanionUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HSBWatchCompanionUITests.swift; path = HSBWatchCompanionUITests.swift; sourceTree = "<group>"; };
+		B0E58249C9D0D484CB86A8E1 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		F6533263DB5492D5BA182FFB /* HSBWatchCompanionUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HSBWatchCompanionUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -101,9 +113,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9E64514ED62F4FE926974EE0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B70BCA9781EABE93D6049A9E /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		09BD66C2D98B313148D402E4 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				B0E58249C9D0D484CB86A8E1 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		3803AE352F0D10490047BF4A = {
 			isa = PBXGroup;
 			children = (
@@ -112,6 +140,7 @@
 				382CD7FF2F7CDE660015A355 /* AppVersion.xcconfig */,
 				382CD70C2F7CDE8E0015A355 /* Frameworks */,
 				3803AE3D2F0D10490047BF4A /* Products */,
+				94709EAB44ABBEEFE77A58F6 /* HSBWatchCompanionUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -120,6 +149,7 @@
 			children = (
 				3803AE422F0D10490047BF4A /* HSBWatchApp Watch App.app */,
 				382CD6EF2F7CDE640015A355 /* HSBWatchCompanion.app */,
+				F6533263DB5492D5BA182FFB /* HSBWatchCompanionUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -127,8 +157,18 @@
 		382CD70C2F7CDE8E0015A355 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				09BD66C2D98B313148D402E4 /* iOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		94709EAB44ABBEEFE77A58F6 /* HSBWatchCompanionUITests */ = {
+			isa = PBXGroup;
+			children = (
+				9D25ED52F8F4D19EF0A90919 /* HSBWatchCompanionUITests.swift */,
+			);
+			name = HSBWatchCompanionUITests;
+			path = HSBWatchCompanionUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -177,6 +217,24 @@
 			productReference = 382CD6EF2F7CDE640015A355 /* HSBWatchCompanion.app */;
 			productType = "com.apple.product-type.application";
 		};
+		BCD8642A6E7E038C28070021 /* HSBWatchCompanionUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A55E10830264232F78804861 /* Build configuration list for PBXNativeTarget "HSBWatchCompanionUITests" */;
+			buildPhases = (
+				C8CE057AD7FB9341B20090B1 /* Sources */,
+				9E64514ED62F4FE926974EE0 /* Frameworks */,
+				A5EE58EA306C2DFD79936000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				848582E68DDE6F3119C8D4D4 /* PBXTargetDependency */,
+			);
+			name = HSBWatchCompanionUITests;
+			productName = HSBWatchCompanionUITests;
+			productReference = F6533263DB5492D5BA182FFB /* HSBWatchCompanionUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -223,6 +281,7 @@
 			targets = (
 				382CD6EE2F7CDE640015A355 /* HSBWatchCompanion */,
 				3803AE412F0D10490047BF4A /* HSBWatchApp Watch App */,
+				BCD8642A6E7E038C28070021 /* HSBWatchCompanionUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -236,6 +295,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		382CD6ED2F7CDE640015A355 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A5EE58EA306C2DFD79936000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -280,6 +346,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C8CE057AD7FB9341B20090B1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D4D63D436621C7606E12EBBD /* HSBWatchCompanionUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -288,9 +362,33 @@
 			target = 3803AE412F0D10490047BF4A /* HSBWatchApp Watch App */;
 			targetProxy = 382CD70E2F7CDE8E0015A355 /* PBXContainerItemProxy */;
 		};
+		848582E68DDE6F3119C8D4D4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = HSBWatchCompanion;
+			target = 382CD6EE2F7CDE640015A355 /* HSBWatchCompanion */;
+			targetProxy = D95773D5CC1DCCFDA8F79FE9 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		2CF5E25DE6EC6764F5638D28 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 876385K952;
+				INFOPLIST_FILE = HSBWatchCompanionUITests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.never88gone.thlbrowserios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HSBWatchCompanion;
+			};
+			name = Debug;
+		};
 		3803AE4D2F0D104B0047BF4A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 382CD7FF2F7CDE660015A355 /* AppVersion.xcconfig */;
@@ -570,6 +668,25 @@
 			};
 			name = Release;
 		};
+		D39DB3DA9E29EBCC65BDD275 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 876385K952;
+				INFOPLIST_FILE = HSBWatchCompanionUITests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.never88gone.thlbrowserios.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HSBWatchCompanion;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -596,6 +713,15 @@
 			buildConfigurations = (
 				382CD7082F7CDE660015A355 /* Debug */,
 				382CD7092F7CDE660015A355 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A55E10830264232F78804861 /* Build configuration list for PBXNativeTarget "HSBWatchCompanionUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D39DB3DA9E29EBCC65BDD275 /* Release */,
+				2CF5E25DE6EC6764F5638D28 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -15,14 +15,14 @@ public struct MacOSMediaRemoteView: View {
     // 0: 触控鼠标 (最直观、直接控制 macOS 系统), 1: 按键导航, 2: 媒体播放
     @State private var selectedMacMode: Int = 0
     
+    // 全屏触控鼠标状态
+    @State private var isFullScreenTrackpad: Bool = false
+    
     // 媒体播放状态
     @State private var isPlaying: Bool = false
     @State private var wavePhase: CGFloat = 0.0
     @State private var isMuted: Bool = false
     @State private var musicStatusText: String = "未检测到播放器，点击可直接启动 Apple Music"
-    
-    // 触控板拖拽状态
-    @State private var lastDragLocation: CGPoint? = nil
     
     private let hawthornRed = Color(red: 224.0 / 255.0, green: 36.0 / 255.0, blue: 56.0 / 255.0)
     private let darkCarbon = Color(red: 28.0 / 255.0, green: 28.0 / 255.0, blue: 30.0 / 255.0)
@@ -35,11 +35,21 @@ public struct MacOSMediaRemoteView: View {
     }
     
     public var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: isFullScreenTrackpad ? 8 : 12) {
             // 1. 顶部 Mac 专属终端识别与断开退出控制条
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Button(action: {
                     haptic.impactOccurred()
+                    if isFullScreenTrackpad {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            isFullScreenTrackpad = false
+                        }
+                        NotificationCenter.default.post(
+                            name: Notification.Name("HSBTrackpadFullScreenChangedNotification"),
+                            object: nil,
+                            userInfo: ["isFullScreen": false]
+                        )
+                    }
                     DualModeRemoteCoordinator.shared.disconnectAll()
                     onDismiss?()
                     NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
@@ -59,45 +69,69 @@ public struct MacOSMediaRemoteView: View {
                 
                 HStack(spacing: 6) {
                     Image(systemName: "desktopcomputer")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(hawthornRed)
                     Text(deviceName)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(size: 13.5, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                         .lineLimit(1)
                 }
                 
-                Spacer()
+                Spacer(minLength: 4)
                 
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 7, height: 7)
-                    Text("系统直控就绪")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.85))
+                if !isFullScreenTrackpad {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6.5, height: 6.5)
+                        Text("系统直控就绪")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(.white.opacity(0.85))
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.08))
+                    )
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(Color.white.opacity(0.08))
-                )
+                
+                Button(action: {
+                    haptic.impactOccurred()
+                    NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("打字")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("remote_keyboard_entry_button")
+                .accessibilityLabel("打字输入")
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, isFullScreenTrackpad ? 10 : 16)
             .padding(.top, 4)
             
-            // 2. 模式切换分段：触控鼠标 / 按键导航 / 媒体播放
-            Picker("Mac 控制形态", selection: $selectedMacMode) {
-                Text("触控鼠标").tag(0)
-                Text("按键导航").tag(1)
-                Text("媒体播放").tag(2)
+            // 2. 模式切换分段：触控鼠标 / 按键导航 / 媒体播放 (全屏触控模式下自动隐藏以最大化触控面积)
+            if !isFullScreenTrackpad {
+                Picker("Mac 控制形态", selection: $selectedMacMode) {
+                    Text("触控鼠标").tag(0)
+                    Text("按键导航").tag(1)
+                    Text("媒体播放").tag(2)
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                .padding(.horizontal, 16)
             }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding(.horizontal, 16)
             
             // 3. 动态内容区
-            if selectedMacMode == 0 {
+            if isFullScreenTrackpad || selectedMacMode == 0 {
                 trackpadMousePanel
             } else if selectedMacMode == 1 {
                 dpadNavigationPanel
@@ -105,27 +139,39 @@ public struct MacOSMediaRemoteView: View {
                 mediaPlaybackPanel
             }
             
-            Spacer(minLength: 4)
-            
-            // 4. 底部系统硬件全局音量与调度控制岛 (在所有模式下均常驻可用)
-            globalSystemQuickBar
-            
-            // 5. 底部协议保障指引卡片
-            HStack(spacing: 6) {
-                Image(systemName: "bolt.horizontal.fill")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color.green)
-                Text("物理级原生 HID 事件直驱 macOS 系统，零模拟器延迟")
-                    .font(.system(size: 10.5, weight: .regular))
-                    .foregroundColor(.white.opacity(0.45))
-                    .lineLimit(1)
+            if !isFullScreenTrackpad {
+                Spacer(minLength: 4)
+                
+                // 4. 底部系统硬件全局音量与调度控制岛 (常规模式下常驻可用)
+                globalSystemQuickBar
+                
+                // 5. 底部协议保障指引卡片
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.horizontal.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.green)
+                    Text("物理级原生 HID 事件直驱 macOS 系统，零模拟器延迟")
+                        .font(.system(size: 10.5, weight: .regular))
+                        .foregroundColor(.white.opacity(0.45))
+                        .lineLimit(1)
+                }
+                .padding(.bottom, 8)
             }
-            .padding(.bottom, 8)
         }
         .background(darkCarbon.ignoresSafeArea())
         .onAppear {
             checkMacStatus()
             startWaveAnimation()
+        }
+        .onDisappear {
+            if isFullScreenTrackpad {
+                isFullScreenTrackpad = false
+                NotificationCenter.default.post(
+                    name: Notification.Name("HSBTrackpadFullScreenChangedNotification"),
+                    object: nil,
+                    userInfo: ["isFullScreen": false]
+                )
+            }
         }
     }
     
@@ -199,58 +245,38 @@ public struct MacOSMediaRemoteView: View {
         .padding(.horizontal, 16)
     }
     
-    // MARK: - Panel 1: 无线触控板与鼠标 (直接控制 macOS 系统)
+    // MARK: - Panel 1: 无线触控板与鼠标 (直接控制 macOS 系统，支持一键全屏控制)
     @ViewBuilder
     private var trackpadMousePanel: some View {
-        VStack(spacing: 12) {
-            // 触控板核心交互区
-            ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color(white: 0.12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1.5)
-                    )
-                
-                VStack(spacing: 8) {
-                    Image(systemName: "cursorarrow.motionlines")
-                        .font(.system(size: 32, weight: .light))
-                        .foregroundColor(hawthornRed.opacity(0.8))
-                    Text("单指滑动移动 Mac 鼠标光标，轻点左键触发点击")
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundColor(.white.opacity(0.75))
-                    Text("直接向 Mac 系统 HID 队列广播，任何窗口均可交互")
-                        .font(.system(size: 10.5, weight: .regular))
-                        .foregroundColor(.white.opacity(0.4))
+        VStack(spacing: isFullScreenTrackpad ? 8 : 12) {
+            // 现代化高精度仿 Mac 触控板 (支持单指移动、双指无级滚动、单指轻点左键、双指轻点右键、惯性缓出与全屏切换)
+            ModernTouchpadView(
+                isFullScreen: $isFullScreenTrackpad,
+                onPan: { dx, dy in
+                    MacMediaCommandDispatcher.dispatchCommand("pan", params: ["dx": dx, "dy": dy])
+                },
+                onTap: { mode, _ in
+                    if mode == 3 {
+                        // 双指轻点 -> 右键菜单
+                        lightHaptic.impactOccurred()
+                        MacMediaCommandDispatcher.dispatchCommand("right_click")
+                    } else {
+                        // 单指轻点 -> 鼠标左键
+                        lightHaptic.impactOccurred()
+                        MacMediaCommandDispatcher.dispatchCommand("click")
+                    }
+                },
+                onScroll: { dx, dy in
+                    // 双指无级平滑滚动 (乘以 2.5 像素缩放系数达到顺滑阻尼)
+                    MacMediaCommandDispatcher.dispatchCommand("scroll", params: ["dx": dx * 2.5, "dy": dy * 2.5])
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 16)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        if let last = lastDragLocation {
-                            let dx = value.location.x - last.x
-                            let dy = value.location.y - last.y
-                            MacMediaCommandDispatcher.dispatchCommand("pan", params: ["dx": dx * 2.2, "dy": dy * 2.2])
-                        }
-                        lastDragLocation = value.location
-                    }
-                    .onEnded { value in
-                        if let last = lastDragLocation {
-                            let totalDist = hypot(value.location.x - value.startLocation.x, value.location.y - value.startLocation.y)
-                            if totalDist < 8 {
-                                lightHaptic.impactOccurred()
-                                MacMediaCommandDispatcher.dispatchCommand("click")
-                            }
-                        }
-                        lastDragLocation = nil
-                    }
             )
+            .environment(\.colorScheme, .dark)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, isFullScreenTrackpad ? 8 : 16)
             
-            // 触控板底座按键排布 (鼠标左键、右键菜单、向上滚动、向下滚动)
-            HStack(spacing: 10) {
+            // 触控板底座按键排布 (鼠标左键、右键菜单、退格键、向上滚动、向下滚动)
+            HStack(spacing: 8) {
                 Button(action: {
                     haptic.impactOccurred()
                     MacMediaCommandDispatcher.dispatchCommand("click")
@@ -279,29 +305,51 @@ public struct MacOSMediaRemoteView: View {
                 
                 Button(action: {
                     lightHaptic.impactOccurred()
-                    MacMediaCommandDispatcher.dispatchCommand("scroll", params: ["dy": 6])
+                    MacMediaCommandDispatcher.dispatchCommand("backspace")
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "delete.left.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("退格")
+                            .font(.system(size: 12.5, weight: .semibold))
+                    }
+                    .foregroundColor(.white.opacity(0.92))
+                    .padding(.horizontal, 10)
+                    .frame(height: 42)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.1)))
+                }
+                .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_backspace_button")
+                .accessibilityLabel("退格键")
+                
+                Button(action: {
+                    lightHaptic.impactOccurred()
+                    MacMediaCommandDispatcher.dispatchCommand("scroll", params: ["dy": 25.0])
                 }) {
                     Image(systemName: "chevron.up")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white.opacity(0.9))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 40, height: 42)
                         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityLabel("向上滚动")
                 
                 Button(action: {
                     lightHaptic.impactOccurred()
-                    MacMediaCommandDispatcher.dispatchCommand("scroll", params: ["dy": -6])
+                    MacMediaCommandDispatcher.dispatchCommand("scroll", params: ["dy": -25.0])
                 }) {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white.opacity(0.9))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 40, height: 42)
                         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityLabel("向下滚动")
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, isFullScreenTrackpad ? 8 : 16)
+            .padding(.bottom, isFullScreenTrackpad ? 6 : 0)
         }
     }
     
@@ -387,15 +435,15 @@ public struct MacOSMediaRemoteView: View {
             }
             .frame(height: 220)
             
-            // 快捷控制底座 (返回/ESC、空格 Space、桌面 Mission Control)
-            HStack(spacing: 12) {
+            // 快捷控制底座 (ESC 返回、空格键、退格键 —— 已移除与下方全局栏重复的“调度”按钮)
+            HStack(spacing: 10) {
                 Button(action: {
                     lightHaptic.impactOccurred()
                     MacMediaCommandDispatcher.dispatchCommand("back")
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "escape")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12.5, weight: .semibold))
                         Text("ESC 返回")
                             .font(.system(size: 12, weight: .semibold))
                     }
@@ -412,7 +460,7 @@ public struct MacOSMediaRemoteView: View {
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "space")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12.5, weight: .semibold))
                         Text("空格键")
                             .font(.system(size: 12, weight: .semibold))
                     }
@@ -425,12 +473,12 @@ public struct MacOSMediaRemoteView: View {
                 
                 Button(action: {
                     lightHaptic.impactOccurred()
-                    MacMediaCommandDispatcher.dispatchCommand("home")
+                    MacMediaCommandDispatcher.dispatchCommand("backspace")
                 }) {
                     HStack(spacing: 4) {
-                        Image(systemName: "macwindow")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("桌面/调度")
+                        Image(systemName: "delete.left.fill")
+                            .font(.system(size: 12.5, weight: .semibold))
+                        Text("退格键")
                             .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundColor(.white.opacity(0.9))
@@ -439,6 +487,8 @@ public struct MacOSMediaRemoteView: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_dpad_backspace_button")
+                .accessibilityLabel("退格键")
             }
             .padding(.horizontal, 16)
         }

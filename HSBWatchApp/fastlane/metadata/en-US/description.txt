@@ -1,25 +1,34 @@
-Tanghulu Smart Remote is a versatile companion controller designed for Apple TV, Mac, and large screen displays. Featuring refined aesthetics and ultra-low latency protocols, it transforms your iPhone and Apple Watch into powerful input devices.
+Tanghulu Smart Remote is a versatile, ultra-responsive companion controller designed for Apple TV, Mac, and smart screen displays. Featuring refined modern aesthetics and zero-latency local protocols, it transforms your iPhone and Apple Watch into powerful, intuitive input devices.
 
 [Core Interactive Scenarios]
-1. System Remote:
-• 270pt tactile D-pad wheel with precision directional navigation and haptic feedback;
-• Integrated Control Island: media seek, play/pause, Home, Back, Mute, Standby, and volume controls;
-• Streamlined software keyboard entry for effortless large-screen typing.
 
-2. IPTV & Media Playback Control:
-• Dual-tower CH+/- and VOL+/- stepping controls;
-• Quick access to popular channels with instant channel switching;
-• Numeric keypad selection and EPG guide access.
+1. Native Mac System Control & Wireless Trackpad:
+• Precision Wireless Trackpad: Supports single-finger smooth cursor gliding, single-tap left click, and two-finger tap for right-click context menus;
+• Ergonomic Ballistics Curve: Pixel-accurate slow micro-adjustments and smooth acceleration for effortless cross-screen flicks;
+• Smooth Two-Finger Scrolling: Infinite continuous scrolling with natural physics inertia for documents and web pages;
+• Fullscreen Trackpad Mode: One-tap toggle to expand the trackpad across the entire viewport for maximum control area;
+• Native Backspace & Typing: Full hardware Backspace/Delete key integration alongside streamlined text dispatch;
+• Complete System Controls: Global volume HUD adjustments, one-tap mute, Apple Music media playback, and Mission Control triggering.
 
-3. PDF Presentation & Live Drawing:
-• Big presentation slide turners and first/last page jumping;
-• On-screen laser pointer and drawing whiteboard with color picker and undo support.
+2. Apple TV System Remote:
+• Ergonomic D-pad directional navigation wheel with tactile haptic feedback;
+• Integrated Control Island: Quick seek 10s backward/forward, play/pause, Home, Menu, Mute, Standby, and volume controls;
+• Streamlined software keyboard entry for effortless large-screen typing and search.
 
-4. Apple Watch Motion & Smart Assistant:
+3. IPTV & Television Channel Tuning:
+• Dual-tower CH+/- and VOL+/- stepping controls for classic TV watching;
+• Instant-play shortcuts for favorite TV channels;
+• Numeric keypad channel dialing and convenient EPG guide access.
+
+4. PDF Presentation & Live Drawing Whiteboard:
+• Large slide turners and first/last page jumping for confident presentation control;
+• On-screen laser pointer and real-time live drawing whiteboard with multi-color palette and undo support.
+
+5. Apple Watch Motion & Smart Assistant:
 • Wearable motion sync engine: wrist flip to turn slides, shake to refresh;
-• On-device private local LLM assistant for offline TV control guidance.
+• On-device private local LLM assistant for offline TV control guidance and Q&A.
 
-[Seamless Connectivity]
-• Zero-config automatic Bonjour discovery on local Wi-Fi networks;
-• Direct IP pairing support;
-• Built-in offline exploration mode for immediate feature preview anywhere.
+[Seamless Local Connectivity]
+• Instant Bonjour zero-configuration discovery over local Wi-Fi;
+• Fully functional offline demo mode allows testing all controls and haptics without external hardware;
+• Privacy-first architecture: No ads, no in-app purchases, no subscriptions, zero data collection.
