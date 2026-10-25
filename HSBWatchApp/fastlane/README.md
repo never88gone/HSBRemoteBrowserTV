@@ -47,6 +47,14 @@ Submit App Store Version 1.0.0 for Review
 
 Check App Store Connect Status
 
+### ios cancel_submission
+
+```sh
+[bundle exec] fastlane ios cancel_submission
+```
+
+Cancel current App Store submission
+
 ### ios beta
 
 ```sh

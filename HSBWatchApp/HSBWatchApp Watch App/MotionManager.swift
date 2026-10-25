@@ -318,19 +318,82 @@ class MotionManager: NSObject, ObservableObject, WCSessionDelegate, WKExtendedRu
         triggerAction("Shake", haptic: .click)
         sendMessage(action: "shake")
     }
+
+    // MARK: - 遥控按键与手势发送接口
+    func sendRemoteAction(_ action: String, extra: [String: Any]? = nil, haptic: WKHapticType = .click) {
+        WKInterfaceDevice.current().play(haptic)
+        self.lastAction = action
+        DispatchQueue.main.async {
+            self.actionCount += 1
+        }
+        
+        var payload: [String: Any] = ["action": action]
+        if let extra = extra {
+            for (k, v) in extra {
+                payload[k] = v
+            }
+        }
+        sendPayload(payload)
+    }
+
+    func sendDpadUp() {
+        sendRemoteAction("dpad_up", haptic: .directionUp)
+    }
+
+    func sendDpadDown() {
+        sendRemoteAction("dpad_down", haptic: .directionDown)
+    }
+
+    func sendDpadLeft() {
+        sendRemoteAction("dpad_left", haptic: .click)
+    }
+
+    func sendDpadRight() {
+        sendRemoteAction("dpad_right", haptic: .click)
+    }
+
+    func sendSelect() {
+        sendRemoteAction("select", haptic: .click)
+    }
+
+    func sendBack() {
+        sendRemoteAction("back", haptic: .click)
+    }
+
+    func sendHome() {
+        sendRemoteAction("home", haptic: .success)
+    }
+
+    func sendPlayPause() {
+        sendRemoteAction("play_pause", haptic: .click)
+    }
+
+    func sendReload() {
+        sendRemoteAction("reload", haptic: .click)
+    }
+
+    func sendScroll(deltaY: Double) {
+        sendRemoteAction("scroll", extra: ["dy": deltaY], haptic: .directionUp)
+    }
+
+    func sendZoom(delta: Double) {
+        let action = delta > 0 ? "zoom_in" : "zoom_out"
+        sendRemoteAction(action, extra: ["scale": 1.0 + delta], haptic: .click)
+    }
     
     private func sendMessage(action: String) {
+        sendPayload(["action": action])
+    }
+
+    private func sendPayload(_ payload: [String: Any]) {
         guard WCSession.default.activationState == .activated else {
             print("WCSession not activated")
             return
         }
         
-        let payload: [String: Any] = ["action": action]
-        
         if WCSession.default.isReachable {
             WCSession.default.sendMessage(payload, replyHandler: nil) { error in
                 print("Error sending message to iOS: \(error.localizedDescription)")
-                // 降级：走 transferUserInfo 保证送达
                 WCSession.default.transferUserInfo(payload)
             }
         } else {

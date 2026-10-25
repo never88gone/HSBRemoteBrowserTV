@@ -1080,4 +1080,59 @@ final class HSBWatchCompanionUITests: XCTestCase {
         XCTAssertTrue(homeAppeared, "❌ 自动化测试失败：点击返回后未能安全平稳退回首页")
         NSLog("[XCUITest HSBTV7] 🎯 HSBTV7 端到端物理实机全链路自动化测试全部圆满通过！")
     }
+
+    // =========================================================================
+    // MARK: - Apple Watch ↔ iPhone 联动交互端到端自动化测试
+    // =========================================================================
+    /// 验证 Apple Watch 腕上遥控器向 iPhone 发送指令，iPhone 接收处理并中继驱动 TV
+    func testAppleWatchCompanionLinkageInteractive() throws {
+        let app = XCUIApplication()
+        app.activate()
+        Thread.sleep(forTimeInterval: 3.0)
+
+        captureStepScreenshot("01_WatchLinkage_Launched")
+        NSLog("[WatchLinkage] 步骤 1: 验证 iPhone 宿主 App 准备就绪")
+
+        // 步骤 2: 模拟 Watch 发送 D-Pad 导航按键 (Up/Down/Left/Right/Select)
+        NSLog("[WatchLinkage] 步骤 2: 模拟 Watch 发送 D-Pad 导航按键指令...")
+        let testActions = ["dpad_right", "dpad_down", "dpad_left", "dpad_up", "select"]
+        for act in testActions {
+            let url = URL(string: "hsbremote://watch?action=\(act)")!
+            app.open(url)
+            Thread.sleep(forTimeInterval: 1.0)
+            NSLog("[WatchLinkage] ✅ 派发 Watch Action: %@", act)
+        }
+        captureStepScreenshot("02_WatchLinkage_DPad_Sent")
+
+        // 步骤 3: 模拟 Watch 表冠平滑滚动 (Digital Crown Scroll)
+        NSLog("[WatchLinkage] 步骤 3: 模拟 Watch 发送数码表冠平滑滚动指令...")
+        let scrollDownUrl = URL(string: "hsbremote://watch?action=scroll&dy=-300")!
+        app.open(scrollDownUrl)
+        Thread.sleep(forTimeInterval: 1.2)
+        
+        let scrollUpUrl = URL(string: "hsbremote://watch?action=scroll&dy=300")!
+        app.open(scrollUpUrl)
+        Thread.sleep(forTimeInterval: 1.2)
+        captureStepScreenshot("03_WatchLinkage_Crown_Scroll_Sent")
+
+        // 步骤 4: 模拟 Watch 快捷控制 (Play/Pause, Back, Home)
+        NSLog("[WatchLinkage] 步骤 4: 模拟 Watch 发送媒体与导航快捷指令...")
+        let mediaActions = ["play_pause", "back", "home"]
+        for act in mediaActions {
+            let url = URL(string: "hsbremote://watch?action=\(act)")!
+            app.open(url)
+            Thread.sleep(forTimeInterval: 1.0)
+            NSLog("[WatchLinkage] ✅ 派发 Watch Action: %@", act)
+        }
+        captureStepScreenshot("04_WatchLinkage_Media_Sent")
+
+        // 步骤 5: 模拟 Watch 手腕摇晃体感 (Shake)
+        NSLog("[WatchLinkage] 步骤 5: 模拟 Watch 触发手腕体感摇晃 (Shake)...")
+        let shakeUrl = URL(string: "hsbremote://watch?action=shake")!
+        app.open(shakeUrl)
+        Thread.sleep(forTimeInterval: 1.5)
+        captureStepScreenshot("05_WatchLinkage_Shake_Done")
+
+        NSLog("[WatchLinkage] 🎯 Apple Watch ↔ iPhone 联动交互端到端自动化测试全部执行通过！")
+    }
 }

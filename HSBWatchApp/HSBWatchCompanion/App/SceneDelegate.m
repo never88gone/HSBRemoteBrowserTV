@@ -70,6 +70,22 @@
                 NSLog(@"[SceneDelegate] Received pairing PIN via URL scheme: %@", code);
                 [HSBModernRemoteBridge submitNativePIN:code completion:nil];
             }
+        } else if ([[url.host lowercaseString] isEqualToString:@"watch"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *action = nil;
+            CGFloat dy = 0;
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"action"]) action = item.value;
+                if ([item.name isEqualToString:@"dy"]) dy = [item.value doubleValue];
+            }
+            if (action.length > 0) {
+                NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithObject:action forKey:@"action"];
+                if (dy != 0) {
+                    payload[@"dy"] = @(dy);
+                }
+                NSLog(@"[SceneDelegate] Simulating Watch payload: %@", payload);
+                [[HSBWatchSessionManager sharedManager] handleIncomingPayload:payload];
+            }
         } else if ([[url.host lowercaseString] isEqualToString:@"guide"]) {
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
             NSString *type = @"browser";

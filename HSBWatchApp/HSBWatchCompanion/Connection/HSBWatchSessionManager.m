@@ -113,9 +113,36 @@ NSString * const HSBWatchActionReceivedNotification = @"HSBWatchActionReceivedNo
         });
     }
     
-    // 中介转发逻辑：将手表的控制 payload 发给 TVOS！
+    // 中介转发逻辑：将手表的控制 payload 映射并转发给 TVOS 糖葫芦浏览器！
     if ([HSBTVOSConnectionManager sharedManager].isConnected) {
-        [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+        if ([action isEqualToString:@"dpad_up"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionUp];
+        } else if ([action isEqualToString:@"dpad_down"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionDown];
+        } else if ([action isEqualToString:@"dpad_left"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionLeft];
+        } else if ([action isEqualToString:@"dpad_right"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionRight];
+        } else if ([action isEqualToString:@"select"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionSelect];
+        } else if ([action isEqualToString:@"back"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionMenu];
+        } else if ([action isEqualToString:@"home"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPageHome];
+        } else if ([action isEqualToString:@"play_pause"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPlay];
+        } else if ([action isEqualToString:@"reload"]) {
+            [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPageReload];
+        } else if ([action isEqualToString:@"scroll"]) {
+            CGFloat dy = [payload[@"dy"] doubleValue];
+            [[HSBTVOSConnectionManager sharedManager] sendPayload:@{
+                HSBRemotePayloadKeyAction: HSBRemoteSimulateActionMacScroll,
+                @"dx": @(0),
+                @"dy": @(dy)
+            }];
+        } else {
+            [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
+        }
     }
 }
 

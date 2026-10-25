@@ -221,6 +221,35 @@ platform :ios do
     end
   end
 
+  desc "Cancel current App Store submission"
+  lane :cancel_submission do
+    api_key = get_asc_api_key
+    app = Spaceship::ConnectAPI::App.find("com.never88gone.thlbrowserios")
+    if app
+      UI.message("正在查找正在审核中的 Review Submissions...")
+      begin
+        resp = Spaceship::ConnectAPI.get_review_submissions(app_id: app.id)
+        submissions = resp.to_models
+        UI.message("找到 #{submissions.count} 个 Review Submissions")
+        submissions.each do |sub|
+          UI.message("ReviewSubmission ID: #{sub.id}, State: #{sub.state}")
+          if ["WAITING_FOR_REVIEW", "IN_REVIEW", "SUBMITTED"].include?(sub.state)
+            UI.message("🚨 正在取消 Review Submission: #{sub.id}...")
+            sub.cancel_submission
+            UI.success("🎉 已成功取消 Review Submission: #{sub.id}！")
+          end
+        end
+      rescue => e
+        UI.error("处理 Review Submissions 异常: #{e.message}\n#{e.backtrace.first(3).join("\n")}")
+      end
+
+      versions = app.get_app_store_versions
+      versions.each do |v|
+        UI.message("版本 #{v.version_string} 当前状态: #{v.app_store_state}")
+      end
+    end
+  end
+
   desc "Legacy local build and upload lane"
   lane :beta do
     repo_root = ENV["GITHUB_WORKSPACE"] || ENV["CI_PROJECT_DIR"] || File.expand_path("../..", __dir__)
