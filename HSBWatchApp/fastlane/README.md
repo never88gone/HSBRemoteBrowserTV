@@ -15,13 +15,13 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 ## iOS
 
-### ios beta
+### ios upload_testflight
 
 ```sh
-[bundle exec] fastlane ios beta
+[bundle exec] fastlane ios upload_testflight
 ```
 
-Build and upload iOS Companion app to TestFlight
+Upload verified iOS IPA to TestFlight (never rebuilds)
 
 ### ios metadata
 
@@ -29,7 +29,31 @@ Build and upload iOS Companion app to TestFlight
 [bundle exec] fastlane ios metadata
 ```
 
-Upload and sync App Store metadata and screenshots without compiling code
+Upload and sync App Store metadata and screenshots
+
+### ios submit_for_review
+
+```sh
+[bundle exec] fastlane ios submit_for_review
+```
+
+Submit App Store Version 1.0.0 for Review
+
+### ios check_status
+
+```sh
+[bundle exec] fastlane ios check_status
+```
+
+Check App Store Connect Status
+
+### ios beta
+
+```sh
+[bundle exec] fastlane ios beta
+```
+
+Legacy local build and upload lane
 
 ----
 

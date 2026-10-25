@@ -32,8 +32,10 @@ locales.each do |locale|
              when [1320, 2868], [1290, 2796], [1260, 2736] then 'iPhone 6.9 inch'
              when [1284, 2778], [1242, 2688] then 'iPhone 6.5 inch'
              when [1206, 2622] then 'iPhone 6.3 inch'
-             when [416, 496] then 'Apple Watch 46 mm'
-             when [396, 484] then 'Apple Watch 45 mm'
+             when [416, 496] then 'Apple Watch 46 mm (Series 10)'
+             when [396, 484] then 'Apple Watch 45 mm (Series 7/8/9)'
+             when [368, 448] then 'Apple Watch 44 mm (Series 4/5/6/SE)'
+             when [312, 390] then 'Apple Watch 42 mm (Series 3)'
              end
 
     errors << "不合规的截图尺寸 #{width}x#{height}: #{path}" unless device

@@ -3,6 +3,20 @@
 
 require "open3"
 require "digest"
+require "socket"
+
+# 自动检测并注入本地代理以加速 App Store Connect 通信，杜绝 SSL 抖动
+[6152, 7890, 7897, 1087].each do |port|
+  begin
+    s = TCPSocket.new('127.0.0.1', port)
+    s.close
+    ENV['http_proxy'] = "http://127.0.0.1:#{port}"
+    ENV['https_proxy'] = "http://127.0.0.1:#{port}"
+    ENV['ALL_PROXY'] = "http://127.0.0.1:#{port}"
+    break
+  rescue => e
+  end
+end
 
 # 自动读取并注入本地私有 .env 环境变量（如果存在，仅用于本地调试；在云端 CI 时安全跳过）
 ['../../.env', '../.env', '.env'].each do |relative_path|
@@ -126,9 +140,84 @@ platform :ios do
       skip_binary_upload: true,
       skip_screenshots: false,
       force: true,
-      overwrite_screenshots: true
+      overwrite_screenshots: true,
+      run_precheck_before_submit: false,
+      precheck_include_in_app_purchases: false
     )
     UI.success("🎉 App Store Metadata sync completed successfully!")
+  end
+
+  desc "Submit App Store Version 1.0.0 for Review"
+  lane :submit_for_review do |options|
+    validator = File.expand_path("validate_review_assets.rb", __dir__)
+    stdout, stderr, status = Open3.capture3("ruby", validator)
+    unless status.success?
+      UI.user_error!("Screenshot asset validation failed:\n#{stderr}\n#{stdout}")
+    end
+    UI.message(stdout)
+
+    api_key = get_asc_api_key
+    target_build = options[:build_number] || "20261025092634"
+    UI.message("🚀 正在将最新已就绪构建 (#{target_build}) 与中英文官方元数据提交至 App Store 审核...")
+
+    attempts = 0
+    begin
+      attempts += 1
+      deliver(
+        api_key: api_key,
+        build_number: target_build,
+        skip_binary_upload: true,
+        skip_screenshots: false,
+        overwrite_screenshots: true,
+        force: true,
+        submit_for_review: true,
+        automatic_release: true,
+        run_precheck_before_submit: false,
+        precheck_include_in_app_purchases: false,
+        submission_information: {
+          add_id_info_uses_idfa: false,
+          export_compliance_uses_encryption: false,
+          export_compliance_is_exempt: true
+        }
+      )
+    rescue => e
+      if attempts < 3
+        UI.important("⚠️ 遇到瞬态网络异常: #{e.message}，正在 3 秒后自动重试 (第 #{attempts} 次)...")
+        sleep 3
+        retry
+      else
+        raise e
+      end
+    end
+    UI.success("🎉 App Store 审核正式提交成功！")
+  end
+
+  desc "Check App Store Connect Status"
+  lane :check_status do
+    api_key = get_asc_api_key
+    app = Spaceship::ConnectAPI::App.find("com.never88gone.thlbrowserios")
+    if app
+      UI.message("✅ 成功连通 App Store Connect！")
+      UI.message("App 名称: #{app.name}")
+      UI.message("App ID: #{app.id}")
+      UI.message("Bundle ID: #{app.bundle_id}")
+      versions = app.get_app_store_versions
+      versions.each do |v|
+        UI.message("  [App Store Version] #{v.version_string} -> #{v.app_store_state} (#{v.platform})")
+        b = v.get_build rescue nil
+        if b
+          UI.message("    当前关联构建: #{b.version}")
+        else
+          UI.message("    当前未关联构建")
+        end
+      end
+      builds = app.get_builds(limit: 5)
+      builds.each do |b|
+        UI.message("  [Available Build] #{b.version} (#{b.uploaded_date}) -> processing: #{b.processing_state}")
+      end
+    else
+      UI.user_error!("未找到 bundle_id 为 com.never88gone.thlbrowserios 的 App")
+    end
   end
 
   desc "Legacy local build and upload lane"
