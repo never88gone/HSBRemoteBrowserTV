@@ -17,6 +17,7 @@ extern NSString * const HSBWatchActionReceivedNotification;
 
 - (void)startSession;
 - (void)updateWatchSessionStateWithHandler:(void (^)(NSString *statusText))handler;
+- (void)handleIncomingPayload:(NSDictionary<NSString *, id> *)payload;
 
 @end
 

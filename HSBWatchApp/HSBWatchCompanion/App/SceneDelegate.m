@@ -9,6 +9,7 @@
 #import "AppDelegate.h"
 #import "HSBThemeManager.h"
 #import "HSBTVOSConnectionManager.h"
+#import "HSBWatchSessionManager.h"
 #import "HSBWatchCompanion-Swift.h"
 
 @interface SceneDelegate ()
