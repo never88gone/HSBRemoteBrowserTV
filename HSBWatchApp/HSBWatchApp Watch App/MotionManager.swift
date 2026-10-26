@@ -380,6 +380,22 @@ class MotionManager: NSObject, ObservableObject, WCSessionDelegate, WKExtendedRu
         let action = delta > 0 ? "zoom_in" : "zoom_out"
         sendRemoteAction(action, extra: ["scale": 1.0 + delta], haptic: .click)
     }
+
+    func sendVolumeUp() {
+        sendRemoteAction("volume_up", haptic: .directionUp)
+    }
+
+    func sendVolumeDown() {
+        sendRemoteAction("volume_down", haptic: .directionDown)
+    }
+
+    func sendMute() {
+        sendRemoteAction("mute", haptic: .click)
+    }
+
+    func sendToggleFullscreen() {
+        sendRemoteAction("fullscreen", haptic: .click)
+    }
     
     private func sendMessage(action: String) {
         sendPayload(["action": action])
