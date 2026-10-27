@@ -148,8 +148,8 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
     if (!self.presentingViewController) return;
     
     if (isMac) {
-        NSString *macMsg = [NSString stringWithFormat:HSBLocalText(@"未能与 “%@” 建立原生媒体控制通道。\n\n• 开启免装软件控制通道：\n请确认 Mac 的 [系统设置] -> [通用] -> [隔空播放与接力] 中，已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与 Mac 连接在同一局域网 Wi-Fi 下。", @"未能与 “%@” 建立原生媒体控制通道。\n\n• 开启免装软件控制通道：\n请确认 Mac 的 [系统设置] -> [通用] -> [隔空播放与接力] 中，已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与 Mac 连接在同一局域网 Wi-Fi 下。"), device.name];
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:HSBLocalText(@"Mac 连接指引", @"Mac 连接指引") message:macMsg preferredStyle:UIAlertControllerStyleAlert];
+        NSString *macMsg = [NSString stringWithFormat:HSBLocalText(@"未能与 “%@” 建立原生隔空播放媒体控制连接。\n\n• 开启免装软件原生控制：\n请在目标 Mac 打开【系统设置】->【通用】->【隔空播放与接力】，确保已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与该 Mac 处于同一 Wi-Fi 局域网下。", @"未能与 “%@” 建立原生隔空播放媒体控制连接。\n\n• 开启免装软件原生控制：\n请在目标 Mac 打开【系统设置】->【通用】->【隔空播放与接力】，确保已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与该 Mac 处于同一 Wi-Fi 局域网下。"), device.name];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:HSBLocalText(@"Mac 隔空播放连接指引", @"Mac 隔空播放连接指引") message:macMsg preferredStyle:UIAlertControllerStyleAlert];
         __weak typeof(self) weakSelf = self;
         [alert addAction:[UIAlertAction actionWithTitle:HSBLocalText(@"🔄 重试连接", @"🔄 重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
             [weakSelf connectToDevice:device];

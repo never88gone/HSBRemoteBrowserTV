@@ -114,14 +114,12 @@ public struct ModernDPadView: View {
                             isCenterPressed = true
                             mediumHaptic.prepare()
                             mediumHaptic.impactOccurred()
-                            onSelect?(.press)
                         }
                     }
                     .onEnded { _ in
                         withAnimation(.easeOut(duration: HSBRemoteConstants.blinkDuration)) {
                             isCenterPressed = false
                         }
-                        onSelect?(.release)
                         onSelect?(.tap)
                     }
             )
@@ -180,14 +178,12 @@ public struct ModernDPadView: View {
                         pressedDirection = direction
                         lightHaptic.prepare()
                         lightHaptic.impactOccurred()
-                        onDirection?(direction, .press)
                     }
                 }
                 .onEnded { _ in
                     withAnimation(.easeOut(duration: HSBRemoteConstants.blinkDuration)) {
                         pressedDirection = nil
                     }
-                    onDirection?(direction, .release)
                     onDirection?(direction, .tap)
                 }
         )

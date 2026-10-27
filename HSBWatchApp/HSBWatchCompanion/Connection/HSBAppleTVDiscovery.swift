@@ -68,7 +68,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public var displaySubtitle: String {
         if isMacDevice {
             let modelStr = modelName ?? "Mac"
-            return "macOS (\(modelStr)) · 系统媒体控制就绪"
+            return "macOS (\(modelStr)) · 原生隔空播放媒体控制"
         }
         if let model = modelName, !model.isEmpty {
             return "Apple TV (\(model)) · 系统原生硬件就绪"

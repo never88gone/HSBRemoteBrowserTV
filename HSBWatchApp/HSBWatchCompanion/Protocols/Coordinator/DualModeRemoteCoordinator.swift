@@ -225,6 +225,14 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         router.sendSystemKey(key)
     }
     
+    public var isSleeping: Bool {
+        return nativeClient.isSleeping
+    }
+    
+    public func wakeAndConnect(completion: ((Bool) -> Void)? = nil) {
+        nativeClient.wakeAndConnect(completion: completion)
+    }
+    
     public func wakeDevice(host: String, completion: ((Bool) -> Void)? = nil) {
         nativeClient.wakeDevice(host: host, completion: completion)
     }

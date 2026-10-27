@@ -8,6 +8,8 @@ import SwiftUI
 public struct ModernSystemRemoteView: View {
     public var dpadSize: CGFloat = 220.0
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
+    @State private var isAwakeAndConnected: Bool = DualModeRemoteCoordinator.shared.nativeClient.isConnected && !DualModeRemoteCoordinator.shared.isSleeping
+    private let timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     
     public init(dpadSize: CGFloat = 220.0) {
         self.dpadSize = dpadSize
@@ -62,8 +64,15 @@ public struct ModernSystemRemoteView: View {
                     systemIslandRoundButton(icon: "speaker.slash.fill", label: "静音") {
                         DualModeRemoteCoordinator.shared.sendSystemKey(.mute)
                     }
-                    systemIslandRoundButton(icon: "power", label: "待机") {
+                    systemIslandRoundButton(
+                        icon: "power",
+                        label: isAwakeAndConnected ? "待机" : "开机",
+                        tintColor: isAwakeAndConnected ? nil : Color.green
+                    ) {
                         DualModeRemoteCoordinator.shared.sendSystemKey(.power)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            self.isAwakeAndConnected = DualModeRemoteCoordinator.shared.nativeClient.isConnected && !DualModeRemoteCoordinator.shared.isSleeping
+                        }
                     }
                 }
                 
@@ -123,6 +132,12 @@ public struct ModernSystemRemoteView: View {
             Spacer(minLength: 6)
                 .frame(maxHeight: 16)
         }
+        .onReceive(timer) { _ in
+            let current = DualModeRemoteCoordinator.shared.nativeClient.isConnected && !DualModeRemoteCoordinator.shared.isSleeping
+            if current != self.isAwakeAndConnected {
+                self.isAwakeAndConnected = current
+            }
+        }
     }
     
     private func mediaControlButton(icon: String, title: String, isPrimary: Bool = false, action: @escaping () -> Void) -> some View {
@@ -151,7 +166,7 @@ public struct ModernSystemRemoteView: View {
     }
     
     @ViewBuilder
-    private func systemIslandRoundButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+    private func systemIslandRoundButton(icon: String, label: String, tintColor: Color? = nil, action: @escaping () -> Void) -> some View {
         Button(action: {
             lightHaptic.impactOccurred()
             action()
@@ -159,19 +174,19 @@ public struct ModernSystemRemoteView: View {
             VStack(spacing: 4) {
                 ZStack {
                     Circle()
-                        .fill(Color(UIColor.tertiarySystemBackground))
+                        .fill(tintColor != nil ? tintColor!.opacity(0.18) : Color(UIColor.tertiarySystemBackground))
                         .frame(width: 42, height: 42)
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                .stroke(tintColor != nil ? tintColor!.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
                         )
                     Image(systemName: icon)
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundColor(.primary)
+                        .foregroundColor(tintColor ?? .primary)
                 }
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(tintColor ?? .secondary)
             }
             .frame(maxWidth: .infinity)
         }

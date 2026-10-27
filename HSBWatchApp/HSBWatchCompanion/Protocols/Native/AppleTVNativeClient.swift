@@ -27,12 +27,15 @@ public final class AppleTVNativeClient: NSObject {
     
     public private(set) var isConnected: Bool = false
     public private(set) var isPairing: Bool = false
+    public private(set) var isSleeping: Bool = false
     public private(set) var currentDeviceName: String?
     public private(set) var currentHost: String?
     public private(set) var currentPort: UInt16 = 49152
     public private(set) var currentDevice: AppleTVDevice?
     public private(set) var userInitiatedDisconnect: Bool = false
     private var autoReconnectWorkItem: DispatchWorkItem?
+    private var pendingWakeCommand: RemoteCommand?
+    private var pendingWakeCommandAt: Date?
     
     // 核心协议栈组件
     public private(set) var transport = EncryptedFrameTransport()
@@ -47,9 +50,72 @@ public final class AppleTVNativeClient: NSObject {
         super.init()
     }
     
-    // MARK: - Port Knocking Wakeup
+    // MARK: - Port Knocking Wakeup & Sleep Management
     public func wakeDevice(host: String, completion: ((Bool) -> Void)? = nil) {
         AppleTVWakeService.wakeDevice(host: host, targetDeviceName: currentDeviceName, completion: completion)
+    }
+    
+    public func sleep() {
+        guard isConnected else { return }
+        NSLog("[ATV_CONNECT] sleep() called — sending .sleep frame and transitioning to sleeping state")
+        session?.send(.sleep)
+        isSleeping = true
+        isConnected = false
+        connectionEpoch &+= 1
+        autoReconnectWorkItem?.cancel()
+        autoReconnectWorkItem = nil
+        connectTimeoutItem?.cancel()
+        connectTimeoutItem = nil
+        session?.close()
+        session = nil
+        pairingFlow?.reset()
+        pairingFlow = nil
+        transport.reset()
+        self.delegate?.nativeClient(self, didChangeState: .disconnected)
+    }
+    
+    public func wakeAndConnect(completion: ((Bool) -> Void)? = nil) {
+        guard let host = currentHost ?? UserDefaults.standard.string(forKey: "HSBLastConnectedTVHost"),
+              let devName = currentDeviceName ?? UserDefaults.standard.string(forKey: "HSBLastConnectedTVName") else {
+            completion?(false)
+            return
+        }
+        
+        NSLog("[ATV_CONNECT] wakeAndConnect() initiated for %@ at %@", devName, host)
+        userInitiatedDisconnect = false
+        pendingWakeCommand = .menu
+        pendingWakeCommandAt = Date()
+        
+        self.delegate?.nativeClient(self, didChangeState: .connecting(deviceName: devName, mode: .nativeOnly))
+        
+        AppleTVWakeService.wakeDevice(host: host, targetDeviceName: devName) { [weak self] success in
+            guard let self = self else {
+                completion?(false)
+                return
+            }
+            NSLog("[ATV_CONNECT] AppleTVWakeService knock completed (awake=%d). Initiating socket connection...", success ? 1 : 0)
+            self.connect(host: host, deviceName: devName, port: self.currentPort)
+            completion?(success)
+        }
+    }
+    
+    private func flushPendingWakeCommand() {
+        guard let command = pendingWakeCommand else { return }
+        let now = Date()
+        if let at = pendingWakeCommandAt, now.timeIntervalSince(at) > 100 {
+            NSLog("[ATV_CONNECT] Dropping expired wake command (%@)", String(describing: command))
+            pendingWakeCommand = nil
+            pendingWakeCommandAt = nil
+            return
+        }
+        pendingWakeCommand = nil
+        pendingWakeCommandAt = nil
+        
+        NSLog("[ATV_CONNECT] Flushing pending wake command: %@ to turn on TV screen (HDMI-CEC)", String(describing: command))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self = self, self.isConnected, let session = self.session else { return }
+            session.send(command)
+        }
     }
     
     // MARK: - Connection & Pairing
@@ -148,6 +214,7 @@ public final class AppleTVNativeClient: NSObject {
     public func disconnect(userInitiated: Bool = false) {
         if userInitiated {
             userInitiatedDisconnect = true
+            isSleeping = false
             autoReconnectWorkItem?.cancel()
             autoReconnectWorkItem = nil
         }
@@ -185,12 +252,15 @@ public final class AppleTVNativeClient: NSObject {
                 case .connected:
                     NSLog("[ATV_CONNECT] PairingFlow state: .connected for %@", device.name)
                     self.isConnected = true
+                    self.isSleeping = false
                     self.isPairing = false
                     let stored = self.credentialStore.load(deviceID: device.id)
                     let clientID = stored?.clientID ?? UUID().uuidString
                     let clientName = stored?.name ?? "HSBRemoteBrowser"
                     self.session?.sendSessionInit(clientID: clientID, name: clientName)
                     self.session?.startKeepalive()
+                    
+                    self.flushPendingWakeCommand()
                     
                     self.delegate?.nativeClient(self, didChangeState: .ready(deviceName: device.name, mode: .nativeOnly))
                     
@@ -277,6 +347,16 @@ public final class AppleTVNativeClient: NSObject {
     
     // MARK: - Companion HID Commands
     public func sendSystemKey(_ key: SystemKey, action: KeyAction = .tap, completion: ((Bool) -> Void)? = nil) {
+        if key == .power {
+            if isConnected {
+                sleep()
+            } else {
+                wakeAndConnect()
+            }
+            completion?(true)
+            return
+        }
+        
         let cmd: RemoteCommand = {
             switch key {
             case .home: return .home
@@ -296,8 +376,8 @@ public final class AppleTVNativeClient: NSObject {
         
         guard let session = self.session, self.isConnected else {
             if let host = self.currentHost, let devName = self.currentDeviceName, self.credentialStore.hasCredentials(for: devName) {
-                NSLog("[ATV_CONNECT] sendSystemKey triggered while disconnected, auto-resuming connection...")
-                self.connect(host: host, deviceName: devName, port: self.currentPort)
+                NSLog("[ATV_CONNECT] sendSystemKey triggered while disconnected/sleeping, auto-waking and reconnecting...")
+                wakeAndConnect()
             }
             completion?(true)
             return

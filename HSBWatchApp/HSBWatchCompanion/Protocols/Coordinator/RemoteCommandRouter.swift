@@ -22,15 +22,16 @@ public final class RemoteCommandRouter {
     // MARK: - D-pad & Select
     public func sendDPad(direction: DPadDirection, action: KeyAction = .tap) {
         if isCurrentTargetMac {
-            let cmd: String = {
-                switch direction {
-                case .up: return "up"
-                case .down: return "down"
-                case .left: return "left"
-                case .right: return "right"
-                }
-            }()
-            MacMediaCommandDispatcher.dispatchCommand(cmd)
+            switch direction {
+            case .left:
+                MacMediaCommandDispatcher.dispatchCommand("backward")
+            case .right:
+                MacMediaCommandDispatcher.dispatchCommand("forward")
+            case .up:
+                MacMediaCommandDispatcher.dispatchCommand("volume_up")
+            case .down:
+                MacMediaCommandDispatcher.dispatchCommand("volume_down")
+            }
             return
         }
         if HSBTVOSConnectionManager.shared().isConnected {
@@ -57,17 +58,6 @@ public final class RemoteCommandRouter {
                 }
             }()
             nativeClient.sendSystemKey(sysKey, action: action)
-            let touchDelta: (dx: CGFloat, dy: CGFloat) = {
-                switch direction {
-                case .up: return (0, -120)
-                case .down: return (0, 120)
-                case .left: return (-120, 0)
-                case .right: return (120, 0)
-                }
-            }()
-            nativeClient.sendTouchEvent(phase: 1, point: CGPoint(x: 500, y: 500))
-            nativeClient.sendTouchEvent(phase: 2, point: CGPoint(x: 500 + touchDelta.dx, y: 500 + touchDelta.dy))
-            nativeClient.sendTouchEvent(phase: 3, point: CGPoint(x: 500 + touchDelta.dx, y: 500 + touchDelta.dy))
         case .dual:
             if screenClient.isConnected {
                 screenClient.send(command: .button(action: direction.actionName))
@@ -87,7 +77,7 @@ public final class RemoteCommandRouter {
     
     public func sendSelect(action: KeyAction = .tap) {
         if isCurrentTargetMac {
-            MacMediaCommandDispatcher.dispatchCommand("select")
+            MacMediaCommandDispatcher.dispatchCommand("play_pause")
             return
         }
         if HSBTVOSConnectionManager.shared().isConnected {
@@ -95,8 +85,6 @@ public final class RemoteCommandRouter {
         }
         if currentMode == .nativeOnly {
             nativeClient.sendSystemKey(.select, action: action)
-            nativeClient.sendTouchEvent(phase: 1, point: CGPoint(x: 500, y: 500))
-            nativeClient.sendTouchEvent(phase: 3, point: CGPoint(x: 500, y: 500))
         } else {
             if screenClient.isConnected {
                 screenClient.send(command: .button(action: "select"))
@@ -108,10 +96,7 @@ public final class RemoteCommandRouter {
     
     // MARK: - Touchpad & Cursor
     public func sendCursorPan(dx: CGFloat, dy: CGFloat) {
-        if isCurrentTargetMac {
-            MacMediaCommandDispatcher.dispatchCommand("pan", params: ["dx": dx, "dy": dy])
-            return
-        }
+        if isCurrentTargetMac { return }
         if currentMode == .nativeOnly {
             let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
             nativeClient.sendTouchEvent(phase: 2, point: pt)
@@ -121,10 +106,7 @@ public final class RemoteCommandRouter {
     }
     
     public func sendTap(mode: Int = 1, point: CGPoint? = nil) {
-        if isCurrentTargetMac {
-            MacMediaCommandDispatcher.dispatchCommand("tap")
-            return
-        }
+        if isCurrentTargetMac { return }
         if currentMode == .nativeOnly {
             nativeClient.sendTouchEvent(phase: 1, point: point ?? CGPoint(x: 500, y: 500))
         } else {
@@ -133,10 +115,7 @@ public final class RemoteCommandRouter {
     }
     
     public func sendScroll(dx: CGFloat, dy: CGFloat) {
-        if isCurrentTargetMac {
-            MacMediaCommandDispatcher.dispatchCommand("scroll", params: ["dy": dy])
-            return
-        }
+        if isCurrentTargetMac { return }
         let legacyMgr = HSBTVOSConnectionManager.shared()
         if screenClient.isConnected || legacyMgr.isConnected {
             screenClient.send(command: .scroll(dx: dx, dy: dy))
@@ -169,10 +148,7 @@ public final class RemoteCommandRouter {
     
     // MARK: - Text Input
     public func sendTextInput(text: String, isAtomicReplace: Bool = false) {
-        if isCurrentTargetMac {
-            MacMediaCommandDispatcher.dispatchCommand("text", params: ["text": text])
-            return
-        }
+        if isCurrentTargetMac { return }
         if isAtomicReplace {
             let script = "if (document.activeElement && 'value' in document.activeElement) { document.activeElement.value = '\(text)'; document.activeElement.dispatchEvent(new Event('input', {bubbles:true})); }"
             coordinator.executeJavaScript(script, completion: nil)
@@ -186,14 +162,12 @@ public final class RemoteCommandRouter {
     public func sendKeyCommand(key: SpecialKey) {
         if isCurrentTargetMac {
             switch key {
-            case .enter:
-                MacMediaCommandDispatcher.dispatchCommand("select")
+            case .enter, .space:
+                MacMediaCommandDispatcher.dispatchCommand("play_pause")
             case .escape:
-                MacMediaCommandDispatcher.dispatchCommand("back")
-            case .space:
-                MacMediaCommandDispatcher.dispatchCommand("space")
+                MacMediaCommandDispatcher.dispatchCommand("mute")
             case .backspace:
-                MacMediaCommandDispatcher.dispatchCommand("backspace")
+                break
             }
             return
         }
@@ -272,12 +246,20 @@ public final class RemoteCommandRouter {
         }
         switch key {
         case .home:
+            if isCurrentTargetMac {
+                MacMediaCommandDispatcher.dispatchCommand("play_pause")
+                return
+            }
             if currentMode == .screenOnly {
                 screenClient.send(command: .pageAction(action: .home))
             } else {
                 nativeClient.sendSystemKey(.home)
             }
         case .menu:
+            if isCurrentTargetMac {
+                MacMediaCommandDispatcher.dispatchCommand("mute")
+                return
+            }
             if currentMode == .screenOnly {
                 screenClient.send(command: .button(action: "menu"))
             } else {
@@ -286,6 +268,7 @@ public final class RemoteCommandRouter {
         case .volumeUp:
             if isCurrentTargetMac {
                 MacMediaCommandDispatcher.dispatchCommand("volume_up")
+                return
             }
             if currentMode == .nativeOnly {
                 nativeClient.sendSystemKey(.volumeUp)
@@ -295,6 +278,7 @@ public final class RemoteCommandRouter {
         case .volumeDown:
             if isCurrentTargetMac {
                 MacMediaCommandDispatcher.dispatchCommand("volume_down")
+                return
             }
             if currentMode == .nativeOnly {
                 nativeClient.sendSystemKey(.volumeDown)
@@ -304,6 +288,7 @@ public final class RemoteCommandRouter {
         case .mute:
             if isCurrentTargetMac {
                 MacMediaCommandDispatcher.dispatchCommand("mute")
+                return
             }
             if currentMode == .nativeOnly {
                 nativeClient.sendMRPMuteToggle()
@@ -311,10 +296,15 @@ public final class RemoteCommandRouter {
                 screenClient.send(command: .volume(action: "toggle_mute", value: nil))
             }
         case .power:
+            if isCurrentTargetMac {
+                MacMediaCommandDispatcher.dispatchCommand("pause")
+                return
+            }
             nativeClient.sendSystemKey(.power)
         case .playPause:
             if isCurrentTargetMac {
                 MacMediaCommandDispatcher.dispatchCommand("play_pause")
+                return
             }
             if currentMode == .screenOnly {
                 screenClient.send(command: .media(action: .play, value: nil))

@@ -193,7 +193,12 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             MacMediaCommandDispatcher.verifyConnection(host: device.host) { isOnline in
                 DispatchQueue.main.async {
                     NSLog("[MacRemote] Connection verification to Mac %@ (host: %@) result: %d", device.name, device.host, isOnline)
-                    completion?(true, nil)
+                    if isOnline {
+                        completion?(true, nil)
+                    } else {
+                        DualModeRemoteCoordinator.shared.disconnectAll()
+                        completion?(false, "目标 Mac 未开启系统自带的【隔空播放接收器】功能")
+                    }
                 }
             }
             return
