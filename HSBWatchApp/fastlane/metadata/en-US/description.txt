@@ -2,31 +2,37 @@ Tanghulu Smart Remote is a versatile, ultra-responsive companion controller desi
 
 [Core Interactive Scenarios]
 
-1. Native Mac System Control & Wireless Trackpad:
-• Precision Wireless Trackpad: Supports single-finger smooth cursor gliding, single-tap left click, and two-finger tap for right-click context menus;
-• Ergonomic Ballistics Curve: Pixel-accurate slow micro-adjustments and smooth acceleration for effortless cross-screen flicks;
-• Smooth Two-Finger Scrolling: Infinite continuous scrolling with natural physics inertia for documents and web pages;
-• Fullscreen Trackpad Mode: One-tap toggle to expand the trackpad across the entire viewport for maximum control area;
-• Native Backspace & Typing: Full hardware Backspace/Delete key integration alongside streamlined text dispatch;
-• Complete System Controls: Global volume HUD adjustments, one-tap mute, Apple Music media playback, and Mission Control triggering.
+1. Native macOS AirPlay Media & Volume Center:
+• 100% Clientless & Zero-Install: Communicates natively via macOS built-in AirPlay Receiver (Port 7000) with 0 software to install, 0 background daemons, and 0 accessibility permissions needed on the Mac;
+• Global Hardware Volume Control: Volume stepping up/down, smooth volume slider indication, and one-tap hardware mute toggle;
+• Full Playback Management: System-wide Play/Pause, 10s Fast-Forward/Rewind, and Next/Previous track switching;
+• Vinyl Record Visual Card: Elegant vinyl aesthetic accompanied by live dynamic waveform frequency visualizer;
+• Instant Native Handshake: Low-level TCP health check for real-time connection status with clear native setup guidance.
 
 2. Apple TV System Remote:
 • Ergonomic D-pad directional navigation wheel with tactile haptic feedback;
-• Integrated Control Island: Quick seek 10s backward/forward, play/pause, Home, Menu, Mute, Standby, and volume controls;
+• Integrated Control Island: Quick seek 10s backward/forward, play/pause, Home, Menu, Mute, Standby/Sleep, and volume controls;
+• Anti-Double-Firing verification to prevent duplicate key taps; supports Wake-on-LAN (WoL) and auto-reconnection;
 • Streamlined software keyboard entry for effortless large-screen typing and search.
 
-3. IPTV & Television Channel Tuning:
+3. Standalone Apple Watch Companion App:
+• Native D-Pad Haptic Wheel: Ergonomically crafted directional wheel tailored for watchOS;
+• Digital Crown Infinite Scroll: Rotate the crown for pixel-perfect smooth scrolling through web pages and documents;
+• Wearable Air Mouse: Utilizes 6-axis motion sensors for intuitive wrist-guided air pointing and gestures;
+• Standalone Media Control: Independently adjust volume and control playback directly from your wrist.
+
+4. IPTV & Television Channel Tuning:
 • Dual-tower CH+/- and VOL+/- stepping controls for classic TV watching;
 • Instant-play shortcuts for favorite TV channels;
 • Numeric keypad channel dialing and convenient EPG guide access.
 
-4. PDF Presentation & Live Drawing Whiteboard:
+5. PDF Presentation & Live Drawing Whiteboard:
 • Large slide turners and first/last page jumping for confident presentation control;
 • On-screen laser pointer and real-time live drawing whiteboard with multi-color palette and undo support.
 
-5. Apple Watch Motion & Smart Assistant:
-• Wearable motion sync engine: wrist flip to turn slides, shake to refresh;
-• On-device private local LLM assistant for offline TV control guidance and Q&A.
+6. Large Screen Browser Touchpad & Edge AI Assistant:
+• High-precision dampening touchpad and floating cursor for smart TV browsers;
+• On-device MLX local LLM assistant offering 100% private, offline TV guidance and Q&A.
 
 [Seamless Local Connectivity]
 • Instant Bonjour zero-configuration discovery over local Wi-Fi;

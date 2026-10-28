@@ -250,6 +250,169 @@ platform :ios do
     end
   end
 
+  desc "Check screenshots processing state"
+  lane :check_screenshots_state do
+    api_key = get_asc_api_key
+    app = Spaceship::ConnectAPI::App.find("com.never88gone.thlbrowserios")
+    version = app.get_app_store_versions.first
+    locs = version.get_app_store_version_localizations
+    total = 0
+    pending = 0
+    locs.each do |loc|
+      sets = loc.get_app_screenshot_sets rescue []
+      sets.each do |s|
+        shots = s.get_app_screenshots rescue []
+        shots.each do |shot|
+          total += 1
+          st = shot.asset_delivery_state["state"] rescue "UNKNOWN"
+          if st != "COMPLETE"
+            pending += 1
+            UI.message("处理中: #{loc.locale} - #{s.screenshot_display_type} (ID: #{shot.id}) -> #{st}")
+          end
+        end
+      end
+    end
+    UI.message("📊 当前总截图数: #{total}, 处理中数: #{pending}")
+  end
+
+  desc "Diagnose and submit review submission via Spaceship API"
+  lane :diagnose_and_submit do |options|
+    api_key = get_asc_api_key
+    app = Spaceship::ConnectAPI::App.find("com.never88gone.thlbrowserios")
+    version = app.get_app_store_versions.first
+    target_build_number = options[:build_number] || "20261027132506"
+    
+    UI.message("App: #{app.name} (#{app.id}), Version: #{version.version_string} (#{version.id}), State: #{version.app_store_state}")
+    
+    # 查找构建
+    build = app.get_builds.find { |b| b.version == target_build_number }
+    UI.user_error!("未找到构建: #{target_build_number}") unless build
+    UI.message("找到目标构建: #{build.version} (#{build.id})")
+    
+    # 绑定构建到当前版本
+    begin
+      version.select_build(build_id: build.id)
+      UI.success("✅ 成功绑定构建 #{build.version} 到版本 #{version.version_string}")
+    rescue => e
+      UI.important("绑定构建响应: #{e.message}")
+    end
+
+    # 补全年龄分级 (Age Rating Declaration) 中缺失的必填属性 socialMedia
+    begin
+      app_info_resp = Spaceship::ConnectAPI.get_app_infos(app_id: app.id)
+      app_info = app_info_resp.to_models.first
+      if app_info
+        UI.message("找到 AppInfo: #{app_info.id}")
+        age_resp = Spaceship::ConnectAPI.get_age_rating_declaration(app_info_id: app_info.id)
+        age_decl = age_resp.to_models.first
+        if age_decl
+          UI.message("找到 AgeRatingDeclaration (ID: #{age_decl.id}), 当前 socialMedia: #{age_decl.social_media.inspect}")
+          Spaceship::ConnectAPI.patch_age_rating_declaration(
+            age_rating_declaration_id: age_decl.id,
+            attributes: {
+              socialMedia: false,
+              socialMediaAgeRestricted: false
+            }
+          )
+          UI.success("✅ 成功补全 AgeRatingDeclaration socialMedia 属性为 false！")
+        else
+          UI.error("未找到 AgeRatingDeclaration")
+        end
+      else
+        UI.error("未找到 AppInfo")
+      end
+    rescue => e
+      UI.error("AgeRatingDeclaration 检查更新异常: #{e.message}\n#{e.backtrace.first(3).join("\n")}")
+    end
+
+    # 检查当前 review submissions
+    resp = Spaceship::ConnectAPI.get_review_submissions(app_id: app.id)
+    submissions = resp.to_models
+    UI.message("当前共有 #{submissions.count} 个 Review Submissions")
+    
+    active_sub = nil
+    submissions.each do |sub|
+      UI.message("Submission #{sub.id} -> State: #{sub.state}")
+      if ["READY_FOR_REVIEW", "RESOLVING_ISSUES"].include?(sub.state)
+        active_sub = sub
+      end
+    end
+
+    if active_sub.nil?
+      UI.message("创建新的 Review Submission...")
+      begin
+        new_sub_resp = Spaceship::ConnectAPI.post_review_submission(app_id: app.id, platform: "IOS")
+        active_sub = new_sub_resp.to_models.first
+        UI.success("✅ 成功创建新的 Review Submission: #{active_sub.id}")
+      rescue => e
+        UI.error("创建 Review Submission 失败: #{e.message}")
+      end
+    end
+
+    # 等待苹果服务器完成所有截图后台处理 (直到无 processing 状态)
+    UI.message("⏳ 正在等待苹果服务器完成截图转码处理...")
+    15.times do |attempt|
+      locs = version.get_app_store_version_localizations
+      pending_count = 0
+      locs.each do |loc|
+        sets = loc.get_app_screenshot_sets rescue []
+        sets.each do |s|
+          shots = s.get_app_screenshots rescue []
+          shots.each do |shot|
+            st = shot.asset_delivery_state["state"] rescue "UNKNOWN"
+            if st != "COMPLETE"
+              pending_count += 1
+            end
+          end
+        end
+      end
+      if pending_count == 0
+        UI.success("🎉 所有截图已在苹果服务器处理完毕 (全部 COMPLETE)！")
+        break
+      else
+        UI.message("仍有 #{pending_count} 张截图处理中... 等待 6 秒 (第 #{attempt + 1}/15 次)")
+        sleep 6
+      end
+    end
+
+    if active_sub
+      # 检查是否有 items
+      items = active_sub.get_items rescue []
+      UI.message("当前 Submission 包含 #{items.count} 个 items")
+      has_version_item = items.any? { |it| (it.app_store_version_id rescue nil) == version.id }
+      
+      unless has_version_item
+        UI.message("将当前 App Store Version (#{version.id}) 添加到 Submission items...")
+        item_added = false
+        5.times do |item_attempt|
+          begin
+            Spaceship::ConnectAPI.post_review_submission_item(
+              review_submission_id: active_sub.id,
+              app_store_version_id: version.id
+            )
+            item_added = true
+            UI.success("✅ 成功添加 Version 到 Review Submission items")
+            break
+          rescue => e
+            UI.important("添加 item 尝试 #{item_attempt + 1}/5 失败: #{e.message}")
+            sleep 8
+          end
+        end
+        UI.user_error!("未能将 Version 添加到 Review Submission") unless item_added
+      end
+
+      # 提交审核
+      UI.message("🚀 正在提交 Review Submission (#{active_sub.id}) 至 App Store 官方审核...")
+      begin
+        active_sub.submit_for_review
+        UI.success("🎉 App Store 官方审核正式提交成功！状态已变为 WAITING_FOR_REVIEW！")
+      rescue => e
+        UI.error("提交审核异常: #{e.message}")
+        raise e
+      end
+    end
+  end
+
   desc "Legacy local build and upload lane"
   lane :beta do
     repo_root = ENV["GITHUB_WORKSPACE"] || ENV["CI_PROJECT_DIR"] || File.expand_path("../..", __dir__)

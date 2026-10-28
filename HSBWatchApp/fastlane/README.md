@@ -55,6 +55,22 @@ Check App Store Connect Status
 
 Cancel current App Store submission
 
+### ios check_screenshots_state
+
+```sh
+[bundle exec] fastlane ios check_screenshots_state
+```
+
+Check screenshots processing state
+
+### ios diagnose_and_submit
+
+```sh
+[bundle exec] fastlane ios diagnose_and_submit
+```
+
+Diagnose and submit review submission via Spaceship API
+
 ### ios beta
 
 ```sh

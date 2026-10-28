@@ -53,6 +53,7 @@ public struct MacOSMediaRemoteView: View {
                     .background(Capsule().fill(Color.white.opacity(0.12)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_disconnect_button")
                 
                 HStack(spacing: 6) {
                     Image(systemName: "desktopcomputer")
@@ -155,6 +156,7 @@ public struct MacOSMediaRemoteView: View {
                         .background(Circle().fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_media_backward_button")
                 
                 Button(action: {
                     haptic.impactOccurred()
@@ -167,6 +169,7 @@ public struct MacOSMediaRemoteView: View {
                         .background(Circle().fill(Color.white.opacity(0.12)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_media_previous_button")
                 
                 // 核心大尺寸播放/暂停按键
                 Button(action: {
@@ -185,6 +188,7 @@ public struct MacOSMediaRemoteView: View {
                     }
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_media_play_pause_button")
                 
                 Button(action: {
                     haptic.impactOccurred()
@@ -197,6 +201,7 @@ public struct MacOSMediaRemoteView: View {
                         .background(Circle().fill(Color.white.opacity(0.12)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_media_next_button")
                 
                 Button(action: {
                     lightHaptic.impactOccurred()
@@ -209,6 +214,7 @@ public struct MacOSMediaRemoteView: View {
                         .background(Circle().fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(ScaleButtonStyle())
+                .accessibilityIdentifier("mac_media_forward_button")
             }
             
             Spacer(minLength: 10)
@@ -230,6 +236,7 @@ public struct MacOSMediaRemoteView: View {
                             .cornerRadius(10)
                     }
                     .buttonStyle(ScaleButtonStyle())
+                    .accessibilityIdentifier("mac_volume_down_button")
                     
                     // 音量滑动刻度条
                     GeometryReader { geo in
@@ -259,6 +266,7 @@ public struct MacOSMediaRemoteView: View {
                             .cornerRadius(10)
                     }
                     .buttonStyle(ScaleButtonStyle())
+                    .accessibilityIdentifier("mac_volume_up_button")
                     
                     Button(action: {
                         haptic.impactOccurred()
@@ -273,6 +281,7 @@ public struct MacOSMediaRemoteView: View {
                             .cornerRadius(10)
                     }
                     .buttonStyle(ScaleButtonStyle())
+                    .accessibilityIdentifier("mac_volume_mute_button")
                 }
             }
             .padding(14)

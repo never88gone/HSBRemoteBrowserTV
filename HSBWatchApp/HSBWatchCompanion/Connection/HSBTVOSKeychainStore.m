@@ -60,7 +60,7 @@ static NSString * const HSBRemoteDeviceIDDefaultsKey = @"HSBRemote.DeviceIdentit
     [resultList addObject:@{
         @"tvID": @"HSBTV7",
         @"name": @"糖葫芦TV",
-        @"host": @"192.168.1.244",
+        @"host": @"127.0.0.1",
         @"port": @"56789",
         @"deviceID": @"AUTOMATION-VERIFIER-REAL",
         @"key": @"WlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlo"

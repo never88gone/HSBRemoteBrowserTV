@@ -6,6 +6,7 @@
 //
 
 #import "AppDelegate.h"
+#import "SceneDelegate.h"
 
 @interface AppDelegate ()
 
@@ -16,6 +17,17 @@
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     return YES;
+}
+
+- (BOOL)application:(UIApplication *)app openURL:(NSURL *)url options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options {
+    NSLog(@"[AppDelegate] application:openURL:options: received: %@", url);
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene.delegate respondsToSelector:@selector(handleRemotePairingURL:)]) {
+            [(SceneDelegate *)scene.delegate handleRemotePairingURL:url];
+            return YES;
+        }
+    }
+    return NO;
 }
 
 

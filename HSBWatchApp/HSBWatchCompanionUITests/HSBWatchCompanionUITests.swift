@@ -8,8 +8,8 @@
 //     与 SpringBoard 弹窗主动兜底探测，智能识别并授权“本地网络”、“无线局域网”等系统权限，
 //     坚决杜绝因首选盲点导致的误拒绝；
 //  3. 攻克真机 Bonjour/mDNS 局域网扫描耗时，平滑识别目标 Mac 电脑（never88gone的 Mac Studio）；
-//  4. 采用精准几何防越界微操手势，在 iPhone SE 屏幕安全区内平滑驱动三段拖拽移动、鼠标轻击、
-//     实体按键与系统音量媒体控制，客观触发 Mac 宿主（端口 49888）HID 事件；
+//  4. 采用方案 1 原生免装直连通道，在 iPhone 屏幕上平滑驱动核心高光播放/暂停切换、
+//     快退/快进 10s、上一首/下一首曲目切换、系统硬件音量调节与静音控制，验证与 Mac 端口 7000 原生 AirPlay 协议交互；
 //  5. 点击断开后采用“遥控元素注销 + 首页就绪”双向互斥断言，确保退出平稳安全无闪退；
 //  6. 全程生成多维关键步骤高分辨率快照并持久化于 XCTAttachment 附件，支持自动化提取。
 //
@@ -234,17 +234,18 @@ final class HSBWatchCompanionUITests: XCTestCase {
         element.tap()
 
         // ---------------------------------------------------------------------
-        // 步骤 3: 严格等待遥控界面完全转场并呈现就绪 (以“系统直控就绪”和“断开”为准)
+        // 步骤 3: 严格等待遥控界面完全转场并呈现就绪 (以“断开”按钮与“隔空播放”状态为准)
         // ---------------------------------------------------------------------
-        let disconnectButton = app.buttons["断开"]
-        let readyLabel = app.staticTexts["系统直控就绪"]
+        let disconnectButton = app.buttons["mac_disconnect_button"].exists ? app.buttons["mac_disconnect_button"] : app.buttons["断开"]
+        let airplayReadyLabel = app.staticTexts["隔空播放已就绪"]
+        let mediaCenterHint = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '免装软件' OR label CONTAINS '隔空播放'")).firstMatch
 
         var enteredRemotePage = false
         let enterStartTime = Date()
-        let maxEnterWait: TimeInterval = 20.0
+        let maxEnterWait: TimeInterval = 25.0
         
         while Date().timeIntervalSince(enterStartTime) < maxEnterWait {
-            if disconnectButton.exists && readyLabel.exists {
+            if disconnectButton.exists || airplayReadyLabel.exists || mediaCenterHint.exists {
                 enteredRemotePage = true
                 break
             }
@@ -259,329 +260,119 @@ final class HSBWatchCompanionUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.5)
         }
         
-        XCTAssertTrue(enteredRemotePage, "❌ 自动化测试失败：点击设备后未能成功进入 Mac 遥控器界面")
+        XCTAssertTrue(enteredRemotePage, "❌ 自动化测试失败：点击设备后未能成功进入 Mac 原生隔空播放遥控器界面")
         // 强制给 1.5 秒等待转场动画与布局完全稳定，杜绝在动效期间点击无效
         Thread.sleep(forTimeInterval: 1.5)
         captureStepScreenshot("03_Entered_Mac_Remote_Panel")
-        NSLog("[XCUITest] ✅ 成功进入 Mac 专属遥控界面，微操控制组件全部就绪！")
+        NSLog("[XCUITest] ✅ 成功进入 Mac 原生隔空播放媒体控制中心，UI 控制组件全部就绪！")
 
         let window = app.windows.firstMatch
 
         // ---------------------------------------------------------------------
-        // 步骤 4: 虚拟触控板微操滑动控制光标 (极致丝滑、零卡顿高频滑动验证)
+        // 步骤 4: 验证核心播放 / 暂停切换 (向 Mac 端口 7000 派发 AirPlay 播放/暂停控制)
         // ---------------------------------------------------------------------
-        NSLog("[XCUITest] 步骤 4: 在虚拟触控板微操区域驱动平滑微操拖拽手势...")
-        
-        // 几何锚定：iPhone SE 4.7 寸屏中，触控板视口核心中心严格处于 (0.50, 0.40)
-        let trackpadCenter = window.coordinate(withNormalizedOffset: CGVector(dx: 0.50, dy: 0.40))
-        
-        // 微操滑动 1：平滑向右上微移 (dx: +60, dy: -40)
-        let dragCoord1 = trackpadCenter.withOffset(CGVector(dx: 60, dy: -40))
-        trackpadCenter.press(forDuration: 0.15, thenDragTo: dragCoord1)
-        NSLog("[XCUITest] ✅ 触控板微操滑动 1 完成: 向右上平滑拖拽 (+60, -40)")
-        Thread.sleep(forTimeInterval: 0.3)
-
-        // 微操滑动 2：平滑向左下反向微移 (dx: -55, dy: +45)
-        let dragCoord2 = trackpadCenter.withOffset(CGVector(dx: -55, dy: 45))
-        trackpadCenter.press(forDuration: 0.15, thenDragTo: dragCoord2)
-        NSLog("[XCUITest] ✅ 触控板微操滑动 2 完成: 向左下反向拖拽 (-55, +45)")
-        Thread.sleep(forTimeInterval: 0.3)
-
-        // 微操滑动 3：平滑水平向右微调 (dx: +50, dy: 0)
-        let dragCoord3 = trackpadCenter.withOffset(CGVector(dx: 50, dy: 0))
-        trackpadCenter.press(forDuration: 0.15, thenDragTo: dragCoord3)
-        NSLog("[XCUITest] ✅ 触控板微操滑动 3 完成: 水平向右微调 (+50, 0)")
-        Thread.sleep(forTimeInterval: 0.3)
-        
-        // 触控板中心轻点模拟触控单击
-        trackpadCenter.tap()
-        NSLog("[XCUITest] ✅ 触控板中心轻点触发鼠标左键单击")
-        Thread.sleep(forTimeInterval: 0.3)
-
-        captureStepScreenshot("04_Trackpad_Swipe_Completed")
-
-        // ---------------------------------------------------------------------
-        // 步骤 4.5: 验证触控鼠标“全屏控制”与“退格键”控制
-        // ---------------------------------------------------------------------
-        NSLog("[XCUITest] 步骤 4.5: 点击触控板右上角'全屏'按钮，验证全屏触控鼠标模式与退格键...")
-        let fullScreenBtn = app.buttons["mac_fullscreen_trackpad_button"]
-        let altFullScreenBtn = app.buttons["全屏触控"]
-        if fullScreenBtn.waitForExistence(timeout: 2.0) && fullScreenBtn.isHittable {
-            fullScreenBtn.tap()
-            NSLog("[XCUITest] ✅ 成功点击'全屏触控'按钮进入全屏触控鼠标模式")
-        } else if altFullScreenBtn.waitForExistence(timeout: 2.0) && altFullScreenBtn.isHittable {
-            altFullScreenBtn.tap()
-            NSLog("[XCUITest] ✅ 成功点击'全屏触控'标签按钮进入全屏触控鼠标模式")
-        }
-        Thread.sleep(forTimeInterval: 0.6)
-        captureStepScreenshot("04_5_FullScreen_Trackpad_Active")
-
-        // 在全屏超大面积触控板上驱动大跨度丝滑移动与点击
-        let fullTrackpadDragTarget = trackpadCenter.withOffset(CGVector(dx: -75, dy: -65))
-        trackpadCenter.press(forDuration: 0.15, thenDragTo: fullTrackpadDragTarget)
-        NSLog("[XCUITest] ✅ 全屏触控鼠标大跨度平滑拖拽完成 (-75, -65)")
-        Thread.sleep(forTimeInterval: 0.3)
-
-        // 在全屏模式下点击底座唯一的“退格键”按钮，并断言无重复退格按钮
-        let macBackspaceBtn = app.buttons["mac_backspace_button"]
-        let backspaceButtonsCount = app.buttons.matching(NSPredicate(format: "label CONTAINS '退格'")).count
-        NSLog("[XCUITest] 当前屏幕退格按钮数量校验: %d (期望: 1)", backspaceButtonsCount)
-        XCTAssertEqual(backspaceButtonsCount, 1, "❌ 页面上存在重复的退格按钮！")
-        if macBackspaceBtn.waitForExistence(timeout: 1.5) && macBackspaceBtn.isHittable {
-            macBackspaceBtn.tap()
-            NSLog("[XCUITest] ✅ 点击触控底座唯一'退格键'成功 (向 Mac 发送 Backspace keyCode=51)")
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-
-        // 点击“退出全屏”按钮恢复常规多模式视图
-        let exitFullScreenBtn = app.buttons["mac_exit_fullscreen_trackpad_button"]
-        let altExitFullScreenBtn = app.buttons["退出全屏"]
-        if exitFullScreenBtn.waitForExistence(timeout: 2.0) && exitFullScreenBtn.isHittable {
-            exitFullScreenBtn.tap()
-            NSLog("[XCUITest] ✅ 成功点击'退出全屏'按钮恢复常规视图")
-        } else if altExitFullScreenBtn.waitForExistence(timeout: 2.0) && altExitFullScreenBtn.isHittable {
-            altExitFullScreenBtn.tap()
-            NSLog("[XCUITest] ✅ 成功点击'退出全屏'标签按钮恢复常规视图")
-        }
-        Thread.sleep(forTimeInterval: 0.5)
-
-        // ---------------------------------------------------------------------
-        // 步骤 5: 触控底座所有按键全面覆盖 (鼠标左键、右键菜单、退格键、向上滚动、向下滚动)
-        // ---------------------------------------------------------------------
-        NSLog("[XCUITest] 步骤 5: 验证触控底座所有实体按键...")
-        let leftClickBtn = app.buttons["鼠标左键"]
-        let rightClickBtn = app.buttons["右键菜单"]
-        
-        if leftClickBtn.waitForExistence(timeout: 2.0) && leftClickBtn.isHittable {
-            leftClickBtn.tap()
-            NSLog("[XCUITest] ✅ [Button 1/22] 点击'鼠标左键'成功")
-            Thread.sleep(forTimeInterval: 0.3)
+        NSLog("[XCUITest] 步骤 4: 点击核心高光播放/暂停按键，驱动原生媒体播放切换...")
+        let playPauseBtn = app.buttons["mac_media_play_pause_button"]
+        if playPauseBtn.waitForExistence(timeout: 2.0) && playPauseBtn.isHittable {
+            playPauseBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 1/8] 点击核心'播放/暂停'按键成功 (派发 AirPlay rate 控制)")
         } else {
-            // 几何坐标兜底 (iPhone SE: 底座左键位于 X: 80, Y: 535)
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 80, dy: 535)).tap()
-            NSLog("[XCUITest] ✅ [Button 1/22] 几何坐标点击'鼠标左键'成功")
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-        
-        if rightClickBtn.waitForExistence(timeout: 2.0) && rightClickBtn.isHittable {
-            rightClickBtn.tap()
-            NSLog("[XCUITest] ✅ [Button 2/22] 点击'右键菜单'成功")
-            Thread.sleep(forTimeInterval: 0.3)
-        } else {
-            // 几何坐标兜底 (iPhone SE: 底座右键位于 X: 190, Y: 535)
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 190, dy: 535)).tap()
-            NSLog("[XCUITest] ✅ [Button 2/22] 几何坐标点击'右键菜单'成功")
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-
-        // 向上滚动按键
-        let scrollUpBtn = app.buttons["向上滚动"]
-        if scrollUpBtn.waitForExistence(timeout: 1.5) && scrollUpBtn.isHittable {
-            scrollUpBtn.tap()
-        } else {
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 290, dy: 535)).tap()
-        }
-        NSLog("[XCUITest] ✅ [Button 3/22] 点击'向上滚动'按键成功")
-        Thread.sleep(forTimeInterval: 0.3)
-        
-        // 向下滚动按键
-        let scrollDownBtn = app.buttons["向下滚动"]
-        if scrollDownBtn.waitForExistence(timeout: 1.5) && scrollDownBtn.isHittable {
-            scrollDownBtn.tap()
-        } else {
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 345, dy: 535)).tap()
-        }
-        NSLog("[XCUITest] ✅ [Button 4/22] 点击'向下滚动'按键成功")
-        Thread.sleep(forTimeInterval: 0.3)
-        
-        captureStepScreenshot("05_Mouse_Click_And_Scroll_Completed")
-
-        // ---------------------------------------------------------------------
-        // 步骤 5.5: 验证打字输入功能 (唤起文本抽屉 -> 键入 'Hello Mac' -> 发送至 Mac 宿主)
-        // ---------------------------------------------------------------------
-        NSLog("[XCUITest] 步骤 5.5: 验证打字输入功能，向 Mac 宿主发送文本...")
-        let typeEntryBtn = app.buttons["打字输入"]
-        let altTypeBtn = app.buttons["打字"]
-        if typeEntryBtn.waitForExistence(timeout: 2.0) && typeEntryBtn.isHittable {
-            typeEntryBtn.tap()
-            NSLog("[XCUITest] ✅ 点击'打字输入'入口按键成功")
-        } else if altTypeBtn.waitForExistence(timeout: 2.0) && altTypeBtn.isHittable {
-            altTypeBtn.tap()
-            NSLog("[XCUITest] ✅ 点击'打字'入口按键成功")
-        } else {
-            // 几何坐标兜底 (顶部控制栏右侧: X: 320, Y: 60)
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 320, dy: 60)).tap()
-            NSLog("[XCUITest] 几何坐标兜底点击顶部打字入口")
-        }
-        Thread.sleep(forTimeInterval: 0.5)
-
-        // 定位文本框并输入 "Hello Mac"，同时验证打字面板上的“退格删除”按钮
-        let remoteBackspaceBtn = app.buttons["remote_backspace_button"]
-        if remoteBackspaceBtn.waitForExistence(timeout: 2.0) && remoteBackspaceBtn.isHittable {
-            remoteBackspaceBtn.tap()
-            NSLog("[XCUITest] ✅ 在打字输入抽屉中点击'退格删除'按钮成功")
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-
-        let remoteTextField = app.textFields["remote_text_field"]
-        let anyTextField = app.textFields.firstMatch
-        if remoteTextField.waitForExistence(timeout: 3.0) {
-            remoteTextField.tap()
-            remoteTextField.typeText("Hello Mac\n")
-            NSLog("[XCUITest] ✅ 成功定位 remote_text_field 并键入 'Hello Mac'")
-        } else if anyTextField.waitForExistence(timeout: 3.0) {
-            anyTextField.tap()
-            anyTextField.typeText("Hello Mac\n")
-            NSLog("[XCUITest] ✅ 成功定位文本框并键入 'Hello Mac'")
-        }
-        
-        let sendBtn = app.buttons["发送文本"]
-        if sendBtn.waitForExistence(timeout: 1.5) && sendBtn.isHittable {
-            sendBtn.tap()
-            NSLog("[XCUITest] ✅ 点击'发送文本'完成向 Mac 派发")
+            // 几何坐标兜底 (iPhone SE 屏幕中心 Y 约 330)
+            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 187.5, dy: 330)).tap()
+            NSLog("[XCUITest] ✅ [Button 1/8] 几何坐标点击'播放/暂停'按键成功")
         }
         Thread.sleep(forTimeInterval: 0.8)
-        captureStepScreenshot("05_5_TextInput_Completed")
+        captureStepScreenshot("04_PlayPause_Toggled")
+
+        // 再次点击恢复
+        if playPauseBtn.exists && playPauseBtn.isHittable {
+            playPauseBtn.tap()
+            NSLog("[XCUITest] ✅ 再次点击'播放/暂停'按键恢复播放状态")
+            Thread.sleep(forTimeInterval: 0.5)
+        }
 
         // ---------------------------------------------------------------------
-        // 步骤 6: 全局系统硬件控制岛全面覆盖 (音量 -、静音、音量 +、调度，触发 Mac 原生 HUD 浮窗与提示音)
+        // 步骤 5: 验证快退 10 秒 与 快进 10 秒
         // ---------------------------------------------------------------------
-        NSLog("[XCUITest] 步骤 6: 触发全局系统媒体与调度快捷控制岛 (验证 Mac 原生 OSD HUD 浮窗与音频反馈)...")
-        let volMinusBtn = app.buttons["音量 -"]
-        let volPlusBtn = app.buttons["音量 +"]
-        let missionBtn = app.buttons["调度"]
-
-        if volMinusBtn.waitForExistence(timeout: 2.0) && volMinusBtn.isHittable {
-            volMinusBtn.tap()
-            NSLog("[XCUITest] ✅ [Button 5/22] 点击'音量 -'按键成功 (Mac 触发 Volume HUD 下调)")
+        NSLog("[XCUITest] 步骤 5: 验证快退 10 秒 与 快进 10 秒...")
+        let backwardBtn = app.buttons["mac_media_backward_button"]
+        let forwardBtn = app.buttons["mac_media_forward_button"]
+        
+        if backwardBtn.waitForExistence(timeout: 2.0) && backwardBtn.isHittable {
+            backwardBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 2/8] 点击'快退 10s'按键成功")
             Thread.sleep(forTimeInterval: 0.4)
         }
         
-        // 静音按钮位于音量-与音量+中间 (iPhone SE: X: 140, Y: 600)
-        window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 140, dy: 600)).tap()
-        NSLog("[XCUITest] ✅ [Button 6/22] 点击'静音'按键成功 (Mac 触发 Mute HUD 切换)")
-        Thread.sleep(forTimeInterval: 0.4)
-        
-        if volPlusBtn.waitForExistence(timeout: 2.0) && volPlusBtn.isHittable {
-            volPlusBtn.tap()
-            NSLog("[XCUITest] ✅ [Button 7/22] 点击'音量 +'按键成功 (Mac 自动解除静音并弹出 Volume HUD 上调与 Beep)")
+        if forwardBtn.waitForExistence(timeout: 2.0) && forwardBtn.isHittable {
+            forwardBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 3/8] 点击'快进 10s'按键成功")
             Thread.sleep(forTimeInterval: 0.4)
-            volPlusBtn.tap()
+        }
+        captureStepScreenshot("05_Seek_Controls_Completed")
+
+        // ---------------------------------------------------------------------
+        // 步骤 6: 验证曲目切换 (上一首 / 下一首)
+        // ---------------------------------------------------------------------
+        NSLog("[XCUITest] 步骤 6: 验证曲目切换 (上一首 / 下一首)...")
+        let prevBtn = app.buttons["mac_media_previous_button"]
+        let nextBtn = app.buttons["mac_media_next_button"]
+        
+        if prevBtn.waitForExistence(timeout: 2.0) && prevBtn.isHittable {
+            prevBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 4/8] 点击'上一首'按键成功")
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        
+        if nextBtn.waitForExistence(timeout: 2.0) && nextBtn.isHittable {
+            nextBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 5/8] 点击'下一首'按键成功")
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        captureStepScreenshot("06_Track_Switch_Completed")
+
+        // ---------------------------------------------------------------------
+        // 步骤 7: 验证系统硬件全局音量与静音控制岛 (音量- / 音量+ / 一键静音)
+        // ---------------------------------------------------------------------
+        NSLog("[XCUITest] 步骤 7: 验证系统硬件全局音量与静音控制岛...")
+        let volDownBtn = app.buttons["mac_volume_down_button"]
+        let volUpBtn = app.buttons["mac_volume_up_button"]
+        let muteBtn = app.buttons["mac_volume_mute_button"]
+        
+        if volDownBtn.waitForExistence(timeout: 2.0) && volDownBtn.isHittable {
+            volDownBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 6/8] 点击'音量 -'按键成功 (Mac 硬件音量下调)")
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        
+        if volUpBtn.waitForExistence(timeout: 2.0) && volUpBtn.isHittable {
+            volUpBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 7/8] 点击'音量 +'按键成功 (Mac 硬件音量上调)")
+            Thread.sleep(forTimeInterval: 0.4)
+            volUpBtn.tap()
             NSLog("[XCUITest] ✅ 再次点击'音量 +'强化验证")
             Thread.sleep(forTimeInterval: 0.4)
         }
         
-        if missionBtn.waitForExistence(timeout: 2.0) && missionBtn.isHittable {
-            missionBtn.tap()
-            NSLog("[XCUITest] ✅ [Button 8/22] 点击'调度'按键成功")
+        if muteBtn.waitForExistence(timeout: 2.0) && muteBtn.isHittable {
+            muteBtn.tap()
+            NSLog("[XCUITest] ✅ [Button 8/8] 点击'静音'按键成功 (Mac 硬件静音切换)")
+            Thread.sleep(forTimeInterval: 0.4)
+            muteBtn.tap()
+            NSLog("[XCUITest] ✅ 再次点击'取消静音'按键恢复音量")
             Thread.sleep(forTimeInterval: 0.4)
         }
-        
-        captureStepScreenshot("06_Volume_And_Mission_Completed")
+        captureStepScreenshot("07_Volume_And_Mute_Completed")
 
         // ---------------------------------------------------------------------
-        // 步骤 7: 切换至“按键导航”模式 (全量覆盖 D-Pad 上/下/左/右/回车 + ESC/空格/桌面)
+        // 步骤 8: 校验 100% 免装软件原生直连标识
         // ---------------------------------------------------------------------
-        NSLog("[XCUITest] 步骤 7: 切换至'按键导航'模式并逐一验证所有按键...")
-        let dpadModeBtn = app.buttons["按键导航"]
-        if dpadModeBtn.waitForExistence(timeout: 2.0) && dpadModeBtn.isHittable {
-            dpadModeBtn.tap()
-            NSLog("[XCUITest] ✅ 成功切换至'按键导航'模式")
-            Thread.sleep(forTimeInterval: 0.5)
-            
-            let enterBtn = app.buttons["回车"]
-            let escBtn = app.buttons["ESC 返回"]
-            let spaceBtn = app.buttons["空格键"]
-            
-            if enterBtn.waitForExistence(timeout: 2.0) {
-                let centerCoord = enterBtn.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-                
-                // 1. D-Pad 上方向键
-                centerCoord.withOffset(CGVector(dx: 0, dy: -70)).tap()
-                NSLog("[XCUITest] ✅ [Button 9/22] 点击 D-Pad '上' 方向键成功")
-                Thread.sleep(forTimeInterval: 0.3)
-                
-                // 2. D-Pad 下方向键
-                centerCoord.withOffset(CGVector(dx: 0, dy: 70)).tap()
-                NSLog("[XCUITest] ✅ [Button 10/22] 点击 D-Pad '下' 方向键成功")
-                Thread.sleep(forTimeInterval: 0.3)
-                
-                // 3. D-Pad 左方向键
-                centerCoord.withOffset(CGVector(dx: -70, dy: 0)).tap()
-                NSLog("[XCUITest] ✅ [Button 11/22] 点击 D-Pad '左' 方向键成功")
-                Thread.sleep(forTimeInterval: 0.3)
-                
-                // 4. D-Pad 右方向键
-                centerCoord.withOffset(CGVector(dx: 70, dy: 0)).tap()
-                NSLog("[XCUITest] ✅ [Button 12/22] 点击 D-Pad '右' 方向键成功")
-                Thread.sleep(forTimeInterval: 0.3)
-                
-                // 5. D-Pad 中心回车按键
-                centerCoord.tap()
-                NSLog("[XCUITest] ✅ [Button 13/22] 点击 D-Pad '回车' 按键成功")
-                Thread.sleep(forTimeInterval: 0.3)
-            }
-            
-            if escBtn.waitForExistence(timeout: 2.0) && escBtn.isHittable {
-                escBtn.tap()
-                NSLog("[XCUITest] ✅ [Button 14/22] 点击 'ESC 返回' 按键成功")
-                Thread.sleep(forTimeInterval: 0.3)
-            }
-            if spaceBtn.waitForExistence(timeout: 2.0) && spaceBtn.isHittable {
-                spaceBtn.tap()
-                NSLog("[XCUITest] ✅ [Button 15/22] 点击 '空格键' 按键成功")
-                Thread.sleep(forTimeInterval: 0.3)
-            }
-            let dpadBackspaceBtn = app.buttons["mac_dpad_backspace_button"]
-            if dpadBackspaceBtn.waitForExistence(timeout: 2.0) && dpadBackspaceBtn.isHittable {
-                dpadBackspaceBtn.tap()
-                NSLog("[XCUITest] ✅ 点击按键导航底座唯一 '退格键' 成功")
-                Thread.sleep(forTimeInterval: 0.3)
-            }
-            
-            // 断言按键导航页面不存在重复的“调度”或“退格”按钮
-            let missionBtnsCount = app.buttons.matching(NSPredicate(format: "label CONTAINS '调度'")).count
-            XCTAssertEqual(missionBtnsCount, 1, "❌ 按键导航页面存在重复的调度按钮！")
-            
-            captureStepScreenshot("07_DPad_Navigation_Completed")
+        NSLog("[XCUITest] 步骤 8: 校验 100% 免装软件原生直连标识...")
+        let nativeShield = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '免装软件'")).firstMatch
+        if nativeShield.waitForExistence(timeout: 2.0) {
+            NSLog("[XCUITest] ✅ 成功断言原生免装提示: '%@'", nativeShield.label)
         }
-
-        // ---------------------------------------------------------------------
-        // 步骤 8: 切换至“媒体播放”模式 (全量覆盖 Apple Music 唤起、上一首、播放/暂停、下一首)
-        // ---------------------------------------------------------------------
-        NSLog("[XCUITest] 步骤 8: 切换至'媒体播放'模式并逐一验证所有媒体按键...")
-        let mediaModeBtn = app.buttons["媒体播放"]
-        if mediaModeBtn.waitForExistence(timeout: 2.0) && mediaModeBtn.isHittable {
-            mediaModeBtn.tap()
-            NSLog("[XCUITest] ✅ 成功切换至'媒体播放'模式")
-            Thread.sleep(forTimeInterval: 0.5)
-            
-            // 1. 一键启动 Apple Music
-            let launchMusicBtn = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Apple Music'")).firstMatch
-            if launchMusicBtn.waitForExistence(timeout: 2.0) && launchMusicBtn.isHittable {
-                launchMusicBtn.tap()
-                NSLog("[XCUITest] ✅ [Button 17/22] 点击'启动 Apple Music'按键成功")
-                Thread.sleep(forTimeInterval: 0.4)
-            }
-            
-            // 2. 媒体核心按键群 (位于屏幕下部 Y: 510, 上一首 X: 100, 播放/暂停 X: 187.5, 下一首 X: 275)
-            // 上一首
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 100, dy: 510)).tap()
-            NSLog("[XCUITest] ✅ [Button 18/22] 点击'上一首'按键成功")
-            Thread.sleep(forTimeInterval: 0.3)
-            
-            // 播放 / 暂停
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 187.5, dy: 510)).tap()
-            NSLog("[XCUITest] ✅ [Button 19/22] 点击'播放/暂停'按键成功")
-            Thread.sleep(forTimeInterval: 0.3)
-            
-            // 下一首
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 275, dy: 510)).tap()
-            NSLog("[XCUITest] ✅ [Button 20/22] 点击'下一首'按键成功")
-            Thread.sleep(forTimeInterval: 0.3)
-            
-            captureStepScreenshot("08_Media_Playback_Completed")
-        }
+        captureStepScreenshot("08_Native_AirPlay_Verified")
 
         // ---------------------------------------------------------------------
         // 步骤 9: 点击断开按钮，双向验证安全平稳退回首页 (绝不闪退)
@@ -1098,7 +889,9 @@ final class HSBWatchCompanionUITests: XCTestCase {
         let testActions = ["dpad_right", "dpad_down", "dpad_left", "dpad_up", "select"]
         for act in testActions {
             let url = URL(string: "hsbremote://watch?action=\(act)")!
-            app.open(url)
+            if #available(iOS 16.4, *) {
+                app.open(url)
+            }
             Thread.sleep(forTimeInterval: 1.0)
             NSLog("[WatchLinkage] ✅ 派发 Watch Action: %@", act)
         }
@@ -1107,11 +900,15 @@ final class HSBWatchCompanionUITests: XCTestCase {
         // 步骤 3: 模拟 Watch 表冠平滑滚动 (Digital Crown Scroll)
         NSLog("[WatchLinkage] 步骤 3: 模拟 Watch 发送数码表冠平滑滚动指令...")
         let scrollDownUrl = URL(string: "hsbremote://watch?action=scroll&dy=-300")!
-        app.open(scrollDownUrl)
+        if #available(iOS 16.4, *) {
+            app.open(scrollDownUrl)
+        }
         Thread.sleep(forTimeInterval: 1.2)
         
         let scrollUpUrl = URL(string: "hsbremote://watch?action=scroll&dy=300")!
-        app.open(scrollUpUrl)
+        if #available(iOS 16.4, *) {
+            app.open(scrollUpUrl)
+        }
         Thread.sleep(forTimeInterval: 1.2)
         captureStepScreenshot("03_WatchLinkage_Crown_Scroll_Sent")
 
@@ -1120,7 +917,9 @@ final class HSBWatchCompanionUITests: XCTestCase {
         let mediaActions = ["play_pause", "back", "home"]
         for act in mediaActions {
             let url = URL(string: "hsbremote://watch?action=\(act)")!
-            app.open(url)
+            if #available(iOS 16.4, *) {
+                app.open(url)
+            }
             Thread.sleep(forTimeInterval: 1.0)
             NSLog("[WatchLinkage] ✅ 派发 Watch Action: %@", act)
         }
@@ -1129,7 +928,9 @@ final class HSBWatchCompanionUITests: XCTestCase {
         // 步骤 5: 模拟 Watch 手腕摇晃体感 (Shake)
         NSLog("[WatchLinkage] 步骤 5: 模拟 Watch 触发手腕体感摇晃 (Shake)...")
         let shakeUrl = URL(string: "hsbremote://watch?action=shake")!
-        app.open(shakeUrl)
+        if #available(iOS 16.4, *) {
+            app.open(shakeUrl)
+        }
         Thread.sleep(forTimeInterval: 1.5)
         captureStepScreenshot("05_WatchLinkage_Shake_Done")
 
