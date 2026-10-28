@@ -49,6 +49,8 @@ fastlane/profiles/
 # Bundler
 .bundle/
 vendor/bundle
+Gemfile.lock
+**/Gemfile.lock
 
 # AI & Agent artifacts
 .agent
