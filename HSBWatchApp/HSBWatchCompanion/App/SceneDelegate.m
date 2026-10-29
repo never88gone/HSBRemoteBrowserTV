@@ -184,44 +184,10 @@
                     HSBRemotePayloadKeyAction: HSBRemoteSimulateActionMacTap,
                     @"mode": @(modeVal)
                 }];
-            } else if ([action isEqualToString:@"execute_js"] && scriptVal.length > 0) {
-                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionExecuteJS withParams:@{@"script": scriptVal}];
             } else if ([action isEqualToString:@"reload"]) {
                 [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPageReload];
             } else if ([action isEqualToString:@"home"]) {
                 [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPageHome];
-            }
-        } else if ([[url.host lowercaseString] isEqualToString:@"iptv"]) {
-            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-            NSString *actionName = nil;
-            NSString *urlVal = nil;
-            NSString *nameVal = nil;
-            NSString *epgVal = nil;
-            NSString *channelId = nil;
-            for (NSURLQueryItem *item in components.queryItems) {
-                if ([item.name isEqualToString:@"action"]) actionName = item.value;
-                if ([item.name isEqualToString:@"url"]) urlVal = item.value;
-                if ([item.name isEqualToString:@"name"]) nameVal = item.value;
-                if ([item.name isEqualToString:@"epg"]) epgVal = item.value;
-                if ([item.name isEqualToString:@"channel"]) channelId = item.value;
-            }
-            if ([actionName isEqualToString:@"import_source"] && urlVal.length > 0) {
-                NSMutableDictionary *payload = [NSMutableDictionary dictionary];
-                payload[HSBRemotePayloadKeyAction] = HSBRemoteSimulateActionIPTVImportSource;
-                payload[@"url"] = urlVal;
-                payload[@"name"] = nameVal ?: @"港澳台频道 (YanG)";
-                if (epgVal.length > 0) {
-                    payload[@"epgURL"] = epgVal;
-                }
-                [[HSBTVOSConnectionManager sharedManager] sendPayload:payload];
-            } else if ([actionName isEqualToString:@"channel_up"]) {
-                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionChannelUp];
-            } else if ([actionName isEqualToString:@"channel_down"]) {
-                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionChannelDown];
-            } else if ([actionName isEqualToString:@"play_channel"] && channelId.length > 0) {
-                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionIPTVPlayChannel withParams:@{@"channelId": channelId}];
-            } else if ([actionName isEqualToString:@"get_favorites"]) {
-                [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionIPTVGetFavorites];
             }
         } else if ([[url.host lowercaseString] isEqualToString:@"pdf"]) {
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];

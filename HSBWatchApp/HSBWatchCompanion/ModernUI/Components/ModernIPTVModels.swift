@@ -191,41 +191,4 @@ public struct PresetIPTVSource: Identifiable, Hashable {
     }
 }
 
-public let defaultPresetIPTVSources: [PresetIPTVSource] = [
-    PresetIPTVSource(
-        id: "aptv_cn",
-        name: "国内频道 (APTV)",
-        url: "https://raw.githubusercontent.com/Kimentanm/aptv/master/m3u/iptv.m3u",
-        epgURL: "https://epg.aptv.app/pp.xml.gz",
-        author: "APTV群主",
-        tag: "央视 / 卫视 / 地方台",
-        icon: "tv.fill"
-    ),
-    PresetIPTVSource(
-        id: "yuechan_cn",
-        name: "国内频道 (YueChan)",
-        url: "https://raw.githubusercontent.com/YueChan/Live/refs/heads/main/GNTV.m3u",
-        epgURL: nil,
-        author: "YueChan",
-        tag: "央视 / 卫视 / 高清直播",
-        icon: "play.tv.fill"
-    ),
-    PresetIPTVSource(
-        id: "yang_gath",
-        name: "港澳台频道 (YanG)",
-        url: "https://iptv.yang-1989.xyz/playlist.m3u",
-        epgURL: "https://iptv.yang-1989.xyz/epg.xml.gz",
-        author: "YanG",
-        tag: "港澳台精选 / 4K / 附EPG",
-        icon: "antenna.radiowaves.left.and.right"
-    ),
-    PresetIPTVSource(
-        id: "juli_gath",
-        name: "港澳台频道 (Juli)",
-        url: "https://cdn.qd.je/live.m3u",
-        epgURL: nil,
-        author: "Juli",
-        tag: "港澳台 / 海外精选",
-        icon: "globe.asia.australia.fill"
-    )
-]
+public let defaultPresetIPTVSources: [PresetIPTVSource] = []

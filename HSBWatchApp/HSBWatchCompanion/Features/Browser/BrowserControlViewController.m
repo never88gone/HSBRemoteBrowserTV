@@ -4,7 +4,6 @@
 //
 
 #import "BrowserControlViewController.h"
-#import "HSBBrowserScriptsBarView.h"
 #import "HSBBrowserVideoControlPanel.h"
 #import "HSBBrowserTouchpadView.h"
 #import "HSBBrowserSpeechAssistant.h"
@@ -21,7 +20,6 @@ static NSString * L(NSString *en, NSString *zh) {
 
 @interface BrowserControlViewController () <UITextFieldDelegate>
 
-@property (nonatomic, strong) HSBBrowserScriptsBarView *scriptsBarView;
 @property (nonatomic, strong) HSBBrowserTouchpadView *touchpadView;
 @property (nonatomic, strong) HSBBrowserVideoControlPanel *videoControlPanel;
 @property (nonatomic, strong) HSBBrowserSpeechAssistant *speechAssistant;
@@ -52,25 +50,8 @@ static NSString * L(NSString *en, NSString *zh) {
     handleIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     [headerView addSubview:handleIndicator];
 
-    // 2. JS Scripts Horizontal Bar
-    self.scriptsBarView = [[HSBBrowserScriptsBarView alloc] init];
-    self.scriptsBarView.translatesAutoresizingMaskIntoConstraints = NO;
+    // 2. Touchpad View
     __weak typeof(self) weakSelf = self;
-    self.scriptsBarView.onExecuteScript = ^(NSString *scriptName, NSString *jsContent) {
-        [weakSelf.touchpadView setStatusText:[NSString stringWithFormat:@"🚀 Running %@...", scriptName]];
-        NSDictionary *payload = @{
-            HSBRemotePayloadKeyAction: HSBRemoteSimulateActionExecuteJS,
-            HSBRemotePayloadKeyContent: jsContent,
-            HSBRemotePayloadKeyScript: jsContent,
-            HSBRemotePayloadKeyTimestamp: @([[NSDate date] timeIntervalSince1970]),
-            HSBRemotePayloadKeyRequestId: [[NSUUID UUID] UUIDString]
-        };
-        [weakSelf sendDirectPayload:payload];
-        [weakSelf.touchpadView setStatusText:L(@"Ready", @"就绪") restoreReadyAfter:1.5];
-    };
-    [self.view addSubview:self.scriptsBarView];
-
-    // 3. Touchpad View
     self.touchpadView = [[HSBBrowserTouchpadView alloc] init];
     self.touchpadView.translatesAutoresizingMaskIntoConstraints = NO;
     self.touchpadView.checkConnection = ^BOOL{
@@ -198,14 +179,8 @@ static NSString * L(NSString *en, NSString *zh) {
         [handleIndicator.widthAnchor constraintEqualToConstant:40],
         [handleIndicator.heightAnchor constraintEqualToConstant:6],
         
-        // Scripts
-        [self.scriptsBarView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
-        [self.scriptsBarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.scriptsBarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.scriptsBarView.heightAnchor constraintEqualToConstant:36],
-        
         // Trackpad
-        [self.touchpadView.topAnchor constraintEqualToAnchor:self.scriptsBarView.bottomAnchor constant:12],
+        [self.touchpadView.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:10],
         [self.touchpadView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:20],
         [self.touchpadView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-20],
         [self.touchpadView.bottomAnchor constraintEqualToAnchor:urlBarContainer.topAnchor constant:-12],
@@ -401,7 +376,6 @@ static NSString * L(NSString *en, NSString *zh) {
 
 - (void)applyThemeStyle {
     [super applyThemeStyle];
-    [self.scriptsBarView applyThemeStyle];
     [self.videoControlPanel applyThemeStyle];
 }
 

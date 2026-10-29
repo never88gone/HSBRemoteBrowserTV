@@ -54,54 +54,6 @@ struct ModernIPTVSourceManagerSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("精选推荐频道源") {
-                    ForEach(defaultPresetIPTVSources) { preset in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(alignment: .center, spacing: 8) {
-                                Image(systemName: preset.icon)
-                                    .foregroundColor(.accentColor)
-                                    .font(.system(size: 16))
-                                    .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(preset.name)
-                                        .font(.subheadline.weight(.semibold))
-                                    Text("\(preset.author) · \(preset.tag)")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Button("填入") {
-                                    importSourceName = preset.name
-                                    playlistURLText = preset.url
-                                    epgURLText = preset.epgURL ?? ""
-                                    lightHaptic.impactOccurred()
-                                }
-                                .font(.caption.weight(.medium))
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                Button("导入") {
-                                    importSourceName = preset.name
-                                    playlistURLText = preset.url
-                                    epgURLText = preset.epgURL ?? ""
-                                    haptic.impactOccurred()
-                                    onSubmitPlaylistURL()
-                                }
-                                .font(.caption.weight(.semibold))
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .disabled(!isConnected)
-                            }
-                            Text(preset.url)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.secondary.opacity(0.8))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                        .padding(.vertical, 3)
-                    }
-                }
-
                 Section("导入自定义频道源") {
                     TextField("来源名称", text: $importSourceName)
                         .textInputAutocapitalization(.words)
