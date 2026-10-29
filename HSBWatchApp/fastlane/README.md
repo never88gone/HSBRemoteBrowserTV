@@ -71,14 +71,6 @@ Check screenshots processing state
 
 Diagnose and submit review submission via Spaceship API
 
-### ios fetch_rejection_reason
-
-```sh
-[bundle exec] fastlane ios fetch_rejection_reason
-```
-
-Fetch review rejection reason and messages
-
 ### ios beta
 
 ```sh

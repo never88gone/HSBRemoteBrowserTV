@@ -285,6 +285,7 @@ platform :ios do
     UI.message("App: #{app.name} (#{app.id}), Version: #{version.version_string} (#{version.id}), State: #{version.app_store_state}")
     
     # 查找构建
+    target_build_number = options[:build_number] || "20261029015847"
     build = app.get_builds.find { |b| b.version == target_build_number }
     UI.user_error!("未找到构建: #{target_build_number}") unless build
     UI.message("找到目标构建: #{build.version} (#{build.id})")
@@ -295,6 +296,56 @@ platform :ios do
       UI.success("✅ 成功绑定构建 #{build.version} 到版本 #{version.version_string}")
     rescue => e
       UI.important("绑定构建响应: #{e.message}")
+    end
+
+    # 更新 App Store 审核备注 (Notes) 为 Guideline 2.5.19 专项合规声明
+    begin
+      review_detail_resp = Spaceship::ConnectAPI.get_app_store_review_detail(app_store_version_id: version.id)
+      review_detail = review_detail_resp.to_models.first
+      if review_detail
+        new_notes = <<~NOTES.strip
+          Dear Apple App Review Team,
+
+          Thank you for reviewing Tanghulu Remote!
+
+          [Compliance Update Regarding Guideline 2.5.19]:
+          In direct response to feedback regarding Guideline 2.5.19:
+          - We have completely deleted all external JavaScript automation scripts (douyin_*.js, tencent_*.js) and removed the script execution toolbar (HSBBrowserScriptsBarView) from the app bundle.
+          - We have purged all hardcoded stream playlist URLs (.m3u/.m3u8 sources) and removed the preset channel source recommendation section from the UI.
+          - All bookmarks in the built-in home view are strictly limited to official, authorized search and knowledge portals (Apple, Bing, Wikipedia).
+          - The app operates exclusively as a wireless hardware companion remote controller for Apple TV (Companion HID protocol) and Mac (native AirPlay media playback controls).
+
+          [How to Test Without External TV / Mac Hardware]:
+          To test all interactive capabilities without physical TV/Mac hardware:
+          1. Launch the app on iPhone.
+          2. Tap the Apple TV Remote icon on the top-right navigation bar to enter the full-featured remote controller interface:
+             - System Remote Tab: 270pt tactile D-pad navigation wheel, center OK select, media controls (seek 10s back/forward, play/pause), volume steppers, and system buttons (Home, Menu, Mute, Standby) with native Taptic Engine feedback.
+             - Interactive Tab: Wireless trackpad for large-screen presentation control with glide, scroll, and click interactions.
+             - TV Remote Tab: Standard channel switching (CH+/-) and volume controls (VOL+/-) for smart displays.
+             - Presentation Tab: Wireless slide turners (next/prev slide) and laser pointer annotation whiteboard.
+             - Keyboard Drawer: Tap the keyboard button in the navigation bar to test synchronized text input.
+          3. Tap the Gear icon (top-right) on the home screen to access Settings and the in-app Privacy Policy.
+
+          [Real Hardware Pairing (Optional)]:
+          - Apple TV: The app automatically discovers local Apple TVs via Bonjour; tap to pair using the on-screen 4-digit PIN.
+          - Mac: Discovered Mac devices connect natively via AirPlay for system media playback and volume control without any external helper installation.
+
+          [Privacy & Account]:
+          - Zero login or registration required.
+          - No subscriptions or in-app purchases; all features are completely free and unlocked.
+          - Zero personal data is tracked or transmitted (100% compliant with Guideline 5.1).
+
+          Thank you very much for your time and guidance!
+        NOTES
+
+        Spaceship::ConnectAPI.patch_app_store_review_detail(
+          app_store_review_detail_id: review_detail.id,
+          attributes: { notes: new_notes }
+        )
+        UI.success("✅ 成功更新 AppStoreReviewDetail 审核备注 (Notes)！")
+      end
+    rescue => e
+      UI.error("更新审核备注异常: #{e.message}")
     end
 
     # 补全年龄分级 (Age Rating Declaration) 中缺失的必填属性 socialMedia
@@ -333,7 +384,10 @@ platform :ios do
     active_sub = nil
     submissions.each do |sub|
       UI.message("Submission #{sub.id} -> State: #{sub.state}")
-      if ["READY_FOR_REVIEW", "RESOLVING_ISSUES"].include?(sub.state)
+      if ["UNRESOLVED_ISSUES", "RESOLVING_ISSUES"].include?(sub.state)
+        UI.message("取消旧的被拒/未解决 Submission: #{sub.id}...")
+        sub.cancel_submission rescue nil
+      elsif sub.state == "READY_FOR_REVIEW"
         active_sub = sub
       end
     end
