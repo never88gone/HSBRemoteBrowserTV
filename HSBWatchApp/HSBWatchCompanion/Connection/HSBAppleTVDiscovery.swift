@@ -9,6 +9,7 @@
 import Foundation
 import Network
 import os.log
+import Darwin
 
 private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "AppleTVDiscovery")
 
@@ -48,6 +49,12 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         return isNativeAppleTV && isBrowserApp
     }
     
+    @objc public var isAndroidTV: Bool {
+        let lowerModel = (modelName ?? "").lowercased()
+        let lowerName = name.lowercased()
+        return lowerModel.contains("android") || lowerName.contains("android") || (isBrowserApp && !isNativeAppleTV && !isMacDevice)
+    }
+    
     @objc public var isMacDevice: Bool {
         let lowerModel = (modelName ?? "").lowercased()
         let lowerName = name.lowercased()
@@ -55,6 +62,9 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     }
     
     @objc public var deviceCategoryIconName: String {
+        if isAndroidTV {
+            return "tv.and.mediabox"
+        }
         if isMacDevice {
             let lower = (modelName ?? "").lowercased()
             if lower.contains("book") {
@@ -66,6 +76,9 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     }
     
     @objc public var displaySubtitle: String {
+        if isAndroidTV {
+            return "Android TV · 糖葫芦大屏专属遥控就绪"
+        }
         if isMacDevice {
             let modelStr = modelName ?? "Mac"
             return "macOS (\(modelStr)) · 原生隔空播放媒体控制"
@@ -82,6 +95,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public static let shared = HSBAppleTVDiscovery()
     
     private var companionBrowser: NetServiceBrowser?
+    private var thlTVBrowser: NetServiceBrowser?
+    private var probeWorkItem: DispatchWorkItem?
     
     private var services: [String: NetService] = [:]
     private var deviceMap: [String: HSBDiscoveredAppleTV] = [:]
@@ -112,14 +127,24 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         
         discoveryLock.unlock()
         
-        log.info("Starting Apple TV Bonjour hardware discovery (_companion-link)...")
+        log.info("Starting TV & Hardware Bonjour discovery (_companion-link & _thltv)...")
         
-        // 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道
+        // 1. 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道
         let cBrowser = NetServiceBrowser()
         cBrowser.delegate = self
         cBrowser.schedule(in: .main, forMode: .common)
         cBrowser.searchForServices(ofType: "_companion-link._tcp.", inDomain: "local.")
         self.companionBrowser = cBrowser
+        
+        // 2. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属通信通道)
+        let tBrowser = NetServiceBrowser()
+        tBrowser.delegate = self
+        tBrowser.schedule(in: .main, forMode: .common)
+        tBrowser.searchForServices(ofType: "_thltv._tcp.", inDomain: "local.")
+        self.thlTVBrowser = tBrowser
+        
+        // 3. 并行启动 Smart LAN 探测器（保障 Android 模拟器与局域网 Wi-Fi 隔离环境）
+        startSmartLANProbing()
     }
     
     @objc public func refresh() {
@@ -138,12 +163,151 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public func stopScanning() {
         companionBrowser?.stop()
         companionBrowser = nil
+        thlTVBrowser?.stop()
+        thlTVBrowser = nil
+        stopSmartLANProbing()
         
         discoveryLock.lock()
         isScanning = false
         discoveryLock.unlock()
         
-        log.info("Apple TV Bonjour hardware discovery stopped.")
+        log.info("TV & Hardware Bonjour discovery stopped.")
+    }
+    
+    // MARK: - Smart LAN Probing (解决 Android 模拟器 NAT 限制与局域网组播隔离)
+    
+    private func startSmartLANProbing() {
+        stopSmartLANProbing()
+        
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, self.isScanning else { return }
+            self.performSmartLANProbe()
+        }
+        self.probeWorkItem = work
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.1, execute: work)
+    }
+    
+    private func stopSmartLANProbing() {
+        probeWorkItem?.cancel()
+        probeWorkItem = nil
+    }
+    
+    private func performSmartLANProbe() {
+        // 候选端口：56789 (Android TV 默认 TLS-PSK 端口) 与 56790 (Mac 局域网桥接端口)
+        let candidatePorts: [UInt16] = [56789, 56790]
+        var candidateHosts: Set<String> = ["127.0.0.1", "localhost"]
+        
+        // 1. 添加历史配对记录中的所有 host
+        let paired = HSBTVOSConnectionManager.pairedTVRecords()
+        for dict in paired {
+            if let h = dict["host"], !h.isEmpty {
+                candidateHosts.insert(h)
+            }
+        }
+        if let lastHost = UserDefaults.standard.string(forKey: "HSBLastConnectedTVHost"), !lastHost.isEmpty {
+            candidateHosts.insert(lastHost)
+        }
+        
+        // 2. 获取本机网络接口 IP (如 192.168.1.x)
+        var localIPs: [String] = []
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        if getifaddrs(&ifaddr) == 0 {
+            var ptr = ifaddr
+            while ptr != nil {
+                let flags = Int32(ptr!.pointee.ifa_flags)
+                let addr = ptr!.pointee.ifa_addr.pointee
+                if (flags & (IFF_UP|IFF_RUNNING)) != 0 && addr.sa_family == UInt8(AF_INET) {
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    if getnameinfo(ptr!.pointee.ifa_addr, socklen_t(addr.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST) == 0 {
+                        let ip = String(cString: hostname)
+                        if !ip.starts(with: "127.") && !ip.starts(with: "169.254.") {
+                            localIPs.append(ip)
+                        }
+                    }
+                }
+                ptr = ptr!.pointee.ifa_next
+            }
+            freeifaddrs(ifaddr)
+        }
+        
+        for localIP in localIPs {
+            candidateHosts.insert(localIP)
+            let parts = localIP.split(separator: ".")
+            if parts.count == 4 {
+                let prefix = "\(parts[0]).\(parts[1]).\(parts[2])."
+                candidateHosts.insert("\(prefix)1")
+                for i in 2...35 {
+                    candidateHosts.insert("\(prefix)\(i)")
+                }
+            }
+        }
+        
+        for host in candidateHosts {
+            for port in candidatePorts {
+                guard self.isScanning else { return }
+                probeHost(host, port: port) { [weak self] isReachable in
+                    guard let self = self, self.isScanning, isReachable else { return }
+                    
+                    let devId = "AndroidTV_\(host)_\(port)"
+                    let devName = "糖葫芦TV (Android TV)"
+                    let endpoint = nw_endpoint_create_host(host, "\(port)")
+                    let dev = HSBDiscoveredAppleTV(
+                        id: devId,
+                        name: devName,
+                        host: host,
+                        port: port,
+                        modelName: "Android TV",
+                        isNativeAppleTV: false,
+                        isBrowserApp: true,
+                        rawEndpoint: endpoint
+                    )
+                    
+                    self.discoveryLock.lock()
+                    let exists = self.deviceMap.values.contains { $0.host == host && $0.port == port }
+                    if !exists {
+                        self.deviceMap[devId] = dev
+                    }
+                    self.discoveryLock.unlock()
+                    
+                    if !exists {
+                        NSLog("[ATV_CONNECT] Smart LAN Probe discovered Android TV at %@:%d", host, Int(port))
+                        self.notifyChange()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func probeHost(_ host: String, port: UInt16, completion: @escaping (Bool) -> Void) {
+        let endpoint = nw_endpoint_create_host(host, "\(port)")
+        let params = nw_parameters_create()
+        let conn = nw_connection_create(endpoint, params)
+        let probeQueue = DispatchQueue(label: "com.tanghulu.probe.\(host).\(port)", qos: .userInitiated)
+        nw_connection_set_queue(conn, probeQueue)
+        
+        let lock = NSLock()
+        var finished = false
+        let done = { (success: Bool) in
+            lock.lock()
+            defer { lock.unlock() }
+            if !finished {
+                finished = true
+                nw_connection_cancel(conn)
+                completion(success)
+            }
+        }
+        
+        nw_connection_set_state_changed_handler(conn) { state, _ in
+            if state == nw_connection_state_ready {
+                done(true)
+            } else if state == nw_connection_state_failed || state == nw_connection_state_cancelled {
+                done(false)
+            }
+        }
+        nw_connection_start(conn)
+        probeQueue.asyncAfter(deadline: .now() + 0.8) {
+            done(false)
+        }
     }
     
     // MARK: - Port Knocking Wakeup (深度休眠唤醒)
@@ -203,8 +367,11 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         let serviceName = service.name
         NSLog("[BONJOUR_TRACE] didResolve name=%@, type=%@", serviceName, serviceType)
         
-        // 核心原生架构：仅扫描与解析真实的 Apple TV 物理硬件设备 (_companion-link)
-        guard serviceType.contains("_companion-link") else {
+        let isCompanion = serviceType.contains("_companion-link")
+        let isThlTV = serviceType.contains("_thltv")
+        
+        // 核心原生架构：支持 Apple TV 物理硬件 (_companion-link) 与 糖葫芦大屏 (_thltv)
+        guard isCompanion || isThlTV else {
             return
         }
         
@@ -213,47 +380,17 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             cleanName = String(cleanName[..<range.lowerBound])
         }
         
-        guard let txtData = service.txtRecordData(), !txtData.isEmpty else {
-            log.info("No TXT data yet for \(serviceName)")
-            return
-        }
-        let txtDict = NetService.dictionary(fromTXTRecord: txtData)
         var props: [String: String] = [:]
-        for (key, value) in txtDict {
-            if let str = String(data: value, encoding: .utf8) {
-                props[key] = str
+        if let txtData = service.txtRecordData(), !txtData.isEmpty {
+            let txtDict = NetService.dictionary(fromTXTRecord: txtData)
+            for (key, value) in txtDict {
+                if let str = String(data: value, encoding: .utf8) {
+                    props[key] = str
+                }
             }
         }
         
-        let modelName = props["rpMd"] ?? props["model"]
-        let flagStr = props["rpFl"] ?? "0x0"
-        let flags = UInt64(flagStr.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
-        
-        log.info("Resolved Companion: \(serviceName) model=\(modelName ?? "nil") flags=0x\(String(flags, radix: 16))")
-        NSLog("[BONJOUR_TRACE] Companion flags=0x%llx, model=%@ for %@", flags, modelName ?? "nil", serviceName)
-        
-        // 核心硬件与 Mac 媒体终端过滤规则：
-        // 1. 具备 PIN 码原生配对能力的 Apple TV 物理硬件 (flags & 0x4000 != 0 或 modelName 包含 AppleTV)
-        // 2. 具备免装软件媒体控制能力的 Mac 终端 (方案 A)：modelName 或设备名包含 Mac/iMac
-        let isDeviceMac: Bool = {
-            let lowerM = (modelName ?? "").lowercased()
-            let lowerN = cleanName.lowercased()
-            return lowerM.contains("mac") || lowerN.contains("mac")
-        }()
-        let isAppleTV = (flags & 0x4000 != 0) || (modelName != nil && modelName!.contains("AppleTV"))
-        
-        guard isAppleTV || isDeviceMac else {
-            discoveryLock.lock()
-            deviceMap.removeValue(forKey: cleanName)
-            discoveryLock.unlock()
-            notifyChange()
-            log.info("Filtered out unsupported companion device: \(serviceName)")
-            NSLog("[BONJOUR_TRACE] Filtered out unsupported: %@", serviceName)
-            return
-        }
-        
         // 处理主机名与端口：优先从 Bonjour 解析出的 sockaddr 数据中提取真实 IPv4 数字地址，避免 mDNS 寻址失败
-        // 关键寻址算法：优先选择局域网真实可路由 IP (192.168.x.x / 10.x.x.x / 172.16-31.x.x)，严禁误选 USB 调试隧道虚拟网卡 (198.18.x.x) 或本地链路 (169.254.x.x)
         var bestIPv4: String? = nil
         var fallbackIPv4: String? = nil
         if let addresses = service.addresses {
@@ -290,6 +427,54 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
                 host = hn.hasSuffix(".") ? String(hn.dropLast()) : hn
             }
         }
+        
+        // 分支 1：如果是 糖葫芦大屏 (_thltv)
+        if isThlTV {
+            let port = service.port > 0 ? UInt16(service.port) : 56789
+            let endpoint = nw_endpoint_create_host(host, "\(port)")
+            let model = props["model"] ?? "Android TV"
+            let dev = HSBDiscoveredAppleTV(
+                id: cleanName,
+                name: cleanName,
+                host: host,
+                port: port,
+                modelName: model,
+                isNativeAppleTV: false,
+                isBrowserApp: true,
+                rawEndpoint: endpoint
+            )
+            discoveryLock.lock()
+            deviceMap[cleanName] = dev
+            discoveryLock.unlock()
+            notifyChange()
+            return
+        }
+        
+        // 分支 2：如果是 Apple TV 或 Mac 隔空播放设备 (_companion-link)
+        let modelName = props["rpMd"] ?? props["model"]
+        let flagStr = props["rpFl"] ?? "0x0"
+        let flags = UInt64(flagStr.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
+        
+        log.info("Resolved Companion: \(serviceName) model=\(modelName ?? "nil") flags=0x\(String(flags, radix: 16))")
+        NSLog("[BONJOUR_TRACE] Companion flags=0x%llx, model=%@ for %@", flags, modelName ?? "nil", serviceName)
+        
+        let isDeviceMac: Bool = {
+            let lowerM = (modelName ?? "").lowercased()
+            let lowerN = cleanName.lowercased()
+            return lowerM.contains("mac") || lowerN.contains("mac")
+        }()
+        let isAppleTV = (flags & 0x4000 != 0) || (modelName != nil && modelName!.contains("AppleTV"))
+        
+        guard isAppleTV || isDeviceMac else {
+            discoveryLock.lock()
+            deviceMap.removeValue(forKey: cleanName)
+            discoveryLock.unlock()
+            notifyChange()
+            log.info("Filtered out unsupported companion device: \(serviceName)")
+            NSLog("[BONJOUR_TRACE] Filtered out unsupported: %@", serviceName)
+            return
+        }
+        
         let port = service.port > 0 ? UInt16(service.port) : 49152
         
         NSLog("[ATV_CONNECT] Bonjour resolved: %@ -> host=%@ (IPv4=%@, hostName=%@), port=%d (raw=%d), addrs=%d",

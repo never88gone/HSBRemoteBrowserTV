@@ -52,7 +52,7 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
     self.spinner.hidden = NO;
     self.tableView.backgroundView.hidden = YES;
     
-    [self notifyStatus:HSBLocalText(@"🟡 Scanning Apple TV Hardware...", @"🟡 正在扫描局域网 Apple TV 硬件设备...") color:[UIColor systemYellowColor]];
+    [self notifyStatus:HSBLocalText(@"🟡 Scanning Screens & TV Hardware...", @"🟡 正在扫描局域网大屏与硬件设备...") color:[UIColor systemYellowColor]];
     
     __weak typeof(self) weakSelf = self;
     [[HSBAppleTVDiscovery shared] startScanningWithOnChange:^(NSArray<HSBDiscoveredAppleTV *> *devices) {
@@ -66,7 +66,7 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
                 weakSelf.spinner.hidden = YES;
                 weakSelf.tableView.backgroundView.hidden = YES;
                 
-                NSString *fmt = HSBLocalText(@"🟢 Found %lu Apple TV Device(s)", @"🟢 已发现 %lu 台 Apple TV 硬件设备");
+                NSString *fmt = HSBLocalText(@"🟢 Found %lu Screen & TV Device(s)", @"🟢 已发现 %lu 台大屏与电视设备");
                 NSString *text = [NSString stringWithFormat:fmt, (unsigned long)weakSelf.discoveredDevices.count];
                 [weakSelf notifyStatus:text color:[UIColor systemGreenColor]];
                 [weakSelf.delegate deviceListManager:weakSelf didUpdateDeviceCount:weakSelf.discoveredDevices.count];
@@ -79,7 +79,7 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
             [weakSelf.spinner stopAnimating];
             weakSelf.spinner.hidden = YES;
             weakSelf.tableView.backgroundView.hidden = NO;
-            [weakSelf notifyStatus:HSBLocalText(@"⚪️ Scanning idle (Tap to retry)", @"⚪️ 扫描完成 (未发现 Apple TV 硬件)") color:[[UIColor whiteColor] colorWithAlphaComponent:0.6]];
+            [weakSelf notifyStatus:HSBLocalText(@"⚪️ Scanning idle (Tap to retry)", @"⚪️ 扫描完成 (未发现大屏或电视设备)") color:[[UIColor whiteColor] colorWithAlphaComponent:0.6]];
         }
     });
 }
@@ -120,9 +120,15 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
     [self.tableView reloadData];
     
     BOOL isMac = device.isMacDevice;
-    NSString *statusStr = isMac ?
-        [NSString stringWithFormat:HSBLocalText(@"🟡 Connecting to Mac %@...", @"🟡 正在连接 Mac %@..."), device.name] :
-        [NSString stringWithFormat:HSBLocalText(@"🟡 Connecting to Apple TV %@...", @"🟡 正在连接 Apple TV %@..."), device.name];
+    BOOL isAndroid = device.isAndroidTV;
+    NSString *statusStr;
+    if (isAndroid) {
+        statusStr = [NSString stringWithFormat:HSBLocalText(@"🟡 Connecting to Android TV %@...", @"🟡 正在连接 Android TV %@..."), device.name];
+    } else if (isMac) {
+        statusStr = [NSString stringWithFormat:HSBLocalText(@"🟡 Connecting to Mac %@...", @"🟡 正在连接 Mac %@..."), device.name];
+    } else {
+        statusStr = [NSString stringWithFormat:HSBLocalText(@"🟡 Connecting to Apple TV %@...", @"🟡 正在连接 Apple TV %@..."), device.name];
+    }
     [self notifyStatus:statusStr color:[UIColor systemYellowColor]];
     
     __weak typeof(self) weakSelf = self;
@@ -147,7 +153,16 @@ static inline NSString * HSBLocalText(NSString *en, NSString *zh) {
 - (void)showConnectionFailureGuideForDevice:(HSBDiscoveredAppleTV *)device isMac:(BOOL)isMac {
     if (!self.presentingViewController) return;
     
-    if (isMac) {
+    if (device.isAndroidTV) {
+        NSString *androidMsg = [NSString stringWithFormat:HSBLocalText(@"未能与 Android TV “%@” 建立大屏遥控连接。\n\n• 确保应用就绪：\n请确保电视上已打开【糖葫芦TV】；\n\n• 检查网络环境：\n请确保手机与该 Android TV 处于同一局域网 Wi-Fi 网络下。", @"未能与 Android TV “%@” 建立大屏遥控连接。\n\n• 确保应用就绪：\n请确保电视上已打开【糖葫芦TV】；\n\n• 检查网络环境：\n请确保手机与该 Android TV 处于同一局域网 Wi-Fi 网络下。"), device.name];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:HSBLocalText(@"Android TV 连接指引", @"Android TV 连接指引") message:androidMsg preferredStyle:UIAlertControllerStyleAlert];
+        __weak typeof(self) weakSelf = self;
+        [alert addAction:[UIAlertAction actionWithTitle:HSBLocalText(@"🔄 重试连接", @"🔄 重试连接") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [weakSelf connectToDevice:device];
+        }]];
+        [alert addAction:[UIAlertAction actionWithTitle:HSBLocalText(@"好的", @"好的") style:UIAlertActionStyleCancel handler:nil]];
+        [self.presentingViewController presentViewController:alert animated:YES completion:nil];
+    } else if (isMac) {
         NSString *macMsg = [NSString stringWithFormat:HSBLocalText(@"未能与 “%@” 建立原生隔空播放媒体控制连接。\n\n• 开启免装软件原生控制：\n请在目标 Mac 打开【系统设置】->【通用】->【隔空播放与接力】，确保已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与该 Mac 处于同一 Wi-Fi 局域网下。", @"未能与 “%@” 建立原生隔空播放媒体控制连接。\n\n• 开启免装软件原生控制：\n请在目标 Mac 打开【系统设置】->【通用】->【隔空播放与接力】，确保已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与该 Mac 处于同一 Wi-Fi 局域网下。"), device.name];
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:HSBLocalText(@"Mac 隔空播放连接指引", @"Mac 隔空播放连接指引") message:macMsg preferredStyle:UIAlertControllerStyleAlert];
         __weak typeof(self) weakSelf = self;

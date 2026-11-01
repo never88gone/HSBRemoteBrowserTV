@@ -18,6 +18,7 @@
 #import "HSBHomeBrowserControlCard.h"
 #import "HSBHomeActivityStatsCard.h"
 #import "HSBHomeDeviceListManager.h"
+#import "HSBLLMModelCenterViewController.h"
 #import "HSBWatchCompanion-Swift.h"
 
 static inline NSString * L(NSString *en, NSString *zh) {
@@ -67,6 +68,8 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchReachabilityChanged:) name:HSBWatchSessionReachabilityDidChangeNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleWatchActionReceived:) name:HSBWatchActionReceivedNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleLaunchAnimationDidFinish:) name:@"HSBLaunchAnimationDidFinishNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleConnectDeviceAtIndexNotification:) name:@"HSBConnectDeviceAtIndexNotification" object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleNavigateToPageNotification:) name:@"HSBNavigateToPageNotification" object:nil];
     [self applyThemeStyle];
     
     if (@available(iOS 14.0, *)) {
@@ -174,7 +177,7 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [contentStackView addArrangedSubview:tableContainer];
     
     UILabel *tableTitle = [[UILabel alloc] init];
-    tableTitle.text = L(@"APPLE TV HARDWARE UNITS", @"Apple TV 硬件终端");
+    tableTitle.text = L(@"DISCOVERED SCREENS & TV UNITS", @"大屏电视与硬件终端");
     tableTitle.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
     tableTitle.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.6];
     tableTitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -206,6 +209,11 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.themeCards addObject:self.videoControlCard];
     [contentStackView addArrangedSubview:self.videoControlCard];
     
+    CGFloat screenWidth = [UIScreen mainScreen].bounds.size.width;
+    BOOL isWideDevice = screenWidth >= 430.0;
+    CGFloat leadingInset = isWideDevice ? 24.0 : 20.0;
+    CGFloat trailingInset = isWideDevice ? -76.0 : -20.0;
+    
     [NSLayoutConstraint activateConstraints:@[
         [scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
         [scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -219,8 +227,10 @@ static inline NSString * L(NSString *en, NSString *zh) {
         [contentView.widthAnchor constraintEqualToAnchor:scrollView.frameLayoutGuide.widthAnchor],
         
         [contentStackView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:10],
-        [contentStackView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
-        [contentStackView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
+        [contentStackView.leadingAnchor constraintGreaterThanOrEqualToAnchor:contentView.leadingAnchor constant:leadingInset],
+        [contentStackView.trailingAnchor constraintLessThanOrEqualToAnchor:contentView.trailingAnchor constant:trailingInset],
+        [contentStackView.centerXAnchor constraintEqualToAnchor:contentView.centerXAnchor],
+        [contentStackView.widthAnchor constraintLessThanOrEqualToConstant:580],
         [contentStackView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-30],
         
         [tableContainer.heightAnchor constraintEqualToConstant:280],
@@ -294,6 +304,56 @@ static inline NSString * L(NSString *en, NSString *zh) {
     [self.navigationController pushViewController:modernVC animated:YES];
 }
 
+- (void)handleNavigateToPageNotification:(NSNotification *)note {
+    NSString *name = note.userInfo[@"name"] ?: @"hub";
+    NSInteger tab = [note.userInfo[@"tab"] integerValue];
+    
+    if ([name isEqualToString:@"hub"]) {
+        [self.navigationController popToRootViewControllerAnimated:NO];
+        return;
+    }
+    
+    if ([name isEqualToString:@"mac"]) {
+        [self.navigationController popToRootViewControllerAnimated:NO];
+        HSBDiscoveredAppleTV *macDev = [[HSBDiscoveredAppleTV alloc] initWithId:@"mac_studio"
+                                                                           name:@"never88gone的 Mac Studio"
+                                                                           host:@"127.0.0.1"
+                                                                           port:7000
+                                                                      modelName:@"AppleTV18,1"
+                                                                isNativeAppleTV:YES
+                                                                   isBrowserApp:NO
+                                                                    rawEndpoint:nil];
+        [self pushToModernRemoteWithDevice:macDev];
+        return;
+    }
+    
+    if ([name isEqualToString:@"remote"]) {
+        [self.navigationController popToRootViewControllerAnimated:NO];
+        HSBDiscoveredAppleTV *tvDev = [[HSBDiscoveredAppleTV alloc] initWithId:@"hsbtv7"
+                                                                          name:@"HSBTV7"
+                                                                          host:@"127.0.0.1"
+                                                                          port:7000
+                                                                     modelName:@"AppleTV14,1"
+                                                               isNativeAppleTV:YES
+                                                                  isBrowserApp:YES
+                                                                   rawEndpoint:nil];
+        [self pushToModernRemoteWithDevice:tvDev];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBSwitchRemoteTabNotification"
+                                                                object:nil
+                                                              userInfo:@{@"tab": @(tab)}];
+        });
+        return;
+    }
+    
+    if ([name isEqualToString:@"ai"]) {
+        [self.navigationController popToRootViewControllerAnimated:NO];
+        HSBLLMModelCenterViewController *aiVC = [[HSBLLMModelCenterViewController alloc] init];
+        [self.navigationController pushViewController:aiVC animated:NO];
+        return;
+    }
+}
+
 #pragma mark - TV Actions
 
 - (void)sendSeekToTV:(NSTimeInterval)seekTime {
@@ -358,6 +418,16 @@ static inline NSString * L(NSString *en, NSString *zh) {
 - (void)handleLaunchAnimationDidFinish:(NSNotification *)note {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [HSBModernRemoteBridge reopenNativePINAlertIfNeeded];
+    });
+}
+
+- (void)handleConnectDeviceAtIndexNotification:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSInteger index = [note.userInfo[@"index"] integerValue];
+        if (index >= 0 && index < self.deviceListManager.discoveredDevices.count) {
+            HSBDiscoveredAppleTV *dev = self.deviceListManager.discoveredDevices[index];
+            [self.deviceListManager connectToDevice:dev];
+        }
     });
 }
 

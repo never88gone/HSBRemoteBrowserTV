@@ -40,6 +40,15 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
                 object: self,
                 userInfo: ["state": HSBConnectionState.ready(deviceName: device.name, mode: .nativeOnly)]
             )
+        } else if device.isAndroidTV {
+            self.nativeClient.disconnect(userInitiated: true)
+            self.currentMode = .screenOnly
+            self.stateMachine.handle(event: .socketConnected(deviceName: device.name, mode: .screenOnly))
+            NotificationCenter.default.post(
+                name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+                object: self,
+                userInfo: ["state": HSBConnectionState.ready(deviceName: device.name, mode: .screenOnly)]
+            )
         }
     }
     

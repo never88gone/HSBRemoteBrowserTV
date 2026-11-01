@@ -24,6 +24,27 @@ struct ModernRemoteStatusTopBar: View {
     
     public var body: some View {
         HStack(spacing: 8) {
+            // 左侧一体化返回按钮
+            Button(action: {
+                lightHaptic.impactOccurred()
+                NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("返回")
+                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                }
+                .padding(.vertical, 5)
+                .padding(.horizontal, 9)
+                .background(
+                    Capsule()
+                        .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                )
+                .foregroundColor(.primary)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
             Spacer()
             
             if coordinatorObserver.isTargetMac {
@@ -133,6 +154,23 @@ struct ModernRemoteStatusTopBar: View {
             }
             
             Spacer()
+            
+            // 右侧打字键盘入口
+            Button(action: {
+                lightHaptic.impactOccurred()
+                NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
+            }) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 9)
+                    .background(
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                    )
+                    .foregroundColor(.primary)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)

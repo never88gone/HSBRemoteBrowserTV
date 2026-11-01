@@ -109,19 +109,15 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         self.hidesBottomBarWhenPushed = true
-        // 若当前目标为 Mac，MacOSMediaRemoteView 已内置一体化顶部栏（含断开、设备状态与打字），隐藏外层系统导航栏避免按钮重复
-        if DualModeRemoteCoordinator.shared.isCurrentTargetMac {
-            self.navigationController?.setNavigationBarHidden(true, animated: animated)
-        }
+        // 沉浸式全屏遥控操作台：由 SwiftUI 内部托管一体化流线型顶栏（含返回、双模状态与打字），完全隐藏系统导航栏避免右侧悬浮冲突
+        self.navigationController?.setNavigationBarHidden(true, animated: animated)
     }
     
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // 禁用侧滑返回手势，防止用户在触控板、画板或遥控按键上滑动时误触发页面退出
         self.navigationController?.interactivePopGestureRecognizer?.isEnabled = false
-        if DualModeRemoteCoordinator.shared.isCurrentTargetMac {
-            self.navigationController?.setNavigationBarHidden(true, animated: false)
-        }
+        self.navigationController?.setNavigationBarHidden(true, animated: false)
         DualModeRemoteCoordinator.shared.startAutoDiscoveryAndConnect()
     }
     
@@ -201,6 +197,64 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
                     }
                 }
             }
+            return
+        }
+        
+        // 方案 B：针对 Android TV 糖葫芦大屏专属遥控直连
+        if device.isAndroidTV {
+            DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)
+            let targetPort = device.port > 0 ? Int(device.port) : 56789
+            HSBModernRemoteBridge.connectWithHost(device.host, port: targetPort, deviceName: device.name)
+            
+            var hasCompleted = false
+            var timeoutItem: DispatchWorkItem?
+            var obsToken: NSObjectProtocol?
+            let lock = NSLock()
+            
+            let finish = { (success: Bool, errorMsg: String?) in
+                lock.lock()
+                guard !hasCompleted else {
+                    lock.unlock()
+                    return
+                }
+                hasCompleted = true
+                lock.unlock()
+                
+                if let obs = obsToken {
+                    NotificationCenter.default.removeObserver(obs)
+                }
+                timeoutItem?.cancel()
+                timeoutItem = nil
+                
+                DispatchQueue.main.async {
+                    completion?(success, errorMsg)
+                }
+            }
+            
+            if HSBTVOSConnectionManager.shared().isConnected {
+                finish(true, nil)
+                return
+            }
+            
+            obsToken = NotificationCenter.default.addObserver(
+                forName: .HSBTVOSConnectionState,
+                object: nil,
+                queue: .main
+            ) { _ in
+                if HSBTVOSConnectionManager.shared().isConnected {
+                    finish(true, nil)
+                }
+            }
+            
+            let item = DispatchWorkItem {
+                if HSBTVOSConnectionManager.shared().isConnected {
+                    finish(true, nil)
+                } else {
+                    finish(false, "连接 Android TV 失败：未能与目标建立握手，请检查网络设置。")
+                }
+            }
+            timeoutItem = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: item)
             return
         }
         

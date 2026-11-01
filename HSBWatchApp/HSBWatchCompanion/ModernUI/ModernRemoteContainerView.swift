@@ -121,6 +121,7 @@ public struct ModernRemoteContainerView: View {
                 }
                 .padding(.top, isTrackpadFullScreen ? 0 : 4)
                 .padding(.bottom, isTrackpadFullScreen ? 2 : 6)
+                .frame(maxWidth: geometry.size.width >= 550 ? 560 : .infinity)
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
             }
             
@@ -293,6 +294,14 @@ public struct ModernRemoteContainerView: View {
                         selectedControlTab = 0
                         selectedMainTab = 0
                     }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBSwitchRemoteTabNotification"))) { note in
+            if let targetTab = note.userInfo?["tab"] as? Int {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selectedControlTab = targetTab
+                    selectedMainTab = 0
                 }
             }
         }

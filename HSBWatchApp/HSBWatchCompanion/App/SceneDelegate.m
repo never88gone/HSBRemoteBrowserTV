@@ -98,6 +98,17 @@
             [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBShowGuideModalNotification"
                                                                 object:nil
                                                               userInfo:@{@"type": type}];
+        } else if ([[url.host lowercaseString] isEqualToString:@"page"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSString *name = @"hub";
+            NSString *tab = @"0";
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"name"]) name = item.value ?: @"hub";
+                if ([item.name isEqualToString:@"tab"]) tab = item.value ?: @"0";
+            }
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBNavigateToPageNotification"
+                                                                object:nil
+                                                              userInfo:@{@"name": name, @"tab": tab}];
         } else if ([[url.host lowercaseString] isEqualToString:@"key"]) {
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
             NSString *keyName = nil;
@@ -189,6 +200,17 @@
             } else if ([action isEqualToString:@"home"]) {
                 [[HSBTVOSConnectionManager sharedManager] sendSimulateAction:HSBRemoteSimulateActionPageHome];
             }
+        } else if ([[url.host lowercaseString] isEqualToString:@"connect_device"]) {
+            NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+            NSInteger index = 0;
+            for (NSURLQueryItem *item in components.queryItems) {
+                if ([item.name isEqualToString:@"index"]) {
+                    index = [item.value integerValue];
+                }
+            }
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"HSBConnectDeviceAtIndexNotification"
+                                                                object:nil
+                                                              userInfo:@{@"index": @(index)}];
         } else if ([[url.host lowercaseString] isEqualToString:@"pdf"]) {
             NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
             NSString *action = nil;
