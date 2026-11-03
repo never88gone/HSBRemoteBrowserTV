@@ -2,23 +2,27 @@ Dear Apple App Review Team,
 
 Thank you for reviewing Tanghulu Smart Remote!
 
-[How to Test Without External TV / Mac Hardware]:
-This application is designed as a wireless companion controller for Apple TV, Mac, and smart screen displays. To ensure a smooth, complete, and convenient review experience—even if your testing environment does not have an Apple TV or Mac running on the local Wi-Fi:
+[Compliance Update Regarding Guideline 5.2.5 - Legal - Intellectual Property]:
+In response to your feedback regarding the app subtitle ("Apple TV与Mac大屏交互利器"):
+1. Subtitle Resolution: We have completely removed all Apple product terms and trademarks from our app subtitle. The Chinese subtitle has been updated to "大屏电视与电脑多模智能遥控" (Multi-mode Smart Remote for Screens & Computers), perfectly matching our English subtitle ("Multi-mode Remote for Screens").
+2. Trademark Disclaimer: We have added standard, explicit third-party trademark disclaimers to our App Store descriptions in both Chinese and English, clarifying that this app is an independent utility and is not affiliated with, endorsed by, or sponsored by Apple Inc.
+3. Full Metadata Audit: All keywords, promotional text, and screenshots have been thoroughly audited to ensure no misleading or unauthorized use of Apple trademarks exists anywhere in the metadata.
 
-1. Launch the app on iPhone.
-2. On the main home screen, tap the Apple TV Remote icon located on the top-right navigation bar (the modern remote controller icon next to Settings and QR scanner).
+[Previous Compliance Confirmation Regarding Guideline 2.5.19]:
+All previously reported third-party platform automation scripts, injection handlers, and external streaming presets have been completely eliminated from the codebase and binary.
+
+[How to Test Without External TV / Mac Hardware]:
+This application is designed as a wireless companion controller for smart TV screens and computers. To ensure a smooth, complete, and convenient review experience—even if your testing environment does not have a physical TV or computer running on the local Wi-Fi:
+
+1. Launch the app on iPhone / iPad.
+2. On the main home screen, tap the Remote icon located on the top-right navigation bar (the modern remote controller icon next to Settings and QR scanner).
 3. This directly opens the full-featured modern remote controller interface, allowing you to test and evaluate all interactive capabilities:
-   - System Remote Tab: 270pt tactile D-pad directional navigation wheel, center OK confirmation, media playback controls (seek 10s backward/forward, play/pause), system hardware keys (Home, Menu, Mute, Standby), and volume stepper buttons. Every interaction delivers realistic iOS Taptic Engine feedback.
-   - Touchpad Tab: Precision wireless trackpad simulating mouse cursor gliding, two-finger smooth scrolling, left/right clicks, and an intuitive "Fullscreen" button (top-right of trackpad) to toggle immersive fullscreen trackpad mode.
+   - System Remote Tab: Tactile D-pad directional navigation wheel, center OK confirmation, media playback controls (seek 10s backward/forward, play/pause), system hardware keys (Home, Menu, Mute, Standby), and volume stepper buttons. Every interaction delivers realistic iOS Taptic Engine feedback.
+   - Touchpad Tab: Precision wireless trackpad simulating mouse cursor gliding, two-finger smooth scrolling, left/right clicks, and an intuitive "Fullscreen" button to toggle immersive fullscreen trackpad mode.
    - IPTV Tab: Classic dual-tower CH+/- and VOL+/- controls, quick channel shortcuts, and numeric keypad dialing.
    - PDF Presentation Tab: Presentation slide turners, first/last slide jumping, and an interactive drawing whiteboard supporting multi-color drawing and stroke undo.
-   - Text Input Drawer: Tap the keyboard button in the navigation bar to pull up the text input drawer, supporting synchronized text sending and the native Backspace key.
+   - Text Input Drawer: Tap the keyboard button in the top bar to pull up the text input drawer, supporting synchronized text sending and the native Backspace key.
 4. From the main screen, tap the Gear icon (top-right) to access Settings, including On-Device AI Model Center, Translation settings, and the in-app Privacy Policy.
-
-[Real Hardware Pairing (Optional)]:
-If you wish to test with physical devices:
-- Apple TV: Ensure the Apple TV is on the same Wi-Fi network. The app automatically scans via Bonjour and displays the device card. Tap to pair via on-screen 4-digit PIN.
-- Mac: When a Mac running the companion service is on the local network, it appears automatically with an immediate direct control pipeline.
 
 [Compliance & Account Notes]:
 - No user login or registration is required.

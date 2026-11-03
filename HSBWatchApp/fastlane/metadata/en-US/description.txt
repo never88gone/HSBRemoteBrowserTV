@@ -38,3 +38,7 @@ Tanghulu Smart Remote is a versatile, ultra-responsive companion controller desi
 • Instant Bonjour zero-configuration discovery over local Wi-Fi;
 • Fully functional offline demo mode allows testing all controls and haptics without external hardware;
 • Privacy-first architecture: No ads, no in-app purchases, no subscriptions, zero data collection.
+
+[Trademark & Compatibility Notice]
+• This app is an independent third-party utility designed for smart screens and computers;
+• Apple TV, Mac, macOS, Apple Watch, iPhone, AirPlay, and Digital Crown are trademarks of Apple Inc., registered in the U.S. and other countries and regions. This application and its developers are not affiliated with, endorsed by, or sponsored by Apple Inc.
