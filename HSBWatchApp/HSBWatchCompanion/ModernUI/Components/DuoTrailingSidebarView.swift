@@ -7,12 +7,15 @@
 
 import SwiftUI
 
-/// 专为 iPhone Duo 折叠双屏展开态（宽屏）打造的右下方实体操作按钮组 (Action Keypad)
-/// 遵循设计规范：
-/// 1. 彻底去除整体浮层容器，直接呈现为界面底层的独立实体操作按键；
-/// 2. 大幅放大图标（22~24pt）与清晰标签（11pt），一目了然看清功能；
-/// 3. 严格控制在 5 个核心操作按钮以内（返回、轮盘、触控、多模扩展、打字键盘）；
-/// 4. 按钮群上方带有独立精致的设备实时电池电量显示。
+/// 专为 iPhone Duo 折叠双屏展开态（宽屏）打造的右下方实体操作按键组 (Action Keypad)
+/// 严格遵循最新用户规范：
+/// 1. 不带电池显示；
+/// 2. 不带返回按钮；
+/// 3. 彻底去除浮层外壳，直接呈现为界面底层的独立实体操作按键；
+/// 4. 深度优化按键视觉质感：
+///    - 未选中：精密深邃双层物理微渐变底座 + 金属漫反射微光 + 顶部倒角高光边 + 立体微阴影；
+///    - 选中：奢华朱砂红/极光红宝石立体渐变 + 晶莹发光边框 + 专属极光红环境氛围光晕 (Ambient Glow) + 高亮立体纯白大图标；
+/// 5. 图标放大至 23~24pt，文字 11.5pt，功能一目了然。
 struct DuoTrailingSidebarView: View {
     @ObservedObject var coordinatorObserver: CoordinatorObservable
     @Binding var selectedMainTab: Int
@@ -20,56 +23,14 @@ struct DuoTrailingSidebarView: View {
     @Binding var showingBrowserGuide: Bool
     @Binding var showingSystemGuide: Bool
     
-    @StateObject private var batteryMonitor = DeviceBatteryMonitor()
-    
+    private let mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     
     var body: some View {
-        VStack(spacing: 8) {
-            // === 顶部：独立实时电池电量指示 (Battery Status Pill) ===
-            HStack(spacing: 4) {
-                Image(systemName: batteryMonitor.iconName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(batteryMonitor.tintColor)
-                Text("\(batteryMonitor.batteryLevel)%")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-            }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
-            .background(
-                Capsule()
-                    .fill(Color(UIColor.secondarySystemFill))
-            )
-            .padding(.bottom, 2)
+        VStack(spacing: 12) {
+            // === 核心实体操作按键区 (共 4 个，严格不超过 5 个) ===
             
-            // === 核心操作按钮区：严格 5 个独立实体按键 ===
-            
-            // 按钮 1: 返回按钮 (Back Action Button)
-            Button(action: {
-                lightHaptic.impactOccurred()
-                NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
-            }) {
-                VStack(spacing: 3) {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 21, weight: .bold))
-                    Text("返回")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                }
-                .foregroundColor(.primary)
-                .frame(width: 66, height: 56)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(UIColor.secondarySystemFill))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            // 按钮 2: 系统硬件轮盘模式 (D-Pad Action Button)
+            // 实体按键 1: 轮盘遥控模式 (D-Pad Action Key)
             actionKeyButton(
                 icon: "dpad.fill",
                 label: "轮盘",
@@ -79,7 +40,7 @@ struct DuoTrailingSidebarView: View {
                 selectedControlTab = 0
             }
             
-            // 按钮 3: 无线触控板模式 (Touchpad Action Button)
+            // 实体按键 2: 无线触控板模式 (Touchpad Action Key)
             actionKeyButton(
                 icon: "hand.point.up.left.fill",
                 label: "触控",
@@ -89,10 +50,10 @@ struct DuoTrailingSidebarView: View {
                 selectedControlTab = 1
             }
             
-            // 按钮 4: 扩展多模形态切换 (Multi-Mode Menu Button)
+            // 实体按键 3: 扩展多模形态切换 (Multi-Mode Menu Key)
             Menu {
                 Button(action: {
-                    lightHaptic.impactOccurred()
+                    mediumHaptic.impactOccurred()
                     selectedMainTab = 0
                     selectedControlTab = 2
                 }) {
@@ -100,7 +61,7 @@ struct DuoTrailingSidebarView: View {
                 }
                 
                 Button(action: {
-                    lightHaptic.impactOccurred()
+                    mediumHaptic.impactOccurred()
                     selectedMainTab = 0
                     selectedControlTab = 3
                 }) {
@@ -108,84 +69,128 @@ struct DuoTrailingSidebarView: View {
                 }
                 
                 Button(action: {
-                    lightHaptic.impactOccurred()
+                    mediumHaptic.impactOccurred()
                     selectedMainTab = 1
                 }) {
                     Label("大屏应用生态", systemImage: "square.grid.2x2.fill")
                 }
             } label: {
-                VStack(spacing: 3) {
-                    Image(systemName: currentExtraModeIcon)
-                        .font(.system(size: 22, weight: .semibold))
-                    Text(currentExtraModeLabel)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                }
-                .foregroundColor(isExtraModeActive ? .white : .primary)
-                .frame(width: 66, height: 56)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(isExtraModeActive ? Color.tanghuluAccentRed : Color(UIColor.secondarySystemFill))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                actionKeyContent(
+                    icon: currentExtraModeIcon,
+                    label: currentExtraModeLabel,
+                    isSelected: isExtraModeActive
                 )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(DuoPhysicalKeyStyle(isSelected: isExtraModeActive))
             
-            // 按钮 5: 打字键盘输入 (Keyboard Action Button)
+            // 实体按键 4: 打字键盘输入 (Keyboard Action Key)
             Button(action: {
-                lightHaptic.impactOccurred()
+                mediumHaptic.impactOccurred()
                 NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
             }) {
-                VStack(spacing: 3) {
-                    Image(systemName: "keyboard.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                    Text("打字")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                }
-                .foregroundColor(.primary)
-                .frame(width: 66, height: 56)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(UIColor.secondarySystemFill))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                actionKeyContent(
+                    icon: "keyboard.fill",
+                    label: "打字",
+                    isSelected: false
                 )
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(DuoPhysicalKeyStyle(isSelected: false))
         }
-        // 注意：此处不再设置任何外层毛玻璃浮层背景、大边框或整体阴影，完全呈现为右下方独立的实体操作按钮组！
+        // 完全不设置任何外层浮层背景、阴影或药丸卡片边框
     }
     
-    /// 独立实体操作按键
+    /// 独立实体操作按键组件
     private func actionKeyButton(icon: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: {
-            lightHaptic.impactOccurred()
-            withAnimation(.easeInOut(duration: 0.2)) {
+            mediumHaptic.impactOccurred()
+            withAnimation(.easeInOut(duration: 0.22)) {
                 action()
             }
         }) {
-            VStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: isSelected ? .bold : .semibold))
-                Text(label)
-                    .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
-            }
-            .foregroundColor(isSelected ? .white : .primary)
-            .frame(width: 66, height: 56)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(isSelected ? Color.tanghuluAccentRed : Color(UIColor.secondarySystemFill))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
-            )
+            actionKeyContent(icon: icon, label: label, isSelected: isSelected)
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(DuoPhysicalKeyStyle(isSelected: isSelected))
+    }
+    
+    /// 实体按键内容视图 (大图标 + 语义清晰文案 + 极致考究的选中/未选中质感渲染)
+    private func actionKeyContent(icon: String, label: String, isSelected: Bool) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 23, weight: isSelected ? .bold : .semibold))
+                .foregroundColor(isSelected ? .white : Color(white: 0.90))
+            
+            Text(label)
+                .font(.system(size: 11.5, weight: isSelected ? .bold : .medium, design: .rounded))
+                .foregroundColor(isSelected ? .white : Color(white: 0.82))
+        }
+        .frame(width: 70, height: 62)
+        .background(
+            ZStack {
+                if isSelected {
+                    // === 选中态：奢华极光红宝石立体渐变 + 晶莹高光 + 环境氛围光晕 ===
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color(red: 248/255, green: 62/255, blue: 80/255),
+                            Color(red: 224/255, green: 36/255, blue: 56/255),
+                            Color(red: 192/255, green: 20/255, blue: 38/255)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    
+                    // 顶部反光倒角
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.42), Color.clear]),
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                } else {
+                    // === 未选中态：精密深邃双层物理微渐变底座 + 金属漫反射 ===
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color(white: 0.22).opacity(0.92),
+                            Color(white: 0.14).opacity(0.96)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    
+                    // 顶部微弱漫反射光
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.09), Color.clear]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            // 精巧边缘高光描边 (选中晶莹亮边，未选中微光亚克力边)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(
+                    isSelected
+                        ? LinearGradient(
+                            colors: [Color.white.opacity(0.65), Color.white.opacity(0.18)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        : LinearGradient(
+                            colors: [Color.white.opacity(0.20), Color.white.opacity(0.05)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                    lineWidth: isSelected ? 1.2 : 1.0
+                )
+        )
+        .shadow(
+            color: isSelected
+                ? Color.tanghuluAccentRed.opacity(0.55)
+                : Color.black.opacity(0.38),
+            radius: isSelected ? 10 : 6,
+            x: 0,
+            y: isSelected ? 4 : 3
+        )
     }
     
     private var isExtraModeActive: Bool {
@@ -200,7 +205,7 @@ struct DuoTrailingSidebarView: View {
         } else if selectedControlTab == 3 {
             return "doc.text.fill"
         } else {
-            return "ellipsis.circle.fill"
+            return "square.grid.2x2.fill"
         }
     }
     
@@ -217,64 +222,14 @@ struct DuoTrailingSidebarView: View {
     }
 }
 
-/// 实时设备电池电量监控器
-private final class DeviceBatteryMonitor: ObservableObject {
-    @Published var batteryLevel: Int = 100
-    @Published var isCharging: Bool = false
+/// 带有物理微弹按下深度的按键交互样式
+private struct DuoPhysicalKeyStyle: ButtonStyle {
+    let isSelected: Bool
     
-    init() {
-        UIDevice.current.isBatteryMonitoringEnabled = true
-        updateBattery()
-        NotificationCenter.default.addObserver(self, selector: #selector(batteryChanged), name: UIDevice.batteryLevelDidChangeNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(batteryChanged), name: UIDevice.batteryStateDidChangeNotification, object: nil)
-    }
-    
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-    
-    @objc private func batteryChanged() {
-        DispatchQueue.main.async {
-            self.updateBattery()
-        }
-    }
-    
-    private func updateBattery() {
-        let raw = UIDevice.current.batteryLevel
-        if raw < 0 {
-            // 模拟器环境或未读取到时展示 100%
-            self.batteryLevel = 100
-        } else {
-            self.batteryLevel = max(1, min(100, Int(raw * 100)))
-        }
-        let state = UIDevice.current.batteryState
-        self.isCharging = (state == .charging || state == .full)
-    }
-    
-    var iconName: String {
-        if isCharging {
-            return "battery.100percent.bolt"
-        }
-        if batteryLevel >= 90 {
-            return "battery.100percent"
-        } else if batteryLevel >= 65 {
-            return "battery.75percent"
-        } else if batteryLevel >= 35 {
-            return "battery.50percent"
-        } else if batteryLevel >= 15 {
-            return "battery.25percent"
-        } else {
-            return "battery.0percent"
-        }
-    }
-    
-    var tintColor: Color {
-        if isCharging {
-            return .green
-        }
-        if batteryLevel <= 20 {
-            return .red
-        }
-        return .primary
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }
