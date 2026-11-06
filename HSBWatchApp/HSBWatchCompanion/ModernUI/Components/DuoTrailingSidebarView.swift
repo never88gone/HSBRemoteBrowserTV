@@ -7,11 +7,12 @@
 
 import SwiftUI
 
-/// 专为 iPhone Duo 折叠双屏展开态（宽屏）打造的右下方垂直悬浮操控侧边栏
-/// 遵循严格约束：
-/// 1. 位于右下方，吻合右手大拇指黄金热区；
-/// 2. 顶部带有精致设备实时电池电量显示；
-/// 3. 按钮总数严格控制在 5 个以内（返回、系统轮盘、触控板、扩展形态、打字键盘）。
+/// 专为 iPhone Duo 折叠双屏展开态（宽屏）打造的右下方实体操作按钮组 (Action Keypad)
+/// 遵循设计规范：
+/// 1. 彻底去除整体浮层容器，直接呈现为界面底层的独立实体操作按键；
+/// 2. 大幅放大图标（22~24pt）与清晰标签（11pt），一目了然看清功能；
+/// 3. 严格控制在 5 个核心操作按钮以内（返回、轮盘、触控、多模扩展、打字键盘）；
+/// 4. 按钮群上方带有独立精致的设备实时电池电量显示。
 struct DuoTrailingSidebarView: View {
     @ObservedObject var coordinatorObserver: CoordinatorObservable
     @Binding var selectedMainTab: Int
@@ -20,54 +21,57 @@ struct DuoTrailingSidebarView: View {
     @Binding var showingSystemGuide: Bool
     
     @StateObject private var batteryMonitor = DeviceBatteryMonitor()
-    @State private var showingModePickerMenu: Bool = false
     
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     
     var body: some View {
         VStack(spacing: 8) {
-            // === 顶部：实时电池电量显示 (Battery Display) ===
-            VStack(spacing: 2) {
+            // === 顶部：独立实时电池电量指示 (Battery Status Pill) ===
+            HStack(spacing: 4) {
                 Image(systemName: batteryMonitor.iconName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(batteryMonitor.tintColor)
                 Text("\(batteryMonitor.batteryLevel)%")
-                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
             }
-            .padding(.vertical, 5)
-            .padding(.horizontal, 6)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
             .background(
                 Capsule()
-                    .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                    .fill(Color(UIColor.secondarySystemFill))
             )
-            .padding(.top, 4)
+            .padding(.bottom, 2)
             
-            Divider()
-                .frame(width: 28)
-                .background(Color.white.opacity(0.18))
+            // === 核心操作按钮区：严格 5 个独立实体按键 ===
             
-            // === 核心按钮区：严格 5 个按钮 ===
-            
-            // 按钮 1: 返回按钮 (Back)
+            // 按钮 1: 返回按钮 (Back Action Button)
             Button(action: {
                 lightHaptic.impactOccurred()
                 NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
             }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.primary)
-                    .frame(width: 44, height: 42)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                    )
+                VStack(spacing: 3) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 21, weight: .bold))
+                    Text("返回")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                }
+                .foregroundColor(.primary)
+                .frame(width: 66, height: 56)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(UIColor.secondarySystemFill))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
             }
             .buttonStyle(PlainButtonStyle())
             
-            // 按钮 2: 系统轮盘模式 (System D-Pad)
-            sidebarButton(
-                icon: "dpad",
+            // 按钮 2: 系统硬件轮盘模式 (D-Pad Action Button)
+            actionKeyButton(
+                icon: "dpad.fill",
                 label: "轮盘",
                 isSelected: (selectedMainTab == 0 && selectedControlTab == 0)
             ) {
@@ -75,9 +79,9 @@ struct DuoTrailingSidebarView: View {
                 selectedControlTab = 0
             }
             
-            // 按钮 3: 无线触控板模式 (Touchpad)
-            sidebarButton(
-                icon: "hand.point.up.left.and.text",
+            // 按钮 3: 无线触控板模式 (Touchpad Action Button)
+            actionKeyButton(
+                icon: "hand.point.up.left.fill",
                 label: "触控",
                 isSelected: (selectedMainTab == 0 && selectedControlTab == 1)
             ) {
@@ -85,7 +89,7 @@ struct DuoTrailingSidebarView: View {
                 selectedControlTab = 1
             }
             
-            // 按钮 4: 扩展多模形态 (IPTV / 演讲 / 应用生态 切换)
+            // 按钮 4: 扩展多模形态切换 (Multi-Mode Menu Button)
             Menu {
                 Button(action: {
                     lightHaptic.impactOccurred()
@@ -110,69 +114,75 @@ struct DuoTrailingSidebarView: View {
                     Label("大屏应用生态", systemImage: "square.grid.2x2.fill")
                 }
             } label: {
-                VStack(spacing: 2) {
+                VStack(spacing: 3) {
                     Image(systemName: currentExtraModeIcon)
-                        .font(.system(size: 13, weight: isExtraModeActive ? .bold : .medium))
+                        .font(.system(size: 22, weight: .semibold))
                     Text(currentExtraModeLabel)
-                        .font(.system(size: 9, weight: isExtraModeActive ? .bold : .regular, design: .rounded))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                 }
-                .foregroundColor(isExtraModeActive ? .white : .secondary)
-                .frame(width: 44, height: 42)
+                .foregroundColor(isExtraModeActive ? .white : .primary)
+                .frame(width: 66, height: 56)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(isExtraModeActive ? Color.tanghuluAccentRed : Color(UIColor.secondarySystemBackground).opacity(0.85))
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(isExtraModeActive ? Color.tanghuluAccentRed : Color(UIColor.secondarySystemFill))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
             }
             .buttonStyle(PlainButtonStyle())
             
-            // 按钮 5: 打字键盘输入 (Keyboard)
+            // 按钮 5: 打字键盘输入 (Keyboard Action Button)
             Button(action: {
                 lightHaptic.impactOccurred()
                 NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
             }) {
-                Image(systemName: "keyboard")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .frame(width: 44, height: 42)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                    )
+                VStack(spacing: 3) {
+                    Image(systemName: "keyboard.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                    Text("打字")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                }
+                .foregroundColor(.primary)
+                .frame(width: 66, height: 56)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(UIColor.secondarySystemFill))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 22)
-                .fill(Color(UIColor.tertiarySystemBackground).opacity(0.92))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.35), radius: 10, x: -2, y: 4)
-        )
-        .frame(width: 58)
+        // 注意：此处不再设置任何外层毛玻璃浮层背景、大边框或整体阴影，完全呈现为右下方独立的实体操作按钮组！
     }
     
-    private func sidebarButton(icon: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    /// 独立实体操作按键
+    private func actionKeyButton(icon: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: {
             lightHaptic.impactOccurred()
             withAnimation(.easeInOut(duration: 0.2)) {
                 action()
             }
         }) {
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                    .font(.system(size: 22, weight: isSelected ? .bold : .semibold))
                 Text(label)
-                    .font(.system(size: 9, weight: isSelected ? .bold : .regular, design: .rounded))
+                    .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
             }
-            .foregroundColor(isSelected ? .white : .secondary)
-            .frame(width: 44, height: 42)
+            .foregroundColor(isSelected ? .white : .primary)
+            .frame(width: 66, height: 56)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.tanghuluAccentRed : Color.clear)
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(isSelected ? Color.tanghuluAccentRed : Color(UIColor.secondarySystemFill))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
         }
         .buttonStyle(PlainButtonStyle())
@@ -190,7 +200,7 @@ struct DuoTrailingSidebarView: View {
         } else if selectedControlTab == 3 {
             return "doc.text.fill"
         } else {
-            return "ellipsis.circle"
+            return "ellipsis.circle.fill"
         }
     }
     
@@ -202,7 +212,7 @@ struct DuoTrailingSidebarView: View {
         } else if selectedControlTab == 3 {
             return "演讲"
         } else {
-            return "更多"
+            return "扩展"
         }
     }
 }
@@ -232,7 +242,7 @@ private final class DeviceBatteryMonitor: ObservableObject {
     private func updateBattery() {
         let raw = UIDevice.current.batteryLevel
         if raw < 0 {
-            // 模拟器环境或未读取到时，优雅展示 100%
+            // 模拟器环境或未读取到时展示 100%
             self.batteryLevel = 100
         } else {
             self.batteryLevel = max(1, min(100, Int(raw * 100)))
