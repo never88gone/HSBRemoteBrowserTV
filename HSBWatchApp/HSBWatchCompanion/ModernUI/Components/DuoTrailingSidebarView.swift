@@ -8,11 +8,11 @@
 import SwiftUI
 
 /// 专为 iPhone Duo 折叠双屏展开态（宽屏）打造的右下方扁平化纯操作按钮组 (Flat Action Controls)
-/// 严格遵循最新规范：
-/// 1. 图标纯扁平化设计，不添加任何背景框、不设任何底座或阴影；
-/// 2. 状态切换仅通过图标与文字的颜色变化来表达（选中时为品牌强调色，未选中为次级灰）；
-/// 3. 严格无电池显示、无返回按钮，仅保留 4 个核心直观操作按钮（轮盘、触控、多模扩展、打字）；
-/// 4. 图标大而清晰（26pt），文字直观（11.5pt），轻盈纯净。
+/// 遵循设计规范：
+/// 1. 彻底去除背景框与浮层外壳，无底色无描边无阴影；
+/// 2. 状态切换通过图标与文字的颜色变化来表达（选中时为品牌鲜明朱砂红，未选中为次级浅银灰）；
+/// 3. 图标大而清晰（26pt），下方文字字号放大（13pt 加粗），文字绝不截断或省略，功能一目了然；
+/// 4. 严格保留 4 个核心直观扁平操作按钮（轮盘、触控、多模扩展、打字），无电池显示、无返回按钮。
 struct DuoTrailingSidebarView: View {
     @ObservedObject var coordinatorObserver: CoordinatorObservable
     @Binding var selectedMainTab: Int
@@ -23,7 +23,7 @@ struct DuoTrailingSidebarView: View {
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 22) {
             // 按钮 1: 轮盘遥控模式 (D-Pad)
             flatActionButton(
                 icon: (selectedMainTab == 0 && selectedControlTab == 0) ? "dpad.fill" : "dpad",
@@ -90,7 +90,7 @@ struct DuoTrailingSidebarView: View {
             }
             .buttonStyle(FlatPressButtonStyle())
         }
-        // 完全不设置任何背景、边框或阴影，纯净通透融入界面
+        // 完全不设置任何背景、边框或阴影
     }
     
     /// 独立扁平操作按钮
@@ -106,19 +106,21 @@ struct DuoTrailingSidebarView: View {
         .buttonStyle(FlatPressButtonStyle())
     }
     
-    /// 纯扁平内容视图：无背景框，仅通过颜色区分状态
+    /// 纯扁平内容视图：大图标 + 清晰大文字（绝不压缩截断为点），无背景框
     private func flatButtonContent(icon: String, label: String, isSelected: Bool) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 5) {
             Image(systemName: icon)
                 .font(.system(size: 26, weight: isSelected ? .semibold : .regular))
                 .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.secondary)
             
             Text(label)
-                .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular, design: .rounded))
+                .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
                 .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
-        .frame(width: 56, height: 52)
-        .contentShape(Rectangle()) // 保证热区充足
+        .frame(width: 66, height: 58)
+        .contentShape(Rectangle()) // 充足热区
     }
     
     private var isExtraModeActive: Bool {
@@ -150,7 +152,7 @@ struct DuoTrailingSidebarView: View {
     }
 }
 
-/// 扁平化按键点击反馈样式（微弱透明度变化，无物理下沉框）
+/// 扁平化按键点击反馈样式
 private struct FlatPressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
