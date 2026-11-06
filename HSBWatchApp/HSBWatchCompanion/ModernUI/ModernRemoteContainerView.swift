@@ -35,9 +35,9 @@ public struct ModernRemoteContainerView: View {
                 let isWideDuoDisplay = geometry.size.width >= 550
                 
                 if isWideDuoDisplay && !isTrackpadFullScreen && !coordinatorObserver.isTargetMac {
-                    // === iPhone Duo 折叠双屏展开态：顶部导航栏无缝转为右侧垂直一体化悬浮侧边栏 ===
-                    HStack(alignment: .top, spacing: 12) {
-                        // 1. 左/中主内容大操作台 (最大宽度放宽至 580pt 居中舒展，纵向空间大幅提升)
+                    // === iPhone Duo 折叠双屏展开态：主操作大台居中沉浸 + 右下方专属悬浮操控栏 ===
+                    ZStack(alignment: .bottomTrailing) {
+                        // 1. 中央主内容大操作台 (最大宽度 580pt 严格居中对齐，纵向空间彻底舒展)
                         VStack(spacing: 8) {
                             // 未连接大屏时的轻量扫码引导条
                             if !coordinatorObserver.isHSBBrowserConnected {
@@ -92,9 +92,10 @@ public struct ModernRemoteContainerView: View {
                             }
                         }
                         .frame(maxWidth: 580)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.top, 8)
                         
-                        // 2. iPhone Duo 右侧垂直悬浮侧边栏 (双手握持右侧大拇指黄金操控区)
+                        // 2. 右下方悬浮侧边栏 (带电池显示，严格 5 个按钮，右手大拇指黄金热区)
                         DuoTrailingSidebarView(
                             coordinatorObserver: coordinatorObserver,
                             selectedMainTab: $selectedMainTab,
@@ -102,10 +103,10 @@ public struct ModernRemoteContainerView: View {
                             showingBrowserGuide: $showingBrowserGuide,
                             showingSystemGuide: $showingSystemGuide
                         )
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 24)
                     }
-                    .padding(.top, 8)
-                    .padding(.bottom, 6)
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                 } else {
                     // === 普通 iPhone / iPhone Duo 外屏折叠态：经典优雅的顶部水平导航条与切换器 ===
                     VStack(spacing: (isTrackpadFullScreen || coordinatorObserver.isTargetMac) ? 2 : (geometry.size.height < 700 ? 6 : 10)) {
