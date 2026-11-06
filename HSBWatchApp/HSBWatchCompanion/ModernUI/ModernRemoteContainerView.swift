@@ -32,97 +32,173 @@ public struct ModernRemoteContainerView: View {
         ZStack {
             // 主内容容器：使用 GeometryReader 获取可用安全区尺寸，严格遵循 Safe Area
             GeometryReader { geometry in
-                VStack(spacing: (isTrackpadFullScreen || coordinatorObserver.isTargetMac) ? 2 : (geometry.size.height < 700 ? 6 : 10)) {
-                    if !isTrackpadFullScreen && !coordinatorObserver.isTargetMac {
-                        // 1. 顶部紧凑双模流线型状态栏 (居中双胶囊排布：大屏通道 + 系统原生通道)
-                        ModernRemoteStatusTopBar(
+                let isWideDuoDisplay = geometry.size.width >= 550
+                
+                if isWideDuoDisplay && !isTrackpadFullScreen && !coordinatorObserver.isTargetMac {
+                    // === iPhone Duo 折叠双屏展开态：顶部导航栏无缝转为右侧垂直一体化悬浮侧边栏 ===
+                    HStack(alignment: .top, spacing: 12) {
+                        // 1. 左/中主内容大操作台 (最大宽度放宽至 580pt 居中舒展，纵向空间大幅提升)
+                        VStack(spacing: 8) {
+                            // 未连接大屏时的轻量扫码引导条
+                            if !coordinatorObserver.isHSBBrowserConnected {
+                                Button(action: {
+                                    lightHaptic.impactOccurred()
+                                    NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "qrcode.viewfinder")
+                                            .foregroundColor(.tanghuluBrandBlue)
+                                            .font(.system(size: 13))
+                                        if coordinatorObserver.isHSBBrowserReconnecting {
+                                            Text("大屏连接中... 点击重新扫码")
+                                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                                .foregroundColor(.orange)
+                                        } else if let nearby = coordinatorObserver.nearbyDiscoveredBrowserTV {
+                                            Text("检测到附近【\(nearby)】，点击扫码连接")
+                                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                                .foregroundColor(.primary)
+                                        } else {
+                                            Text("尚未连接大屏？点击扫描电视二维码秒级连接")
+                                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                                .foregroundColor(.primary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundColor(.secondary.opacity(0.6))
+                                    }
+                                    .padding(.vertical, 7)
+                                    .padding(.horizontal, 14)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                                    )
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .padding(.horizontal, 16)
+                            }
+                            
+                            // 主体面板：遥控场景面板 vs 应用生态网格
+                            if selectedMainTab == 0 {
+                                remoteScenarioPanel(availableHeight: geometry.size.height - (coordinatorObserver.isHSBBrowserConnected ? 20 : 60))
+                            } else {
+                                ModernAppGridView { app in
+                                    DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID, url: app.url)
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        selectedControlTab = app.targetMode
+                                        selectedMainTab = 0
+                                    }
+                                }
+                            }
+                        }
+                        .frame(maxWidth: 580)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        
+                        // 2. iPhone Duo 右侧垂直悬浮侧边栏 (双手握持右侧大拇指黄金操控区)
+                        DuoTrailingSidebarView(
                             coordinatorObserver: coordinatorObserver,
+                            selectedMainTab: $selectedMainTab,
+                            selectedControlTab: $selectedControlTab,
                             showingBrowserGuide: $showingBrowserGuide,
                             showingSystemGuide: $showingSystemGuide
                         )
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+                } else {
+                    // === 普通 iPhone / iPhone Duo 外屏折叠态：经典优雅的顶部水平导航条与切换器 ===
+                    VStack(spacing: (isTrackpadFullScreen || coordinatorObserver.isTargetMac) ? 2 : (geometry.size.height < 700 ? 6 : 10)) {
+                        if !isTrackpadFullScreen && !coordinatorObserver.isTargetMac {
+                            // 1. 顶部紧凑双模流线型状态栏 (居中双胶囊排布：大屏通道 + 系统原生通道)
+                            ModernRemoteStatusTopBar(
+                                coordinatorObserver: coordinatorObserver,
+                                showingBrowserGuide: $showingBrowserGuide,
+                                showingSystemGuide: $showingSystemGuide
+                            )
+                            
+                            // 2. 主导航 Tab 切换栏 (双主轴架构：【遥控】与【应用生态】)
+                            Picker("主导航", selection: $selectedMainTab) {
+                                Text("遥控").tag(0)
+                                Text("应用生态").tag(1)
+                            }
+                            .pickerStyle(SegmentedPickerStyle())
+                            .padding(.horizontal, 16)
+                        }
                         
-                        // 2. 主导航 Tab 切换栏 (双主轴架构：【遥控】与【应用生态】)
-                        Picker("主导航", selection: $selectedMainTab) {
-                            Text("遥控").tag(0)
-                            Text("应用生态").tag(1)
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .padding(.horizontal, 16)
-                    }
-                    
-                    // 3. 主体内容区：遥控操作台 vs 应用生态网格
-                    if selectedMainTab == 0 || isTrackpadFullScreen || coordinatorObserver.isTargetMac {
-                        // 遥控操作台 (含情境微操模式切换与交互面板)
-                        VStack(spacing: isTrackpadFullScreen ? 2 : (geometry.size.height < 700 ? 6 : 8)) {
-                            if !coordinatorObserver.isTargetMac && !isTrackpadFullScreen {
-                                Picker("遥控形态", selection: $selectedControlTab) {
-                                    Text("系统").tag(0)
-                                    Text("触控").tag(1)
-                                    Text("IPTV").tag(2)
-                                    Text("演讲").tag(3)
-                                }
-                                .pickerStyle(SegmentedPickerStyle())
-                                .padding(.horizontal, 16)
-                                
-                                // 电视未连接大屏时的轻量引导指引条 (大屏已连通时自动隐退，享受全屏沉浸操作)
-                                if !coordinatorObserver.isHSBBrowserConnected {
-                                    Button(action: {
-                                        lightHaptic.impactOccurred()
-                                        NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
-                                    }) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "qrcode.viewfinder")
-                                                .foregroundColor(.tanghuluBrandBlue)
-                                                .font(.system(size: 13))
-                                            if coordinatorObserver.isHSBBrowserReconnecting {
-                                                Text("大屏连接中... 点击重新扫码")
-                                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                                    .foregroundColor(.orange)
-                                            } else if let nearby = coordinatorObserver.nearbyDiscoveredBrowserTV {
-                                                Text("检测到附近【\(nearby)】，点击扫码连接")
-                                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                                    .foregroundColor(.primary)
-                                            } else {
-                                                Text("尚未连接大屏？点击扫描电视二维码秒级连接")
-                                                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                                    .foregroundColor(.primary)
-                                            }
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .font(.system(size: 10, weight: .semibold))
-                                                .foregroundColor(.secondary.opacity(0.6))
-                                        }
-                                        .padding(.vertical, 6)
-                                        .padding(.horizontal, 12)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                                        )
+                        // 3. 主体内容区：遥控操作台 vs 应用生态网格
+                        if selectedMainTab == 0 || isTrackpadFullScreen || coordinatorObserver.isTargetMac {
+                            // 遥控操作台 (含情境微操模式切换与交互面板)
+                            VStack(spacing: isTrackpadFullScreen ? 2 : (geometry.size.height < 700 ? 6 : 8)) {
+                                if !coordinatorObserver.isTargetMac && !isTrackpadFullScreen {
+                                    Picker("遥控形态", selection: $selectedControlTab) {
+                                        Text("系统").tag(0)
+                                        Text("触控").tag(1)
+                                        Text("IPTV").tag(2)
+                                        Text("演讲").tag(3)
                                     }
+                                    .pickerStyle(SegmentedPickerStyle())
                                     .padding(.horizontal, 16)
-                                    .buttonStyle(PlainButtonStyle())
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                    
+                                    // 电视未连接大屏时的轻量引导指引条 (大屏已连通时自动隐退，享受全屏沉浸操作)
+                                    if !coordinatorObserver.isHSBBrowserConnected {
+                                        Button(action: {
+                                            lightHaptic.impactOccurred()
+                                            NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
+                                        }) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "qrcode.viewfinder")
+                                                    .foregroundColor(.tanghuluBrandBlue)
+                                                    .font(.system(size: 13))
+                                                if coordinatorObserver.isHSBBrowserReconnecting {
+                                                    Text("大屏连接中... 点击重新扫码")
+                                                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                                        .foregroundColor(.orange)
+                                                } else if let nearby = coordinatorObserver.nearbyDiscoveredBrowserTV {
+                                                    Text("检测到附近【\(nearby)】，点击扫码连接")
+                                                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                                        .foregroundColor(.primary)
+                                                } else {
+                                                    Text("尚未连接大屏？点击扫描电视二维码秒级连接")
+                                                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                                        .foregroundColor(.primary)
+                                                }
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                                    .font(.system(size: 10, weight: .semibold))
+                                                    .foregroundColor(.secondary.opacity(0.6))
+                                            }
+                                            .padding(.vertical, 6)
+                                            .padding(.horizontal, 12)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
+                                            )
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .buttonStyle(PlainButtonStyle())
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                    }
                                 }
+                                
+                                remoteScenarioPanel(availableHeight: geometry.size.height)
                             }
-                            
-                            
-                            remoteScenarioPanel(availableHeight: geometry.size.height)
-                        }
-                    } else {
-                        // 应用生态网格 (一键唤起应用并自动切换对应微操)
-                        ModernAppGridView { app in
-                            DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID, url: app.url)
-                            withAnimation(.easeInOut(duration: 0.25)) {
-                                selectedControlTab = app.targetMode
-                                selectedMainTab = 0
+                        } else {
+                            // 应用生态网格 (一键唤起应用并自动切换对应微操)
+                            ModernAppGridView { app in
+                                DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID, url: app.url)
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    selectedControlTab = app.targetMode
+                                    selectedMainTab = 0
+                                }
                             }
                         }
                     }
+                    .padding(.top, isTrackpadFullScreen ? 0 : 4)
+                    .padding(.bottom, isTrackpadFullScreen ? 2 : 6)
+                    .frame(maxWidth: geometry.size.width >= 550 ? 560 : .infinity)
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
                 }
-                .padding(.top, isTrackpadFullScreen ? 0 : 4)
-                .padding(.bottom, isTrackpadFullScreen ? 2 : 6)
-                .frame(maxWidth: geometry.size.width >= 550 ? 560 : .infinity)
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
             }
             
             // 键盘输入抽屉
