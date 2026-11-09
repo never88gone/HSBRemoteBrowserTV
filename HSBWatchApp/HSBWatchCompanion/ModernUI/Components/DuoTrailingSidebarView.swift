@@ -23,10 +23,10 @@ struct DuoTrailingSidebarView: View {
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     
     var body: some View {
-        VStack(spacing: 22) {
-            // 按钮 1: 轮盘遥控模式 (D-Pad)
+        VStack(spacing: 14) {
+            // 按钮 1: 轮盘遥控模式 (官方质感同心圆环轮盘)
             flatActionButton(
-                icon: (selectedMainTab == 0 && selectedControlTab == 0) ? "dpad.fill" : "dpad",
+                icon: (selectedMainTab == 0 && selectedControlTab == 0) ? "circle.circle.fill" : "circle.circle",
                 label: "轮盘",
                 isSelected: (selectedMainTab == 0 && selectedControlTab == 0)
             ) {
@@ -34,9 +34,9 @@ struct DuoTrailingSidebarView: View {
                 selectedControlTab = 0
             }
             
-            // 按钮 2: 无线触控板模式 (Touchpad)
+            // 按钮 2: 无线触控板模式 (流线滑动触控)
             flatActionButton(
-                icon: (selectedMainTab == 0 && selectedControlTab == 1) ? "hand.point.up.left.fill" : "hand.point.up.left",
+                icon: (selectedMainTab == 0 && selectedControlTab == 1) ? "hand.draw.fill" : "hand.draw",
                 label: "触控",
                 isSelected: (selectedMainTab == 0 && selectedControlTab == 1)
             ) {
@@ -106,21 +106,21 @@ struct DuoTrailingSidebarView: View {
         .buttonStyle(FlatPressButtonStyle())
     }
     
-    /// 纯扁平内容视图：大图标 + 清晰大文字（绝不压缩截断为点），无背景框
+    /// 纯扁平内容视图：极简优雅图标 + 呼吸感圆润字标，无任何多余背景框
     private func flatButtonContent(icon: String, label: String, isSelected: Bool) -> some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.system(size: 26, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.secondary)
+                .font(.system(size: 23, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.white.opacity(0.48))
             
             Text(label)
-                .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
-                .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.secondary)
+                .font(.system(size: 12, weight: isSelected ? .semibold : .medium, design: .rounded))
+                .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.white.opacity(0.48))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .frame(width: 66, height: 58)
-        .contentShape(Rectangle()) // 充足热区
+        .frame(width: 58, height: 50)
+        .contentShape(Rectangle()) // 充足黄金热区
     }
     
     private var isExtraModeActive: Bool {
