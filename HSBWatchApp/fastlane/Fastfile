@@ -4,6 +4,26 @@
 require "open3"
 require "digest"
 require "socket"
+require "openssl"
+require "base64"
+
+# 修复 Ruby 4.0 / OpenSSL 3 对 PKCS#8 EC Key 解析导致的 invalid curve name 异常
+class OpenSSL::PKey::EC
+  class << self
+    alias_method :orig_new, :new unless method_defined?(:orig_new)
+    def new(*args, &block)
+      arg0 = args.first
+      if arg0.is_a?(String)
+        raw = arg0.include?("-----BEGIN") ? arg0 : (Base64.decode64(arg0) rescue arg0)
+        begin
+          return OpenSSL::PKey.read(raw)
+        rescue => e
+        end
+      end
+      orig_new(*args, &block)
+    end
+  end
+end
 
 # 自动检测并注入本地代理以加速 App Store Connect 通信，杜绝 SSL 抖动
 [6152, 7890, 7897, 1087].each do |port|
@@ -124,7 +144,7 @@ platform :ios do
   end
 
   desc "Upload and sync App Store metadata and screenshots"
-  lane :metadata do
+  lane :metadata do |options|
     # 上传前本地校验截图合规性 (尺寸、Alpha 通道)
     validator = File.expand_path("validate_review_assets.rb", __dir__)
     stdout, stderr, status = Open3.capture3("ruby", validator)
@@ -134,9 +154,17 @@ platform :ios do
     UI.message(stdout)
 
     api_key = get_asc_api_key
-    UI.message("🚀 Syncing App Store Metadata & Screenshots...")
+    target_version = options[:version] || "1.0.1"
+
+    app = Spaceship::ConnectAPI::App.find("com.never88gone.thlbrowserios")
+    if app
+      app.ensure_version!(target_version, platform: Spaceship::ConnectAPI::Platform::IOS)
+    end
+
+    UI.message("🚀 Syncing App Store Metadata & Screenshots for version #{target_version}...")
     deliver(
       api_key: api_key,
+      app_version: target_version,
       skip_binary_upload: true,
       skip_screenshots: false,
       force: true,

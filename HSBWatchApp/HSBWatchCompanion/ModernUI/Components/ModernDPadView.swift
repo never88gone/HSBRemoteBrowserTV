@@ -217,3 +217,13 @@ public struct ModernDPadView: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("四向硬件微操轮盘") {
+    ZStack {
+        DuoPalette.canvasBg.ignoresSafeArea()
+        ModernDPadView(size: 220)
+    }
+    .preferredColorScheme(.dark)
+}
+#endif

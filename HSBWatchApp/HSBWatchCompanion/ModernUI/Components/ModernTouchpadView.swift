@@ -399,3 +399,15 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
 private class TouchpadOverlayUIView: UIView {
     weak var coordinator: NativeTouchpadGestureOverlay.Coordinator?
 }
+
+#if DEBUG
+#Preview("Apple Glass 触控板") {
+    ZStack {
+        DuoPalette.canvasBg.ignoresSafeArea()
+        ModernTouchpadView()
+            .frame(height: 320)
+            .padding(16)
+    }
+    .preferredColorScheme(.dark)
+}
+#endif

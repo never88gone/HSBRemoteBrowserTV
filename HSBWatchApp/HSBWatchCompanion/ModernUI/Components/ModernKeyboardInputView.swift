@@ -230,3 +230,20 @@ private struct BackspaceAwareTextField: UIViewRepresentable {
         }
     }
 }
+
+#if DEBUG
+private struct KeyboardInputPreviewHost: View {
+    @State private var isPresented = true
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            DuoPalette.canvasBg.ignoresSafeArea()
+            ModernKeyboardInputView(isPresented: $isPresented)
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("电视远程打字输入法浮窗") {
+    KeyboardInputPreviewHost()
+}
+#endif

@@ -270,3 +270,9 @@ private struct PlayTriangle: Shape {
         return path
     }
 }
+
+#if DEBUG
+#Preview("糖葫芦拟人入场动画") {
+    TanghuluLaunchAnimationView()
+}
+#endif

@@ -254,3 +254,27 @@ struct ModernRemoteStatusTopBar: View {
         }
     }
 }
+
+#if DEBUG
+private struct StatusTopBarPreviewHost: View {
+    @StateObject private var observer = CoordinatorObservable(coordinator: DualModeRemoteCoordinator.shared)
+    @State private var bGuide = false
+    @State private var sGuide = false
+    var body: some View {
+        ZStack {
+            DuoPalette.canvasBg.ignoresSafeArea()
+            ModernRemoteStatusTopBar(
+                coordinatorObserver: observer,
+                showingBrowserGuide: $bGuide,
+                showingSystemGuide: $sGuide
+            )
+            .padding()
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("双模状态导航顶栏") {
+    StatusTopBarPreviewHost()
+}
+#endif

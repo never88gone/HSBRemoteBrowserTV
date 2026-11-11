@@ -252,3 +252,45 @@ struct ModernIPTVNumberPadView: View {
         }
     }
 }
+
+#if DEBUG
+private struct IPTVDirectoryPreviewHost: View {
+    @State private var src = "全部"
+    @State private var grp = "央视频道"
+    @State private var query = ""
+    @State private var digits = "10"
+    
+    var body: some View {
+        VStack(spacing: 14) {
+            ModernIPTVChannelDirectoryView(
+                isConnected: true,
+                sourceNames: ["默认源", "香港港澳台"],
+                selectedSource: $src,
+                selectedGroup: $grp,
+                searchText: $query,
+                groups: [
+                    IPTVRemoteGroup(payload: [HSBRemotePayloadKeyName: "央视频道", "count": 16])!
+                ],
+                channels: [
+                    IPTVRemoteChannel(payload: [HSBRemotePayloadKeyId: "c1", HSBRemotePayloadKeyName: "CCTV-1 综合", HSBRemotePayloadKeyGroup: "央视频道", "number": 1, "favorite": true])!
+                ],
+                total: 1,
+                isLoading: false,
+                catalogError: nil,
+                currentId: "c1",
+                onPlay: { _ in },
+                onFavoriteChange: nil,
+                onRequestCatalog: { _ in }
+            )
+            ModernIPTVNumberPadView(isConnected: true, inputDigits: $digits, onCommit: {})
+        }
+        .padding()
+        .background(DuoPalette.canvasBg)
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("IPTV 频道目录与台号键盘") {
+    IPTVDirectoryPreviewHost()
+}
+#endif

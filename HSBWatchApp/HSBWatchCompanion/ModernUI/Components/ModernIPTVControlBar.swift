@@ -157,3 +157,23 @@ struct ModernIPTVActionBar: View {
         .accessibilityLabel(title)
     }
 }
+
+#if DEBUG
+#Preview("IPTV 频道/音量塔柱控制条") {
+    VStack(spacing: 16) {
+        ModernIPTVNowPlayingCard(
+            isConnected: true,
+            isPlaying: true,
+            playbackSummary: "1080p · HLS 实时直播",
+            currentName: "CCTV-1 综合",
+            currentId: "cctv1",
+            currentIsFavorite: true,
+            onFavoriteToggle: {}
+        )
+        ModernIPTVChannelVolumeTowers(isConnected: true, onAction: nil)
+    }
+    .padding()
+    .background(DuoPalette.canvasBg)
+    .preferredColorScheme(.dark)
+}
+#endif

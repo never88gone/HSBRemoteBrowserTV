@@ -11,6 +11,7 @@ import SwiftUI
 
 public struct MacOSMediaRemoteView: View {
     public let deviceName: String
+    public var isWideDuo: Bool = false
     public var onDismiss: (() -> Void)?
     
     // 媒体播放与状态
@@ -26,31 +27,469 @@ public struct MacOSMediaRemoteView: View {
     private let haptic = UIImpactFeedbackGenerator(style: .medium)
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     
-    public init(deviceName: String = "Mac", onDismiss: (() -> Void)? = nil) {
+    public init(deviceName: String = "Mac", isWideDuo: Bool = false, onDismiss: (() -> Void)? = nil) {
         self.deviceName = deviceName
+        self.isWideDuo = isWideDuo
         self.onDismiss = onDismiss
     }
     
     public var body: some View {
+        Group {
+            if isWideDuo {
+                wideDuoBody
+            } else {
+                compactBody
+            }
+        }
+        .onAppear {
+            checkAirPlayStatus()
+            startWaveAnimation()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBShowMacAirPlayHelpNotification"))) { _ in
+            showHelpAlert = true
+        }
+        .alert(isPresented: $showHelpAlert) {
+            Alert(
+                title: Text("macOS 原生隔空播放直连"),
+                message: Text("请在目标 Mac 开启系统自带接收功能：\n\n打开【系统设置】->【通用】->【隔空播放与接力】-> 开启【隔空播放接收器】即可无线控制多媒体、曲目与音量。"),
+                dismissButton: .default(Text("好的"))
+            )
+        }
+    }
+    
+    // MARK: - iPhone Duo 展开态双栏视觉与控台
+    private var wideDuoBody: some View {
+        HStack(alignment: .top, spacing: DuoMetrics.columnGap) {
+            // === 左半屏：沉浸律动黑胶声波视觉台 + 免装引导卡 ===
+            VStack(spacing: 14) {
+                VStack(spacing: 5) {
+                    Text("NOW PLAYING · AIRPLAY AUDIO")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(DuoPalette.hawthornRed)
+                        .tracking(1.1)
+                    Text("macOS 原生系统音频直推")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(DuoPalette.textPrimary)
+                }
+                .padding(.top, 14)
+                
+                Spacer(minLength: 6)
+                
+                // 大号发光黑胶音符盘
+                ZStack {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                gradient: Gradient(colors: [
+                                    hawthornRed.opacity(0.32),
+                                    hawthornRed.opacity(0.08),
+                                    Color.clear
+                                ]),
+                                center: .center,
+                                startRadius: 10,
+                                endRadius: 124
+                            )
+                        )
+                        .frame(width: 236, height: 236)
+                    
+                    Circle()
+                        .fill(Color(white: 0.10))
+                        .frame(width: 196, height: 196)
+                        .overlay(Circle().stroke(DuoPalette.strokeBright, lineWidth: 2))
+                    
+                    Circle()
+                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                        .frame(width: 160, height: 160)
+                    Circle()
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                        .frame(width: 126, height: 126)
+                    
+                    Image(systemName: "music.note")
+                        .font(.system(size: 62, weight: .semibold))
+                        .foregroundColor(isPlaying ? hawthornRed : Color.white.opacity(0.38))
+                        .scaleEffect(isPlaying ? 1.07 : 0.96)
+                        .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: isPlaying)
+                }
+                
+                // 实时通道状态胶囊
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(DuoPalette.readyGreen)
+                        .frame(width: 7, height: 7)
+                    Text("Port 7000 · 系统音频与快捷键毫秒级通道")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(DuoPalette.textSecondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(DuoPalette.cardElevated))
+                .overlay(Capsule().stroke(DuoPalette.stroke, lineWidth: 1))
+                
+                // 16 阶实时朱砂红频谱律动条
+                HStack(spacing: 5) {
+                    ForEach(0..<16, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 2.5)
+                            .fill(isPlaying ? DuoPalette.accentRed.opacity(0.9) : Color.white.opacity(0.22))
+                            .frame(width: 5, height: wideWaveBarHeight(index: i))
+                            .animation(.easeInOut(duration: 0.25), value: wavePhase)
+                    }
+                }
+                .frame(height: 44)
+                
+                Text(isPlaying ? "正在通过隔空播放隧道同步音频脉冲" : "已就绪 · 点击右侧主控立即控制 Mac 媒体")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(DuoPalette.textSecondary)
+                    .lineLimit(1)
+                
+                Spacer(minLength: 6)
+                
+                // 内置原生低延迟说明子卡
+                Button {
+                    lightHaptic.impactOccurred()
+                    showHelpAlert = true
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "macbook.and.iphone")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(DuoPalette.readyGreen)
+                            Text("原生系统级低延迟直连")
+                                .font(.system(size: 13.5, weight: .bold))
+                                .foregroundColor(DuoPalette.textPrimary)
+                            Spacer()
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 13))
+                                .foregroundColor(DuoPalette.textMuted)
+                        }
+                        Text("无需安装桌面端插件。支持全系统播放器、Music、YouTube、Safari 与 IINA 硬件媒体键及主音量直控。")
+                            .font(.system(size: 11.5, weight: .regular))
+                            .foregroundColor(DuoPalette.textSecondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(14)
+                    .duoCard(cornerRadius: 16, fill: DuoPalette.cardElevated, stroke: DuoPalette.stroke)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .duoCard()
+            
+            // === 右半屏：上播放与音量双卡片 (满宽) + 下 L 型快捷动作 (让位侧边栏) ===
+            VStack(spacing: 14) {
+                // 1. 多媒体播放控台卡
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("多媒体播放控台")
+                            .font(.system(size: 13.5, weight: .bold))
+                            .foregroundColor(DuoPalette.textSecondary)
+                        Spacer()
+                        Text(isPlaying ? "播放脉冲同步中" : "无线直连就绪")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(isPlaying ? DuoPalette.readyGreen : DuoPalette.textMuted)
+                    }
+                    
+                    Spacer(minLength: 4)
+                    
+                    // 大圆主控区：上一首 | 播放/暂停 | 下一首
+                    HStack(spacing: 22) {
+                        Spacer()
+                        Button(action: triggerPrevious) {
+                            Image(systemName: "backward.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 58, height: 58)
+                                .background(Circle().fill(DuoPalette.cardElevated))
+                                .overlay(Circle().stroke(DuoPalette.stroke, lineWidth: 1))
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_media_previous_button")
+                        
+                        Button(action: triggerPlayPause) {
+                            ZStack {
+                                Circle()
+                                    .fill(DuoPalette.accentRed.opacity(0.2))
+                                    .frame(width: 102, height: 102)
+                                Circle()
+                                    .fill(hawthornRed)
+                                    .frame(width: 82, height: 82)
+                                    .shadow(color: hawthornRed.opacity(0.45), radius: 14, x: 0, y: 5)
+                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.system(size: 32, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_media_play_pause_button")
+                        
+                        Button(action: triggerNext) {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 58, height: 58)
+                                .background(Circle().fill(DuoPalette.cardElevated))
+                                .overlay(Circle().stroke(DuoPalette.stroke, lineWidth: 1))
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_media_next_button")
+                        Spacer()
+                    }
+                    
+                    Spacer(minLength: 4)
+                    
+                    // 双宽胶囊：快退 10s / 快进 10s
+                    HStack(spacing: 12) {
+                        Button(action: triggerBackward) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "gobackward.10")
+                                    .font(.system(size: 17, weight: .semibold))
+                                Text("快退 10s")
+                                    .font(.system(size: 13.5, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .duoCard(cornerRadius: 14, fill: DuoPalette.cardElevated, stroke: DuoPalette.stroke)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_media_backward_button")
+                        
+                        Button(action: triggerForward) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "goforward.10")
+                                    .font(.system(size: 17, weight: .semibold))
+                                Text("快进 10s")
+                                    .font(.system(size: 13.5, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .duoCard(cornerRadius: 14, fill: DuoPalette.cardElevated, stroke: DuoPalette.stroke)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_media_forward_button")
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .duoCard()
+                
+                // 2. Mac 硬件主音量输出卡片
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Mac 硬件主音量输出")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(DuoPalette.textSecondary)
+                        Spacer()
+                        Text(isMuted ? "已静音" : "\(Int(round(volume * 100)))%")
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundColor(isMuted ? DuoPalette.textMuted : hawthornRed)
+                    }
+                    
+                    // 粗粒度可视化音量刻度推槽
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(DuoPalette.cardElevated)
+                                .frame(height: 16)
+                            Capsule()
+                                .fill(isMuted ? Color.gray : hawthornRed)
+                                .frame(width: max(16, geo.size.width * CGFloat(isMuted ? 0.0 : volume)), height: 16)
+                        }
+                        .frame(height: geo.size.height)
+                    }
+                    .frame(height: 22)
+                    
+                    // 减小 / 静音 / 增大三联大键
+                    HStack(spacing: 10) {
+                        Button(action: triggerVolumeDown) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "speaker.minus.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("减小")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .duoCard(cornerRadius: 13, fill: DuoPalette.cardElevated, stroke: DuoPalette.stroke)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_volume_down_button")
+                        
+                        Button(action: triggerMute) {
+                            VStack(spacing: 4) {
+                                Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text(isMuted ? "已静音" : "静音")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(isMuted ? DuoPalette.accentRed : .white)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .duoCard(
+                                cornerRadius: 13,
+                                fill: isMuted ? DuoPalette.accentRed.opacity(0.18) : DuoPalette.cardElevated,
+                                stroke: isMuted ? DuoPalette.accentRed.opacity(0.45) : DuoPalette.stroke
+                            )
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_volume_mute_button")
+                        
+                        Button(action: triggerVolumeUp) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "speaker.plus.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("增大")
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .duoCard(cornerRadius: 13, fill: DuoPalette.cardElevated, stroke: DuoPalette.stroke)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        .accessibilityIdentifier("mac_volume_up_button")
+                    }
+                }
+                .padding(16)
+                .duoCard()
+                
+                // 3. 右下左翼 L 型快捷控制动作卡 (右侧让位给 4 键侧边栏)
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("快捷控制动作")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(DuoPalette.textSecondary)
+                            Spacer()
+                            Text("端口 7000 实时直连")
+                                .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                                .foregroundColor(DuoPalette.readyGreen)
+                        }
+                        
+                        Button {
+                            lightHaptic.impactOccurred()
+                            NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
+                        } label: {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(DuoPalette.brandBlue.opacity(0.16))
+                                        .frame(width: 36, height: 36)
+                                    Image(systemName: "keyboard")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(DuoPalette.brandBlue)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("远程文字键入")
+                                        .font(.system(size: 13.5, weight: .semibold))
+                                        .foregroundColor(.white)
+                                    Text("向 Mac 搜索栏发送文本")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(DuoPalette.textSecondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(DuoPalette.textMuted)
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: 62)
+                            .duoCard(cornerRadius: 14, fill: DuoPalette.cardElevated, stroke: DuoPalette.stroke)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        
+                        Button {
+                            lightHaptic.impactOccurred()
+                            showHelpAlert = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(DuoPalette.readyGreen.opacity(0.16))
+                                        .frame(width: 36, height: 36)
+                                    Image(systemName: "waveform.path.ecg")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(DuoPalette.readyGreen)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("隔空播放协议说明")
+                                        .font(.system(size: 13.5, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    Text("查看免装软件兼容说明与音频通道帮助")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(DuoPalette.textSecondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(DuoPalette.textMuted)
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: 62)
+                            .duoCard(cornerRadius: 14, fill: DuoPalette.cardElevated, stroke: DuoPalette.stroke)
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                        
+                        Button(action: disconnectMac) {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(DuoPalette.accentRed.opacity(0.18))
+                                        .frame(width: 36, height: 36)
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(DuoPalette.accentRed)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("断开直连返回")
+                                        .font(.system(size: 13.5, weight: .semibold))
+                                        .foregroundColor(DuoPalette.accentRed)
+                                    Text("返回大屏硬件设备中心")
+                                        .font(.system(size: 10.5))
+                                        .foregroundColor(DuoPalette.textSecondary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: 62)
+                            .duoCard(
+                                cornerRadius: 14,
+                                fill: DuoPalette.accentRed.opacity(0.14),
+                                stroke: DuoPalette.accentRed.opacity(0.38)
+                            )
+                        }
+                        .buttonStyle(ScaleButtonStyle())
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .duoCard()
+                    
+                    Spacer()
+                        .frame(width: DuoMetrics.sidebarReserveWidth - DuoMetrics.trailingPadding)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+    }
+    
+    // MARK: - 普通单屏 / 外屏折叠态视觉与控台 (安全避让顶栏状态区)
+    private var compactBody: some View {
         VStack(spacing: 16) {
-            // 1. 顶部 Mac 终端识别与原生隔空播放状态条
+            // 1. 顶部 Mac 终端识别与原生隔空播放状态条 (预留 10pt 顶距，坚决杜绝状态栏与灵动岛遮挡)
             HStack(spacing: 8) {
-                Button(action: {
-                    haptic.impactOccurred()
-                    DualModeRemoteCoordinator.shared.disconnectAll()
-                    onDismiss?()
-                    NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
-                }) {
+                Button(action: disconnectMac) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13, weight: .bold))
                         Text("断开")
                             .font(.system(size: 13, weight: .medium))
                     }
-                    .foregroundColor(.white.opacity(0.85))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                    .foregroundColor(.white.opacity(0.92))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(Color.white.opacity(0.14)))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
                 }
                 .buttonStyle(ScaleButtonStyle())
                 .accessibilityIdentifier("mac_disconnect_button")
@@ -118,7 +557,7 @@ public struct MacOSMediaRemoteView: View {
                 
                 // 律动频谱波形条
                 HStack(spacing: 4) {
-                    ForEach(0..<12) { i in
+                    ForEach(0..<12, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 2)
                             .fill(isPlaying ? hawthornRed.opacity(0.85) : Color.white.opacity(0.2))
                             .frame(width: 3.5, height: waveBarHeight(index: i))
@@ -143,12 +582,9 @@ public struct MacOSMediaRemoteView: View {
             
             Spacer(minLength: 10)
             
-            // 3. 核心播放控制排组 (快退10s / 上一首 / 播放暂停 / 下一首 / 快进10s)
+            // 3. 核心播放控制排组
             HStack(spacing: 16) {
-                Button(action: {
-                    lightHaptic.impactOccurred()
-                    MacMediaCommandDispatcher.dispatchCommand("backward")
-                }) {
+                Button(action: triggerBackward) {
                     Image(systemName: "gobackward.10")
                         .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.white.opacity(0.85))
@@ -158,10 +594,7 @@ public struct MacOSMediaRemoteView: View {
                 .buttonStyle(ScaleButtonStyle())
                 .accessibilityIdentifier("mac_media_backward_button")
                 
-                Button(action: {
-                    haptic.impactOccurred()
-                    MacMediaCommandDispatcher.dispatchCommand("previous")
-                }) {
+                Button(action: triggerPrevious) {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(.white)
@@ -171,12 +604,7 @@ public struct MacOSMediaRemoteView: View {
                 .buttonStyle(ScaleButtonStyle())
                 .accessibilityIdentifier("mac_media_previous_button")
                 
-                // 核心大尺寸播放/暂停按键
-                Button(action: {
-                    haptic.impactOccurred()
-                    isPlaying.toggle()
-                    MacMediaCommandDispatcher.dispatchCommand("play_pause")
-                }) {
+                Button(action: triggerPlayPause) {
                     ZStack {
                         Circle()
                             .fill(hawthornRed)
@@ -190,10 +618,7 @@ public struct MacOSMediaRemoteView: View {
                 .buttonStyle(ScaleButtonStyle())
                 .accessibilityIdentifier("mac_media_play_pause_button")
                 
-                Button(action: {
-                    haptic.impactOccurred()
-                    MacMediaCommandDispatcher.dispatchCommand("next")
-                }) {
+                Button(action: triggerNext) {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(.white)
@@ -203,10 +628,7 @@ public struct MacOSMediaRemoteView: View {
                 .buttonStyle(ScaleButtonStyle())
                 .accessibilityIdentifier("mac_media_next_button")
                 
-                Button(action: {
-                    lightHaptic.impactOccurred()
-                    MacMediaCommandDispatcher.dispatchCommand("forward")
-                }) {
+                Button(action: triggerForward) {
                     Image(systemName: "goforward.10")
                         .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.white.opacity(0.85))
@@ -222,12 +644,7 @@ public struct MacOSMediaRemoteView: View {
             // 4. 底部系统硬件全局音量与静音控制岛
             VStack(spacing: 12) {
                 HStack(spacing: 14) {
-                    Button(action: {
-                        lightHaptic.impactOccurred()
-                        volume = max(0.0, volume - 0.08)
-                        isMuted = false
-                        MacMediaCommandDispatcher.dispatchCommand("volume_down")
-                    }) {
+                    Button(action: triggerVolumeDown) {
                         Image(systemName: "speaker.minus.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white)
@@ -238,7 +655,6 @@ public struct MacOSMediaRemoteView: View {
                     .buttonStyle(ScaleButtonStyle())
                     .accessibilityIdentifier("mac_volume_down_button")
                     
-                    // 音量滑动刻度条
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule()
@@ -252,12 +668,7 @@ public struct MacOSMediaRemoteView: View {
                     }
                     .frame(height: 38)
                     
-                    Button(action: {
-                        lightHaptic.impactOccurred()
-                        volume = min(1.0, volume + 0.08)
-                        isMuted = false
-                        MacMediaCommandDispatcher.dispatchCommand("volume_up")
-                    }) {
+                    Button(action: triggerVolumeUp) {
                         Image(systemName: "speaker.plus.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(.white)
@@ -268,11 +679,7 @@ public struct MacOSMediaRemoteView: View {
                     .buttonStyle(ScaleButtonStyle())
                     .accessibilityIdentifier("mac_volume_up_button")
                     
-                    Button(action: {
-                        haptic.impactOccurred()
-                        isMuted.toggle()
-                        MacMediaCommandDispatcher.dispatchCommand("mute")
-                    }) {
+                    Button(action: triggerMute) {
                         Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(isMuted ? hawthornRed : .white)
@@ -305,17 +712,68 @@ public struct MacOSMediaRemoteView: View {
             .padding(.bottom, 12)
         }
         .background(darkCarbon.ignoresSafeArea())
-        .onAppear {
-            checkAirPlayStatus()
-            startWaveAnimation()
-        }
-        .alert(isPresented: $showHelpAlert) {
-            Alert(
-                title: Text("隔空播放未就绪"),
-                message: Text("请在目标 Mac 开启系统自带的接收功能：\n\n打开【系统设置】->【通用】->【隔空播放与接力】-> 开启【隔空播放接收器】即可直接控制。"),
-                dismissButton: .default(Text("好的"))
-            )
-        }
+    }
+    
+    // MARK: - 共享真实事件动作
+    private func disconnectMac() {
+        haptic.impactOccurred()
+        DualModeRemoteCoordinator.shared.disconnectAll()
+        onDismiss?()
+        NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
+    }
+    
+    private func triggerBackward() {
+        lightHaptic.impactOccurred()
+        MacMediaCommandDispatcher.dispatchCommand("backward")
+    }
+    
+    private func triggerForward() {
+        lightHaptic.impactOccurred()
+        MacMediaCommandDispatcher.dispatchCommand("forward")
+    }
+    
+    private func triggerPrevious() {
+        haptic.impactOccurred()
+        MacMediaCommandDispatcher.dispatchCommand("previous")
+    }
+    
+    private func triggerNext() {
+        haptic.impactOccurred()
+        MacMediaCommandDispatcher.dispatchCommand("next")
+    }
+    
+    private func triggerPlayPause() {
+        haptic.impactOccurred()
+        isPlaying.toggle()
+        MacMediaCommandDispatcher.dispatchCommand("play_pause")
+    }
+    
+    private func triggerVolumeDown() {
+        lightHaptic.impactOccurred()
+        volume = max(0.0, volume - 0.08)
+        isMuted = false
+        MacMediaCommandDispatcher.dispatchCommand("volume_down")
+    }
+    
+    private func triggerVolumeUp() {
+        lightHaptic.impactOccurred()
+        volume = min(1.0, volume + 0.08)
+        isMuted = false
+        MacMediaCommandDispatcher.dispatchCommand("volume_up")
+    }
+    
+    private func triggerMute() {
+        haptic.impactOccurred()
+        isMuted.toggle()
+        MacMediaCommandDispatcher.dispatchCommand("mute")
+    }
+    
+    private func wideWaveBarHeight(index: Int) -> CGFloat {
+        if !isPlaying { return 6.0 }
+        let pattern: [CGFloat] = [10, 22, 34, 18, 28, 42, 22, 36, 44, 24, 34, 20, 30, 22, 14, 10]
+        let base = pattern[index % pattern.count]
+        let factor = (CGFloat(index % 3) * 0.16 + 0.84)
+        return wavePhase > 0.5 ? base * factor : max(8, base * 0.55)
     }
     
     private func checkAirPlayStatus() {
@@ -349,3 +807,17 @@ private struct ScaleButtonStyle: ButtonStyle {
             .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }
+
+#if DEBUG
+#Preview("Mac 隔空播放遥控台 · 折叠窄屏") {
+    DuoPreviewContainer(expandedDuo: false) {
+        MacOSMediaRemoteView(deviceName: "never88gone的 Mac Studio", isWideDuo: false)
+    }
+}
+
+#Preview("Mac 隔空播放遥控台 · iPhone Duo 双栏") {
+    DuoPreviewContainer(expandedDuo: true) {
+        MacOSMediaRemoteView(deviceName: "never88gone的 Mac Studio", isWideDuo: true)
+    }
+}
+#endif

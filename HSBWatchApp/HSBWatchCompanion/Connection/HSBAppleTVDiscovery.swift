@@ -93,6 +93,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
 /// 局域网 Apple TV 自动发现引擎 (原生 Bonjour 发现与过滤架构)
 @objc public final class HSBAppleTVDiscovery: NSObject {
     @objc public static let shared = HSBAppleTVDiscovery()
+    @objc public static let devicesDidChangeNotification = Notification.Name("HSBAppleTVDiscoveryDevicesDidChangeNotification")
     
     private var companionBrowser: NetServiceBrowser?
     private var thlTVBrowser: NetServiceBrowser?
@@ -101,8 +102,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     private var services: [String: NetService] = [:]
     private var deviceMap: [String: HSBDiscoveredAppleTV] = [:]
     
-    private let discoveryLock = NSLock()
-    private var onChangeCallback: (([HSBDiscoveredAppleTV]) -> Void)?
+    private let discoveryLock = NSRecursiveLock()
+    private var observers: [String: ([HSBDiscoveredAppleTV]) -> Void] = [:]
     
     @objc public private(set) var isScanning: Bool = false
     @objc public var discoveredDevices: [HSBDiscoveredAppleTV] {
@@ -119,45 +120,83 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     
     @objc(startScanningWithOnChange:)
     public func startScanning(onChange: @escaping ([HSBDiscoveredAppleTV]) -> Void) {
+        startScanning(observerId: "default", onChange: onChange)
+    }
+    
+    /// 注册独立观察者 ID 并按需启动硬件发现，避免多个模块互相覆盖回调或重复清空已有扫描成果
+    public func startScanning(observerId: String, onChange: @escaping ([HSBDiscoveredAppleTV]) -> Void) {
         discoveryLock.lock()
-        self.onChangeCallback = onChange
-        self.isScanning = true
-        self.deviceMap.removeAll()
-        self.services.removeAll()
-        
+        observers[observerId] = onChange
+        let alreadyRunning = isScanning && companionBrowser != nil && thlTVBrowser != nil
+        let snapshot = Array(deviceMap.values).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        if !alreadyRunning {
+            isScanning = true
+        }
         discoveryLock.unlock()
+        
+        if alreadyRunning {
+            DispatchQueue.main.async {
+                onChange(snapshot)
+            }
+            return
+        }
+        
+        beginBrowsingServices(clearExisting: true)
+    }
+    
+    private func beginBrowsingServices(clearExisting: Bool) {
+        companionBrowser?.stop()
+        companionBrowser = nil
+        thlTVBrowser?.stop()
+        thlTVBrowser = nil
+        stopSmartLANProbing()
+        
+        if clearExisting {
+            discoveryLock.lock()
+            deviceMap.removeAll()
+            services.removeAll()
+            discoveryLock.unlock()
+        }
         
         log.info("Starting TV & Hardware Bonjour discovery (_companion-link & _thltv)...")
         
-        // 1. 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道
-        let cBrowser = NetServiceBrowser()
-        cBrowser.delegate = self
-        cBrowser.schedule(in: .main, forMode: .common)
-        cBrowser.searchForServices(ofType: "_companion-link._tcp.", inDomain: "local.")
-        self.companionBrowser = cBrowser
+        let startOnMain = {
+            // 1. 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道
+            let cBrowser = NetServiceBrowser()
+            cBrowser.delegate = self
+            cBrowser.schedule(in: .main, forMode: .common)
+            cBrowser.searchForServices(ofType: "_companion-link._tcp.", inDomain: "local.")
+            self.companionBrowser = cBrowser
+            
+            // 2. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属通信通道)
+            let tBrowser = NetServiceBrowser()
+            tBrowser.delegate = self
+            tBrowser.schedule(in: .main, forMode: .common)
+            tBrowser.searchForServices(ofType: "_thltv._tcp.", inDomain: "local.")
+            self.thlTVBrowser = tBrowser
+            
+            // 3. 并行启动 Smart LAN 探测器（保障 Android 模拟器与局域网 Wi-Fi 隔离环境）
+            self.startSmartLANProbing()
+        }
         
-        // 2. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属通信通道)
-        let tBrowser = NetServiceBrowser()
-        tBrowser.delegate = self
-        tBrowser.schedule(in: .main, forMode: .common)
-        tBrowser.searchForServices(ofType: "_thltv._tcp.", inDomain: "local.")
-        self.thlTVBrowser = tBrowser
-        
-        // 3. 并行启动 Smart LAN 探测器（保障 Android 模拟器与局域网 Wi-Fi 隔离环境）
-        startSmartLANProbing()
+        if Thread.isMainThread {
+            startOnMain()
+        } else {
+            DispatchQueue.main.async(execute: startOnMain)
+        }
     }
     
     @objc public func refresh() {
         discoveryLock.lock()
-        for service in services.values {
-            service.resolve(withTimeout: 5.0)
-        }
+        let activeServices = Array(services.values)
+        isScanning = true
         discoveryLock.unlock()
         
-        stopScanning()
-        if let callback = onChangeCallback {
-            startScanning(onChange: callback)
+        for service in activeServices {
+            service.resolve(withTimeout: 5.0)
         }
+        
+        beginBrowsingServices(clearExisting: false)
     }
     
     @objc public func stopScanning() {
@@ -278,36 +317,52 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         }
     }
     
-    private func probeHost(_ host: String, port: UInt16, completion: @escaping (Bool) -> Void) {
-        let endpoint = nw_endpoint_create_host(host, "\(port)")
-        let params = nw_parameters_create()
-        let conn = nw_connection_create(endpoint, params)
-        let probeQueue = DispatchQueue(label: "com.tanghulu.probe.\(host).\(port)", qos: .userInitiated)
-        nw_connection_set_queue(conn, probeQueue)
-        
+    /// 使用标准 TCP 参数（非空协议栈）快速非阻塞探测指定主机端口连通性
+    public static func probeTCPConnection(
+        host: String,
+        port: UInt16,
+        timeout: TimeInterval,
+        completion: @escaping (Bool) -> Void
+    ) {
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            completion(false)
+            return
+        }
+        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .tcp)
+        let probeQueue = DispatchQueue(label: "com.tanghulu.tcp.probe.\(host).\(port)", qos: .userInitiated)
         let lock = NSLock()
         var finished = false
-        let done = { (success: Bool) in
+
+        let done: (Bool) -> Void = { success in
             lock.lock()
-            defer { lock.unlock() }
-            if !finished {
+            let shouldComplete = !finished
+            if shouldComplete {
                 finished = true
-                nw_connection_cancel(conn)
-                completion(success)
             }
+            lock.unlock()
+            guard shouldComplete else { return }
+            conn.cancel()
+            completion(success)
         }
-        
-        nw_connection_set_state_changed_handler(conn) { state, _ in
-            if state == nw_connection_state_ready {
+
+        conn.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
                 done(true)
-            } else if state == nw_connection_state_failed || state == nw_connection_state_cancelled {
+            case .failed, .cancelled:
                 done(false)
+            default:
+                break
             }
         }
-        nw_connection_start(conn)
-        probeQueue.asyncAfter(deadline: .now() + 0.8) {
+        conn.start(queue: probeQueue)
+        probeQueue.asyncAfter(deadline: .now() + timeout) {
             done(false)
         }
+    }
+
+    private func probeHost(_ host: String, port: UInt16, completion: @escaping (Bool) -> Void) {
+        Self.probeTCPConnection(host: host, port: port, timeout: 0.8, completion: completion)
     }
     
     // MARK: - Port Knocking Wakeup (深度休眠唤醒)
@@ -318,40 +373,16 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         let group = DispatchGroup()
         let lock = NSLock()
         var atLeastOne = false
-        let queue = DispatchQueue(label: "com.never88gone.thlbrowserios.wake", qos: .userInitiated)
         
         for port in knockPorts {
             group.enter()
-            let endpoint = nw_endpoint_create_host(host, "\(port)")
-            let params = nw_parameters_create()
-            let conn = nw_connection_create(endpoint, params)
-            nw_connection_set_queue(conn, queue)
-            
-            var didFinish = false
-            let finish = { (success: Bool) in
-                if !didFinish {
-                    didFinish = true
-                    if success {
-                        lock.lock()
-                        atLeastOne = true
-                        lock.unlock()
-                    }
-                    nw_connection_cancel(conn)
-                    group.leave()
+            Self.probeTCPConnection(host: host, port: port, timeout: 0.5) { success in
+                if success {
+                    lock.lock()
+                    atLeastOne = true
+                    lock.unlock()
                 }
-            }
-            
-            nw_connection_set_state_changed_handler(conn) { state, _ in
-                if state == nw_connection_state_ready {
-                    finish(true)
-                } else if state == nw_connection_state_failed || state == nw_connection_state_cancelled {
-                    finish(false)
-                }
-            }
-            
-            nw_connection_start(conn)
-            queue.asyncAfter(deadline: .now() + 0.5) {
-                finish(false)
+                group.leave()
             }
         }
         
@@ -501,11 +532,18 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     }
     
     fileprivate func notifyChange() {
+        discoveryLock.lock()
         let current = Array(deviceMap.values).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let handlers = Array(observers.values)
+        discoveryLock.unlock()
+        
         let names = current.map { "\($0.name) (\($0.modelName ?? "nil"))" }.joined(separator: ", ")
         NSLog("[BONJOUR_TRACE] notifyChange: %d devices: %@", current.count, names)
-        DispatchQueue.main.async { [weak self] in
-            self?.onChangeCallback?(current)
+        DispatchQueue.main.async {
+            for handler in handlers {
+                handler(current)
+            }
+            NotificationCenter.default.post(name: HSBAppleTVDiscovery.devicesDidChangeNotification, object: current)
         }
     }
 }

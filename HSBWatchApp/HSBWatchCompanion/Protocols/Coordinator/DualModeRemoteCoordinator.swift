@@ -165,7 +165,7 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         
         // 2. 同时启动局域网 Bonjour 硬件扫描，供设备列表选择
         NSLog("[DualMode] Starting Apple TV Bonjour hardware scan...")
-        HSBAppleTVDiscovery.shared.startScanning { [weak self] devices in
+        HSBAppleTVDiscovery.shared.startScanning(observerId: "coordinator") { [weak self] devices in
             guard let self = self else { return }
             guard !self.isCurrentTargetMac else { return }
             guard !self.nativeClient.isConnected, !self.nativeClient.isPairing else { return }

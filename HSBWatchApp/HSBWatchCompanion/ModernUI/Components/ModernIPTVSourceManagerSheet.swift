@@ -300,3 +300,65 @@ var epgContentTypes: [UTType] {
      UTType(filenameExtension: "xmltv") ?? .xml,
      UTType(filenameExtension: "gz") ?? .gzip]
 }
+
+#if DEBUG
+private struct IPTVSourceManagerPreviewHost: View {
+    @State private var isPresented = true
+    @State private var selectedSource = "默认 IPTV 直播源"
+    @State private var importName = ""
+    @State private var playlistURL = ""
+    @State private var epgURL = ""
+    @State private var status: String? = nil
+    @State private var reqID: String? = nil
+    @State private var preview: IPTVPlaylistImportPreview? = nil
+    @State private var refreshConfirm: PendingSourceRefreshConfirmation? = nil
+    @State private var playlistImporter = false
+    @State private var epgImporter = false
+    @State private var bindingQuery = ""
+    @State private var candQuery = ""
+    @State private var candChannel: IPTVRemoteEPGBindingRow? = nil
+    
+    var body: some View {
+        ModernIPTVSourceManagerSheet(
+            isConnected: true,
+            isPresented: $isPresented,
+            selectedSource: $selectedSource,
+            sourceNames: ["默认 IPTV 直播源", "高清体育源"],
+            sourceEPGCandidates: [:],
+            importSourceName: $importName,
+            playlistURLText: $playlistURL,
+            epgURLText: $epgURL,
+            importStatus: $status,
+            pendingImportRequestID: $reqID,
+            pendingPlaylistImportPreview: $preview,
+            pendingSourceRefreshConfirmation: $refreshConfirm,
+            isPlaylistFileImporterPresented: $playlistImporter,
+            isEPGFileImporterPresented: $epgImporter,
+            onRequestSources: nil,
+            onSubmitPlaylistURL: {},
+            onSubmitEPGURL: {},
+            onImportEPGCandidate: { _ in },
+            onRefreshSource: { _ in },
+            onDeleteSource: nil,
+            onConfirmSourceRefresh: nil,
+            onConfirmPlaylistImport: nil,
+            epgBindingMessage: nil,
+            epgBindingRows: [],
+            epgBindingTotal: 0,
+            epgBindingQuery: $bindingQuery,
+            onRequestBindings: { _, _, _, _ in },
+            onSubmitBinding: { _ in },
+            onRequestCandidates: { _, _, _, _, _ in },
+            epgCandidates: [],
+            epgCandidateTotal: 0,
+            epgCandidateQuery: $candQuery,
+            epgCandidateChannel: $candChannel
+        )
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("IPTV 直播源与 EPG 管理面板") {
+    IPTVSourceManagerPreviewHost()
+}
+#endif

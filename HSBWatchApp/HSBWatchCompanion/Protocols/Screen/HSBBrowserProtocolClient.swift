@@ -43,7 +43,10 @@ public final class HSBBrowserProtocolClient {
                 self.delegate?.browserClient(self, didChangeState: .connecting(deviceName: deviceName, mode: .screenOnly))
             }
             
+            // 显式为 C parameters 挂载 TCP 传输层，避免空协议栈导致 Failed to attach socket protocol
             let tcpParams = nw_parameters_create()
+            let stack = nw_parameters_copy_default_protocol_stack(tcpParams)
+            nw_protocol_stack_set_transport_protocol(stack, nw_tcp_create_options())
             nw_parameters_set_include_peer_to_peer(tcpParams, true)
             
             let conn = nw_connection_create(endpoint, tcpParams)

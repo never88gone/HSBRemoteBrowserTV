@@ -6,10 +6,15 @@
 import SwiftUI
 
 public struct ModernPDFRemotePanel: View {
-    public init() {}
+    public var isWideDuo: Bool = false
+    
+    public init(isWideDuo: Bool = false) {
+        self.isWideDuo = isWideDuo
+    }
     
     public var body: some View {
         ModernPDFControlView(
+            isWideDuo: isWideDuo,
             onPageChange: { isNext in
                 DualModeRemoteCoordinator.shared.sendDPad(
                     direction: isNext ? .right : .left,
@@ -63,3 +68,12 @@ public struct ModernPDFRemotePanel: View {
         )
     }
 }
+
+#if DEBUG
+#Preview("PDF 远程协同主面板 · iPhone Duo") {
+    DuoPreviewContainer(expandedDuo: true) {
+        ModernPDFRemotePanel(isWideDuo: true)
+            .padding(18)
+    }
+}
+#endif

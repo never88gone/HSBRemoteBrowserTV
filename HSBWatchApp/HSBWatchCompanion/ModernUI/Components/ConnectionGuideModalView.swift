@@ -180,3 +180,27 @@ public struct GuideStepRow: View {
         .padding(.vertical, 4)
     }
 }
+
+#if DEBUG
+private struct ConnectionGuidePreviewHost: View {
+    @State private var shown = true
+    var type: ConnectionGuideType
+    var body: some View {
+        ConnectionGuideModalView(
+            type: type,
+            isPresented: $shown,
+            onPrimaryAction: {},
+            onSecondaryAction: {}
+        )
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("浏览器通道扫码引导弹窗") {
+    ConnectionGuidePreviewHost(type: .browser)
+}
+
+#Preview("Apple TV 系统配对引导弹窗") {
+    ConnectionGuidePreviewHost(type: .system)
+}
+#endif

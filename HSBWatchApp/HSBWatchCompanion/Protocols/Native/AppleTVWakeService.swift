@@ -35,36 +35,13 @@ public final class AppleTVWakeService {
                 
                 for port in knockPorts {
                     attemptGroup.enter()
-                    let endpoint = nw_endpoint_create_host(host, "\(port)")
-                    let params = nw_parameters_create()
-                    let conn = nw_connection_create(endpoint, params)
-                    nw_connection_set_queue(conn, bgQueue)
-                    
-                    var finished = false
-                    let finishPort = { (success: Bool) in
-                        if !finished {
-                            finished = true
-                            if success {
-                                attemptLock.lock()
-                                attemptSuccess = true
-                                attemptLock.unlock()
-                            }
-                            nw_connection_cancel(conn)
-                            attemptGroup.leave()
+                    HSBAppleTVDiscovery.probeTCPConnection(host: host, port: port, timeout: 0.9) { success in
+                        if success {
+                            attemptLock.lock()
+                            attemptSuccess = true
+                            attemptLock.unlock()
                         }
-                    }
-                    
-                    nw_connection_set_state_changed_handler(conn) { state, _ in
-                        if state == nw_connection_state_ready {
-                            finishPort(true)
-                        } else if state == nw_connection_state_failed || state == nw_connection_state_cancelled {
-                            finishPort(false)
-                        }
-                    }
-                    
-                    nw_connection_start(conn)
-                    bgQueue.asyncAfter(deadline: .now() + 0.9) {
-                        finishPort(false)
+                        attemptGroup.leave()
                     }
                 }
                 

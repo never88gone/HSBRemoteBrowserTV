@@ -24,73 +24,106 @@ struct DuoTrailingSidebarView: View {
     
     var body: some View {
         VStack(spacing: 14) {
-            // 按钮 1: 轮盘遥控模式 (官方质感同心圆环轮盘)
-            flatActionButton(
-                icon: (selectedMainTab == 0 && selectedControlTab == 0) ? "circle.circle.fill" : "circle.circle",
-                label: "轮盘",
-                isSelected: (selectedMainTab == 0 && selectedControlTab == 0)
-            ) {
-                selectedMainTab = 0
-                selectedControlTab = 0
-            }
-            
-            // 按钮 2: 无线触控板模式 (流线滑动触控)
-            flatActionButton(
-                icon: (selectedMainTab == 0 && selectedControlTab == 1) ? "hand.draw.fill" : "hand.draw",
-                label: "触控",
-                isSelected: (selectedMainTab == 0 && selectedControlTab == 1)
-            ) {
-                selectedMainTab = 0
-                selectedControlTab = 1
-            }
-            
-            // 按钮 3: 扩展多模形态切换 (IPTV / 演讲 / 生态 菜单)
-            Menu {
-                Button(action: {
-                    lightHaptic.impactOccurred()
-                    selectedMainTab = 0
-                    selectedControlTab = 2
-                }) {
-                    Label("IPTV 大屏频道", systemImage: "tv")
-                }
-                
-                Button(action: {
-                    lightHaptic.impactOccurred()
-                    selectedMainTab = 0
-                    selectedControlTab = 3
-                }) {
-                    Label("PDF 演示幻灯", systemImage: "doc.text")
-                }
-                
-                Button(action: {
-                    lightHaptic.impactOccurred()
-                    selectedMainTab = 1
-                }) {
-                    Label("大屏应用生态", systemImage: "square.grid.2x2")
-                }
-            } label: {
-                flatButtonContent(
-                    icon: currentExtraModeIcon,
-                    label: currentExtraModeLabel,
-                    isSelected: isExtraModeActive
-                )
-            }
-            .buttonStyle(FlatPressButtonStyle())
-            
-            // 按钮 4: 打字键盘输入 (Keyboard)
-            Button(action: {
-                lightHaptic.impactOccurred()
-                NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
-            }) {
-                flatButtonContent(
-                    icon: "keyboard",
-                    label: "打字",
+            if coordinatorObserver.isTargetMac {
+                // Mac 原生隔空播放模式下保留一致 4 键纯扁平形态，映射为真实可执行动作
+                flatActionButton(
+                    icon: "circle.circle",
+                    label: "轮盘",
                     isSelected: false
-                )
+                ) {
+                    NotificationCenter.default.post(name: Notification.Name("HSBShowMacAirPlayHelpNotification"), object: nil)
+                }
+                
+                flatActionButton(
+                    icon: "play.circle.fill",
+                    label: "媒体",
+                    isSelected: true
+                ) {
+                    NotificationCenter.default.post(name: Notification.Name("HSBShowMacAirPlayHelpNotification"), object: nil)
+                }
+                
+                flatActionButton(
+                    icon: "questionmark.circle",
+                    label: "扩展",
+                    isSelected: false
+                ) {
+                    NotificationCenter.default.post(name: Notification.Name("HSBShowMacAirPlayHelpNotification"), object: nil)
+                }
+                
+                flatKeyboardButton
+            } else {
+                // 按钮 1: 轮盘遥控模式 (官方质感同心圆环轮盘)
+                flatActionButton(
+                    icon: (selectedMainTab == 0 && selectedControlTab == 0) ? "circle.circle.fill" : "circle.circle",
+                    label: "轮盘",
+                    isSelected: (selectedMainTab == 0 && selectedControlTab == 0)
+                ) {
+                    selectedMainTab = 0
+                    selectedControlTab = 0
+                }
+                
+                // 按钮 2: 无线触控板模式 (流线滑动触控)
+                flatActionButton(
+                    icon: (selectedMainTab == 0 && selectedControlTab == 1) ? "hand.draw.fill" : "hand.draw",
+                    label: "触控",
+                    isSelected: (selectedMainTab == 0 && selectedControlTab == 1)
+                ) {
+                    selectedMainTab = 0
+                    selectedControlTab = 1
+                }
+                
+                // 按钮 3: 扩展多模形态切换 (IPTV / 演讲 / 生态 菜单)
+                Menu {
+                    Button(action: {
+                        lightHaptic.impactOccurred()
+                        selectedMainTab = 0
+                        selectedControlTab = 2
+                    }) {
+                        Label("IPTV 大屏频道", systemImage: "tv")
+                    }
+                    
+                    Button(action: {
+                        lightHaptic.impactOccurred()
+                        selectedMainTab = 0
+                        selectedControlTab = 3
+                    }) {
+                        Label("PDF 演示幻灯", systemImage: "doc.text")
+                    }
+                    
+                    Button(action: {
+                        lightHaptic.impactOccurred()
+                        selectedMainTab = 1
+                    }) {
+                        Label("大屏应用生态", systemImage: "square.grid.2x2")
+                    }
+                } label: {
+                    flatButtonContent(
+                        icon: currentExtraModeIcon,
+                        label: currentExtraModeLabel,
+                        isSelected: isExtraModeActive
+                    )
+                }
+                .buttonStyle(FlatPressButtonStyle())
+                
+                // 按钮 4: 打字键盘输入 (Keyboard)
+                flatKeyboardButton
             }
-            .buttonStyle(FlatPressButtonStyle())
         }
         // 完全不设置任何背景、边框或阴影
+    }
+    
+    private var flatKeyboardButton: some View {
+        Button(action: {
+            lightHaptic.impactOccurred()
+            NotificationCenter.default.post(name: Notification.Name("HSBToggleRemoteKeyboardNotification"), object: nil)
+        }) {
+            flatButtonContent(
+                icon: "keyboard",
+                label: "打字",
+                isSelected: false
+            )
+        }
+        .buttonStyle(FlatPressButtonStyle())
     }
     
     /// 独立扁平操作按钮
@@ -106,20 +139,20 @@ struct DuoTrailingSidebarView: View {
         .buttonStyle(FlatPressButtonStyle())
     }
     
-    /// 纯扁平内容视图：极简优雅图标 + 呼吸感圆润字标，无任何多余背景框
+    /// 纯扁平内容视图：极简优雅图标 + 清晰字标，无任何多余背景框
     private func flatButtonContent(icon: String, label: String, isSelected: Bool) -> some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 23, weight: isSelected ? .semibold : .regular))
-                .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.white.opacity(0.48))
+                .font(.system(size: 24, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? DuoPalette.accentRed : DuoPalette.silverInactive)
             
             Text(label)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .medium, design: .rounded))
-                .foregroundColor(isSelected ? Color.tanghuluAccentRed : Color.white.opacity(0.48))
+                .font(.system(size: 12.5, weight: isSelected ? .bold : .medium, design: .rounded))
+                .foregroundColor(isSelected ? DuoPalette.accentRed : DuoPalette.silverInactive)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .frame(width: 58, height: 50)
+        .frame(width: 60, height: 52)
         .contentShape(Rectangle()) // 充足黄金热区
     }
     
@@ -161,3 +194,30 @@ private struct FlatPressButtonStyle: ButtonStyle {
             .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
     }
 }
+
+#if DEBUG
+private struct DuoTrailingSidebarPreviewHost: View {
+    @StateObject private var observer = CoordinatorObservable(coordinator: DualModeRemoteCoordinator.shared)
+    @State private var mainTab: Int = 0
+    @State private var ctrlTab: Int = 0
+    @State private var showBrowser: Bool = false
+    @State private var showSystem: Bool = false
+    
+    var body: some View {
+        DuoTrailingSidebarView(
+            coordinatorObserver: observer,
+            selectedMainTab: $mainTab,
+            selectedControlTab: $ctrlTab,
+            showingBrowserGuide: $showBrowser,
+            showingSystemGuide: $showSystem
+        )
+        .padding(24)
+        .background(DuoPalette.canvasBg)
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("Duo 右下 4 键操作侧栏") {
+    DuoTrailingSidebarPreviewHost()
+}
+#endif

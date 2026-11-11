@@ -7,14 +7,17 @@ import SwiftUI
 
 public struct ModernIPTVRemotePanel: View {
     public let isConnected: Bool
+    public var isWideDuo: Bool = false
     
-    public init(isConnected: Bool) {
+    public init(isConnected: Bool, isWideDuo: Bool = false) {
         self.isConnected = isConnected
+        self.isWideDuo = isWideDuo
     }
     
     public var body: some View {
         ModernIPTVControlView(
             isConnected: isConnected,
+            isWideDuo: isWideDuo,
             onAction: { action in
                 handleAction(action)
             },
@@ -174,3 +177,12 @@ public struct ModernIPTVRemotePanel: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("IPTV 协议绑定控制面板 · iPhone Duo") {
+    DuoPreviewContainer(expandedDuo: true) {
+        ModernIPTVRemotePanel(isConnected: true, isWideDuo: true)
+            .padding(18)
+    }
+}
+#endif

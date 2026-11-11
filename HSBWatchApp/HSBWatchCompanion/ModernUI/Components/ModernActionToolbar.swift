@@ -136,3 +136,21 @@ public struct ModernActionToolbar: View {
         .buttonStyle(PlainButtonStyle())
     }
 }
+
+#if DEBUG
+private struct ActionToolbarPreviewHost: View {
+    @State private var mode: HSBRemoteMode = .dual
+    var body: some View {
+        ZStack {
+            DuoPalette.canvasBg.ignoresSafeArea()
+            ModernActionToolbar(currentMode: $mode)
+                .padding()
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("底部动作快捷工具栏") {
+    ActionToolbarPreviewHost()
+}
+#endif

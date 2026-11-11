@@ -74,8 +74,9 @@ final class HSBWatchCompanionUITests: XCTestCase {
                 
                 if isFirstNegative {
                     let secondBtn = alert.buttons.element(boundBy: 1)
+                    let secondLabel = secondBtn.label
                     secondBtn.tap()
-                    NSLog("[XCUITest INTERRUPT] 避开首选拒绝按键，安全点击第二个候选按键: '%@'", secondBtn.label)
+                    NSLog("[XCUITest INTERRUPT] 避开首选拒绝按键，安全点击第二个候选按键: '%@'", secondLabel)
                     return true
                 }
             }
@@ -83,8 +84,9 @@ final class HSBWatchCompanionUITests: XCTestCase {
             // 3. 兜底策略：点击最后一个按钮 (iOS 默认非毁灭性正向操作通常排在末尾)
             if alert.buttons.count > 0 {
                 let lastBtn = alert.buttons.element(boundBy: alert.buttons.count - 1)
+                let lastLabel = lastBtn.label
                 lastBtn.tap()
-                NSLog("[XCUITest INTERRUPT] 点击候选末尾按键: '%@'", lastBtn.label)
+                NSLog("[XCUITest INTERRUPT] 点击候选末尾按键: '%@'", lastLabel)
                 return true
             }
             
@@ -145,24 +147,27 @@ final class HSBWatchCompanionUITests: XCTestCase {
         }
     }
 
+    /// 冷启动并跳过开屏动画，确保停留在干净的首页设备中枢
+    @discardableResult
+    private func launchToCleanHome() -> XCUIApplication {
+        clearPendingSpringBoardOpenAlert()
+        let app = XCUIApplication()
+        app.launch()
+        Thread.sleep(forTimeInterval: 3.5)
+
+        let skipLabel = app.staticTexts["点击跳过"]
+        if skipLabel.exists && skipLabel.isHittable {
+            skipLabel.tap()
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        clearPendingSpringBoardOpenAlert()
+        return app
+    }
+
     /// 端到端全链路测试：物理真机局域网发现 Mac、微操触控滑动、鼠标点击、媒体控制与安全退出
     func testMacRemoteControlEndToEnd() throws {
-        let app = XCUIApplication()
-        app.activate()
+        let app = launchToCleanHome()
 
-        // 等待 App 启动、初始转场与 Bonjour 设备发现就绪 (3.5 秒)
-        Thread.sleep(forTimeInterval: 3.5)
-        
-        // 若有先前残留的系统弹窗，平稳点击取消返回首页
-        let oldAlert = app.alerts.firstMatch
-        if oldAlert.exists {
-            let cancel = oldAlert.buttons["取消"]
-            if cancel.exists && cancel.isHittable {
-                cancel.tap()
-                Thread.sleep(forTimeInterval: 1.0)
-            }
-        }
-        
         captureStepScreenshot("01_App_Launched_Home")
         
         NSLog("[XCUITest DEBUG] ================= APP DEBUG TREE =================")
@@ -173,7 +178,9 @@ final class HSBWatchCompanionUITests: XCTestCase {
         // 步骤 1: 物理真机局域网设备扫描与识别目标 Mac 电脑 (静默等待 Bonjour 组播)
         // ---------------------------------------------------------------------
         NSLog("[XCUITest] 步骤 1: 正在扫描局域网 Mac 电脑 (never88gone的 Mac Studio)...")
-        let macPredicate = NSPredicate(format: "label CONTAINS[c] 'Mac' OR label CONTAINS[c] 'never88gone' OR label CONTAINS[c] 'Studio'")
+        let macPredicate = NSPredicate(
+            format: "identifier BEGINSWITH 'home_device_row_' AND (label CONTAINS[c] 'Studio' OR label CONTAINS[c] 'never88gone' OR label CONTAINS[c] 'AppleTV18' OR label CONTAINS[c] 'Mac')"
+        )
         
         var targetElement: XCUIElement?
         let maxWaitSeconds: TimeInterval = 35.0
@@ -181,25 +188,9 @@ final class HSBWatchCompanionUITests: XCTestCase {
         var hasSwipedRefresh = false
         
         while Date().timeIntervalSince(startTime) < maxWaitSeconds {
-            // 多级鲁棒匹配：直接 Cell 标签 -> 包含子元素 Cell -> 独立文本标签 -> 全局后代元素
-            let directCell = app.cells.matching(macPredicate).firstMatch
-            if directCell.exists {
-                targetElement = directCell
-                break
-            }
-            let containingCell = app.cells.containing(macPredicate).firstMatch
-            if containingCell.exists {
-                targetElement = containingCell
-                break
-            }
-            let staticText = app.staticTexts.matching(macPredicate).firstMatch
-            if staticText.exists {
-                targetElement = staticText
-                break
-            }
-            let macAny = app.descendants(matching: .any).matching(macPredicate).firstMatch
-            if macAny.exists {
-                targetElement = macAny
+            let deviceButton = app.buttons.matching(macPredicate).firstMatch
+            if deviceButton.exists {
+                targetElement = deviceButton
                 break
             }
             
@@ -214,7 +205,7 @@ final class HSBWatchCompanionUITests: XCTestCase {
 
         guard let element = targetElement, element.exists else {
             captureStepScreenshot("01_Fail_Mac_Not_Found")
-            XCTFail("❌ 自动化测试失败：未能在 25 秒内通过局域网 mDNS 发现目标 Mac 电脑设备")
+            XCTFail("❌ 自动化测试失败：未能在 35 秒内通过局域网 mDNS 发现目标 Mac 电脑设备卡片")
             return
         }
         
@@ -234,18 +225,19 @@ final class HSBWatchCompanionUITests: XCTestCase {
         element.tap()
 
         // ---------------------------------------------------------------------
-        // 步骤 3: 严格等待遥控界面完全转场并呈现就绪 (以“断开”按钮与“隔空播放”状态为准)
+        // 步骤 3: 严格等待遥控界面完全转场并呈现就绪 (必须命中控制台专属组件，绝不误判首页文案)
         // ---------------------------------------------------------------------
-        let disconnectButton = app.buttons["mac_disconnect_button"].exists ? app.buttons["mac_disconnect_button"] : app.buttons["断开"]
+        let disconnectButton = app.buttons["mac_disconnect_button"]
+        let playPauseReadyButton = app.buttons["mac_media_play_pause_button"]
         let airplayReadyLabel = app.staticTexts["隔空播放已就绪"]
-        let mediaCenterHint = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '免装软件' OR label CONTAINS '隔空播放'")).firstMatch
+        let macPanelTitle = app.staticTexts["macOS 原生隔空播放媒体控制"]
 
         var enteredRemotePage = false
         let enterStartTime = Date()
         let maxEnterWait: TimeInterval = 25.0
         
         while Date().timeIntervalSince(enterStartTime) < maxEnterWait {
-            if disconnectButton.exists || airplayReadyLabel.exists || mediaCenterHint.exists {
+            if disconnectButton.exists || playPauseReadyButton.exists || airplayReadyLabel.exists || macPanelTitle.exists {
                 enteredRemotePage = true
                 break
             }
@@ -266,21 +258,14 @@ final class HSBWatchCompanionUITests: XCTestCase {
         captureStepScreenshot("03_Entered_Mac_Remote_Panel")
         NSLog("[XCUITest] ✅ 成功进入 Mac 原生隔空播放媒体控制中心，UI 控制组件全部就绪！")
 
-        let window = app.windows.firstMatch
-
         // ---------------------------------------------------------------------
         // 步骤 4: 验证核心播放 / 暂停切换 (向 Mac 端口 7000 派发 AirPlay 播放/暂停控制)
         // ---------------------------------------------------------------------
         NSLog("[XCUITest] 步骤 4: 点击核心高光播放/暂停按键，驱动原生媒体播放切换...")
         let playPauseBtn = app.buttons["mac_media_play_pause_button"]
-        if playPauseBtn.waitForExistence(timeout: 2.0) && playPauseBtn.isHittable {
-            playPauseBtn.tap()
-            NSLog("[XCUITest] ✅ [Button 1/8] 点击核心'播放/暂停'按键成功 (派发 AirPlay rate 控制)")
-        } else {
-            // 几何坐标兜底 (iPhone SE 屏幕中心 Y 约 330)
-            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 187.5, dy: 330)).tap()
-            NSLog("[XCUITest] ✅ [Button 1/8] 几何坐标点击'播放/暂停'按键成功")
-        }
+        XCTAssertTrue(playPauseBtn.waitForExistence(timeout: 4.0) && playPauseBtn.isHittable, "mac_media_play_pause_button 未就绪或不可点击")
+        playPauseBtn.tap()
+        NSLog("[XCUITest] ✅ [Button 1/8] 点击核心'播放/暂停'按键成功 (派发 AirPlay rate 控制)")
         Thread.sleep(forTimeInterval: 0.8)
         captureStepScreenshot("04_PlayPause_Toggled")
 
@@ -369,24 +354,17 @@ final class HSBWatchCompanionUITests: XCTestCase {
         // ---------------------------------------------------------------------
         NSLog("[XCUITest] 步骤 8: 校验 100% 免装软件原生直连标识...")
         let nativeShield = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '免装软件'")).firstMatch
-        if nativeShield.waitForExistence(timeout: 2.0) {
-            NSLog("[XCUITest] ✅ 成功断言原生免装提示: '%@'", nativeShield.label)
-        }
+        XCTAssertTrue(nativeShield.waitForExistence(timeout: 3.0), "原生免装软件标识未出现")
+        NSLog("[XCUITest] ✅ 成功断言原生免装提示: '%@'", nativeShield.label)
         captureStepScreenshot("08_Native_AirPlay_Verified")
 
         // ---------------------------------------------------------------------
         // 步骤 9: 点击断开按钮，双向验证安全平稳退回首页 (绝不闪退)
         // ---------------------------------------------------------------------
         NSLog("[XCUITest] 步骤 9: 点击断开连接按钮，验证安全平稳退出链路...")
-        if disconnectButton.waitForExistence(timeout: 3.0) && disconnectButton.isHittable {
-            disconnectButton.tap()
-            NSLog("[XCUITest] ✅ [Button 21/22] 成功点击'断开'按钮")
-        } else {
-            // 兜底轻点左上角断开返回区域
-            let backCoord = window.coordinate(withNormalizedOffset: CGVector(dx: 0.10, dy: 0.08))
-            backCoord.tap()
-            NSLog("[XCUITest] ✅ 兜底点击左上角导航返回区域")
-        }
+        XCTAssertTrue(disconnectButton.waitForExistence(timeout: 3.0) && disconnectButton.isHittable, "断开按钮未就绪或不可点击")
+        disconnectButton.tap()
+        NSLog("[XCUITest] ✅ [Button 21/22] 成功点击'断开'按钮")
 
         // 双向严密断言：
         // 1. 遥控特有组件（断开按钮）在 6 秒内注销消失 (互斥注销校验)；
@@ -877,9 +855,7 @@ final class HSBWatchCompanionUITests: XCTestCase {
     // =========================================================================
     /// 验证 Apple Watch 腕上遥控器向 iPhone 发送指令，iPhone 接收处理并中继驱动 TV
     func testAppleWatchCompanionLinkageInteractive() throws {
-        let app = XCUIApplication()
-        app.activate()
-        Thread.sleep(forTimeInterval: 3.0)
+        let app = launchToCleanHome()
 
         captureStepScreenshot("01_WatchLinkage_Launched")
         NSLog("[WatchLinkage] 步骤 1: 验证 iPhone 宿主 App 准备就绪")
@@ -935,5 +911,220 @@ final class HSBWatchCompanionUITests: XCTestCase {
         captureStepScreenshot("05_WatchLinkage_Shake_Done")
 
         NSLog("[WatchLinkage] 🎯 Apple Watch ↔ iPhone 联动交互端到端自动化测试全部执行通过！")
+    }
+
+    // =========================================================================
+    // MARK: - iPhone Duo 折叠屏双栏自适应全场景 UI 视觉与无障碍可达性验收测试
+    // =========================================================================
+    private func openDeepLinkAndConfirmIfNeeded(_ app: XCUIApplication, urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        if #available(iOS 16.4, *) {
+            app.open(url)
+        }
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let openBtn = springboard.buttons["打开"]
+        if openBtn.waitForExistence(timeout: 2.0) && openBtn.isHittable {
+            openBtn.tap()
+        }
+        Thread.sleep(forTimeInterval: 1.8)
+    }
+
+    private func clearPendingSpringBoardOpenAlert() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for _ in 0..<10 {
+            let cancelBtn = springboard.buttons["取消"]
+            if cancelBtn.exists && cancelBtn.isHittable {
+                cancelBtn.tap()
+                Thread.sleep(forTimeInterval: 0.4)
+                continue
+            }
+            let alert = springboard.alerts.firstMatch
+            if alert.exists {
+                dismissSpringBoardAlertsIfAny()
+                Thread.sleep(forTimeInterval: 0.4)
+                continue
+            }
+            break
+        }
+    }
+
+    /// 零外部硬件依赖的全 8 场景 UI 遍历、按键交互验证与截图生成
+    func testDuoResponsiveAllScenariosUI() throws {
+        let app = launchToCleanHome()
+
+        // 1. 设备中枢首页
+        XCTAssertTrue(app.staticTexts["糖葫芦遥控器"].waitForExistence(timeout: 6), "首页标题未出现")
+        let anyDeviceRow = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'home_device_row_'")).firstMatch
+        _ = anyDeviceRow.waitForExistence(timeout: 5.0)
+        captureStepScreenshot("duo_screen_01_hub")
+
+        // 判断当前是否为宽屏布局 (>= 550pt)
+        let isWide = app.windows.firstMatch.frame.width >= 550
+
+        // 2. AI 模型中心
+        let aiButton = app.buttons["AI 模型中心"]
+        if aiButton.exists && aiButton.isHittable {
+            aiButton.tap()
+            Thread.sleep(forTimeInterval: 1.5)
+        } else {
+            openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=ai")
+        }
+        let aiReady = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'AI 引擎' OR label CONTAINS '大模型'")).firstMatch
+        XCTAssertTrue(aiReady.waitForExistence(timeout: 6), "AI 模型中心核心内容未加载")
+        captureStepScreenshot("duo_screen_08_ai")
+
+        let navBack = app.navigationBars.buttons.element(boundBy: 0)
+        if navBack.exists && navBack.isHittable {
+            navBack.tap()
+            Thread.sleep(forTimeInterval: 1.0)
+        } else {
+            openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=hub")
+        }
+
+        // 3. Apple TV 系统轮盘遥控
+        let remoteHubBtn = app.buttons.matching(NSPredicate(format: "label CONTAINS '全能遥控台'")).firstMatch
+        if remoteHubBtn.exists && remoteHubBtn.isHittable {
+            remoteHubBtn.tap()
+            Thread.sleep(forTimeInterval: 1.6)
+        } else {
+            openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=remote&tab=0")
+        }
+        XCTAssertTrue(app.buttons["dpad_ok_button"].waitForExistence(timeout: 6), "轮盘 OK 按钮未就绪")
+        XCTAssertTrue(app.buttons["方向 向上"].exists || app.buttons["dpad_up"].exists, "方向键标识缺失")
+        captureStepScreenshot("duo_screen_03_appletv")
+
+        // 4. Web 触控板
+        let touchTab = app.buttons["触控"].firstMatch
+        XCTAssertTrue(touchTab.waitForExistence(timeout: 4), "触控切换按钮未出现")
+        touchTab.tap()
+        Thread.sleep(forTimeInterval: 1.2)
+        let touchHint = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '单指滑动光标'")).firstMatch
+        XCTAssertTrue(touchHint.waitForExistence(timeout: 5), "Web 触控板区域未加载")
+        captureStepScreenshot("duo_screen_04_web")
+
+        // 5. IPTV 电视频道
+        if isWide {
+            let expandMenu = app.buttons["扩展"].firstMatch
+            XCTAssertTrue(expandMenu.waitForExistence(timeout: 4), "右侧扁平多模扩展键未出现")
+            expandMenu.tap()
+            let iptvMenuItem = app.buttons["IPTV 大屏频道"]
+            XCTAssertTrue(iptvMenuItem.waitForExistence(timeout: 4), "IPTV 菜单项未弹出")
+            iptvMenuItem.tap()
+        } else {
+            app.buttons["IPTV"].firstMatch.tap()
+        }
+        Thread.sleep(forTimeInterval: 1.2)
+        XCTAssertTrue(app.buttons["管理频道源与节目单"].waitForExistence(timeout: 5), "IPTV 频道源按钮未出现")
+        captureStepScreenshot("duo_screen_05_iptv")
+
+        // 6. PDF 演讲激光画板
+        if isWide {
+            let iptvModeBtn = app.buttons["IPTV"].firstMatch
+            XCTAssertTrue(iptvModeBtn.waitForExistence(timeout: 4), "当前多模扩展键(IPTV)未找到")
+            iptvModeBtn.tap()
+            let pdfMenuItem = app.buttons["PDF 演示幻灯"]
+            XCTAssertTrue(pdfMenuItem.waitForExistence(timeout: 4), "PDF 菜单项未弹出")
+            pdfMenuItem.tap()
+        } else {
+            app.buttons["演讲"].firstMatch.tap()
+        }
+        Thread.sleep(forTimeInterval: 1.2)
+        XCTAssertTrue(app.buttons["上一页"].waitForExistence(timeout: 5), "PDF 上一页按钮未出现")
+        captureStepScreenshot("duo_screen_06_pdf")
+
+        // 7. 应用生态
+        if isWide {
+            let pdfModeBtn = app.buttons["演讲"].firstMatch
+            XCTAssertTrue(pdfModeBtn.waitForExistence(timeout: 4), "当前多模扩展键(演讲)未找到")
+            pdfModeBtn.tap()
+            let appsMenuItem = app.buttons["大屏应用生态"]
+            XCTAssertTrue(appsMenuItem.waitForExistence(timeout: 4), "大屏应用生态菜单项未弹出")
+            appsMenuItem.tap()
+        } else {
+            app.buttons["应用生态"].firstMatch.tap()
+        }
+        Thread.sleep(forTimeInterval: 1.2)
+        let appCard = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '糖葫芦浏览器'")).firstMatch
+        XCTAssertTrue(appCard.waitForExistence(timeout: 5), "应用生态卡片未加载")
+        captureStepScreenshot("duo_screen_07_apps")
+
+        // 8. Mac 原生媒体控制台
+        openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=mac")
+        XCTAssertTrue(app.buttons["mac_media_play_pause_button"].waitForExistence(timeout: 6), "Mac 播放/暂停按钮未加载")
+        captureStepScreenshot("duo_screen_02_mac")
+    }
+
+    // =========================================================================
+    // MARK: - 纯 SwiftUI 重构页全量自动化巡检与多态截图 (设置 / AI 实验室 / 支持信息)
+    // =========================================================================
+
+    private func navigateBackToSettings(_ app: XCUIApplication) {
+        let navBack = app.navigationBars.buttons.element(boundBy: 0)
+        if navBack.exists && navBack.isHittable {
+            navBack.tap()
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        if !app.staticTexts["系统信息与支持"].waitForExistence(timeout: 2.0) {
+            openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=settings")
+        }
+    }
+
+    private func openSettingsChildPage(
+        _ app: XCUIApplication,
+        rowKeyword: String,
+        fallbackDeepLink: String
+    ) {
+        let rowButton = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", rowKeyword)).firstMatch
+        if !rowButton.exists {
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.6)
+        }
+        if rowButton.exists && rowButton.isHittable {
+            rowButton.tap()
+            Thread.sleep(forTimeInterval: 1.4)
+        } else {
+            openDeepLinkAndConfirmIfNeeded(app, urlString: fallbackDeepLink)
+        }
+    }
+
+    /// 自动化遍历全部新迁移的纯 SwiftUI 页面并断言渲染与交互正常
+    func testSwiftUISettingsAndLabAllPagesUI() throws {
+        let app = launchToCleanHome()
+        XCTAssertTrue(app.staticTexts["糖葫芦遥控器"].waitForExistence(timeout: 6), "首页未成功呈现")
+
+        // 1. 进入系统设置中心
+        let settingsBtn = app.buttons["系统设置"].firstMatch
+        let navSettingsBtn = app.buttons["home_settings_button"].firstMatch
+        if settingsBtn.exists && settingsBtn.isHittable {
+            settingsBtn.tap()
+            Thread.sleep(forTimeInterval: 1.4)
+        } else if navSettingsBtn.exists && navSettingsBtn.isHittable {
+            navSettingsBtn.tap()
+            Thread.sleep(forTimeInterval: 1.4)
+        } else {
+            openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=settings")
+        }
+        XCTAssertTrue(app.staticTexts["系统信息与支持"].waitForExistence(timeout: 5), "系统设置页核心分组未呈现")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS '第三方组件'")).firstMatch.exists, "第三方组件入口缺失")
+        captureStepScreenshot("swiftui_01_settings")
+
+        // 2. 数据驱动依次进入设置各二级纯 SwiftUI 页面并截图断言
+        let subPages: [(rowKeyword: String, deepLink: String, assertKeyword: String, screenshotName: String)] = [
+            ("AI 智能助手", "hsbremote://page?name=ai_lab", "端侧模型推理输出", "swiftui_02_ai_lab"),
+            ("第三方组件", "hsbremote://page?name=open_source", "appletv-remote", "swiftui_03_open_source"),
+            ("隐私政策", "hsbremote://page?name=privacy", "数据收集与使用", "swiftui_04_privacy"),
+            ("联系我们", "hsbremote://page?name=contact", "官方网站", "swiftui_05_contact"),
+            ("关于我们", "hsbremote://page?name=about", "核心架构与特性", "swiftui_06_about")
+        ]
+
+        for page in subPages {
+            openSettingsChildPage(app, rowKeyword: page.rowKeyword, fallbackDeepLink: page.deepLink)
+            let expectedEl = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "label CONTAINS %@", page.assertKeyword))
+                .firstMatch
+            XCTAssertTrue(expectedEl.waitForExistence(timeout: 5), "SwiftUI 页面 [\(page.screenshotName)] 核心元素 '\(page.assertKeyword)' 未渲染")
+            captureStepScreenshot(page.screenshotName)
+            navigateBackToSettings(app)
+        }
     }
 }

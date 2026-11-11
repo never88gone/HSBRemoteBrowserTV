@@ -30,39 +30,12 @@ public final class MacMediaCommandDispatcher {
         }
         
         self.currentTargetHost = cleanHost
-        
-        // 采用 Network.framework 对 Mac 原生 7000 端口进行快速非阻塞 TCP 握手
-        let endpoint = nw_endpoint_create_host(cleanHost, "7000")
-        let params = nw_parameters_create()
-        let conn = nw_connection_create(endpoint, params)
-        let queue = DispatchQueue(label: "com.tanghulu.mac.airplay.verify", qos: .userInitiated)
-        nw_connection_set_queue(conn, queue)
-        
-        var didRespond = false
-        let finish = { (isSuccess: Bool) in
-            if !didRespond {
-                didRespond = true
-                nw_connection_cancel(conn)
-                DispatchQueue.main.async {
-                    NSLog("[MacAirPlay] Connection verification to %@:7000 -> result: %d", cleanHost, isSuccess ? 1 : 0)
-                    completion(isSuccess)
-                }
+
+        HSBAppleTVDiscovery.probeTCPConnection(host: cleanHost, port: 7000, timeout: 2.0) { isSuccess in
+            DispatchQueue.main.async {
+                NSLog("[MacAirPlay] Connection verification to %@:7000 -> result: %d", cleanHost, isSuccess ? 1 : 0)
+                completion(isSuccess)
             }
-        }
-        
-        nw_connection_set_state_changed_handler(conn) { state, _ in
-            if state == nw_connection_state_ready {
-                finish(true)
-            } else if state == nw_connection_state_failed || state == nw_connection_state_cancelled {
-                finish(false)
-            }
-        }
-        
-        nw_connection_start(conn)
-        
-        // 2.0 秒超时保护
-        queue.asyncAfter(deadline: .now() + 2.0) {
-            finish(false)
         }
     }
     

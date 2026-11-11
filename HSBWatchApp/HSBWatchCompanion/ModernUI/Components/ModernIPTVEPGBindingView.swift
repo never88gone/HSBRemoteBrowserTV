@@ -163,3 +163,39 @@ struct ModernIPTVEPGCandidatePickerView: View {
         }
     }
 }
+
+#if DEBUG
+private struct IPTVEPGBindingPreviewHost: View {
+    @State private var bindingQuery = ""
+    @State private var selectedSrc = "默认源"
+    @State private var candQuery = ""
+    @State private var candChannel: IPTVRemoteEPGBindingRow? = nil
+    
+    var body: some View {
+        NavigationStack {
+            ModernIPTVEPGBindingListView(
+                sourceName: "默认源",
+                epgBindingMessage: nil,
+                epgBindingRows: [
+                    IPTVRemoteEPGBindingRow(payload: ["id": "1", "name": "CCTV-1", "group": "央视", "state": "matched", "targetName": "CCTV1"])!
+                ],
+                epgBindingTotal: 1,
+                epgBindingQuery: $bindingQuery,
+                selectedSource: $selectedSrc,
+                onRequestBindings: { _, _, _, _ in },
+                onSubmitBinding: { _ in },
+                onRequestCandidates: { _, _, _, _, _ in },
+                epgCandidates: [],
+                epgCandidateTotal: 0,
+                epgCandidateQuery: $candQuery,
+                epgCandidateChannel: $candChannel
+            )
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+#Preview("IPTV EPG 节目单绑定匹配") {
+    IPTVEPGBindingPreviewHost()
+}
+#endif

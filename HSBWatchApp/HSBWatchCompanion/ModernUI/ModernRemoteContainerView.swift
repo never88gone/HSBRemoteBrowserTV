@@ -34,55 +34,25 @@ public struct ModernRemoteContainerView: View {
             GeometryReader { geometry in
                 let isWideDuoDisplay = geometry.size.width >= 550
                 
-                if isWideDuoDisplay && !isTrackpadFullScreen && !coordinatorObserver.isTargetMac {
-                    // === iPhone Duo 折叠双屏展开态：主操作大台居中沉浸 + 右下方专属悬浮操控栏 ===
+                if isWideDuoDisplay && !isTrackpadFullScreen {
+                    // === V2 iPhone Duo 展开态双栏零空白：顶部双感知条 + 跨折痕双栏 + 右下 L 型避让 4 键操作台 ===
                     ZStack(alignment: .bottomTrailing) {
-                        // 1. 中央主内容大操作台 (最大宽度 580pt 严格居中对齐，纵向空间彻底舒展)
-                        VStack(spacing: 8) {
-                            // 未连接大屏时的轻量扫码引导条
-                            if !coordinatorObserver.isHSBBrowserConnected {
-                                Button(action: {
-                                    lightHaptic.impactOccurred()
-                                    NotificationCenter.default.post(name: Notification.Name("HSBOpenQRCodeScannerNotification"), object: nil)
-                                }) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "qrcode.viewfinder")
-                                            .foregroundColor(.tanghuluBrandBlue)
-                                            .font(.system(size: 13))
-                                        if coordinatorObserver.isHSBBrowserReconnecting {
-                                            Text("大屏连接中... 点击重新扫码")
-                                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                                .foregroundColor(.orange)
-                                        } else if let nearby = coordinatorObserver.nearbyDiscoveredBrowserTV {
-                                            Text("检测到附近【\(nearby)】，点击扫码连接")
-                                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                                .foregroundColor(.primary)
-                                        } else {
-                                            Text("尚未连接大屏？点击扫描电视二维码秒级连接")
-                                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                                .foregroundColor(.primary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .foregroundColor(.secondary.opacity(0.6))
-                                    }
-                                    .padding(.vertical, 7)
-                                    .padding(.horizontal, 14)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(Color(UIColor.secondarySystemBackground).opacity(0.85))
-                                    )
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                .padding(.horizontal, 16)
-                            }
+                        VStack(spacing: 14) {
+                            DuoAmbientTopStrip(
+                                coordinatorObserver: coordinatorObserver,
+                                selectedMainTab: selectedMainTab,
+                                selectedControlTab: selectedControlTab,
+                                showingBrowserGuide: $showingBrowserGuide,
+                                showingSystemGuide: $showingSystemGuide
+                            )
                             
-                            // 主体面板：遥控场景面板 vs 应用生态网格
-                            if selectedMainTab == 0 {
-                                remoteScenarioPanel(availableHeight: geometry.size.height - (coordinatorObserver.isHSBBrowserConnected ? 20 : 60))
+                            if selectedMainTab == 0 || coordinatorObserver.isTargetMac {
+                                remoteScenarioPanel(
+                                    availableHeight: max(320, geometry.size.height - 92),
+                                    isWideDuo: true
+                                )
                             } else {
-                                ModernAppGridView { app in
+                                ModernAppGridView(isWideDuo: true) { app in
                                     DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID, url: app.url)
                                     withAnimation(.easeInOut(duration: 0.25)) {
                                         selectedControlTab = app.targetMode
@@ -91,11 +61,13 @@ public struct ModernRemoteContainerView: View {
                                 }
                             }
                         }
-                        .frame(maxWidth: 580)
+                        .padding(.leading, DuoMetrics.outerPadding)
+                        .padding(.trailing, DuoMetrics.trailingPadding)
+                        .padding(.top, 12)
+                        .padding(.bottom, 14)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, 8)
                         
-                        // 2. 右下方悬浮侧边栏 (带电池显示，严格 5 个按钮，右手大拇指黄金热区)
+                        // 右下角纯扁平 4 键黄金操作台 (无电池 / 无返回键 / 无背景框)
                         DuoTrailingSidebarView(
                             coordinatorObserver: coordinatorObserver,
                             selectedMainTab: $selectedMainTab,
@@ -103,13 +75,13 @@ public struct ModernRemoteContainerView: View {
                             showingBrowserGuide: $showingBrowserGuide,
                             showingSystemGuide: $showingSystemGuide
                         )
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 24)
+                        .padding(.trailing, DuoMetrics.trailingPadding)
+                        .padding(.bottom, 18)
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height)
                 } else {
                     // === 普通 iPhone / iPhone Duo 外屏折叠态：经典优雅的顶部水平导航条与切换器 ===
-                    VStack(spacing: (isTrackpadFullScreen || coordinatorObserver.isTargetMac) ? 2 : (geometry.size.height < 700 ? 6 : 10)) {
+                    VStack(spacing: (isTrackpadFullScreen || coordinatorObserver.isTargetMac) ? 4 : (geometry.size.height < 700 ? 6 : 10)) {
                         if !isTrackpadFullScreen && !coordinatorObserver.isTargetMac {
                             // 1. 顶部紧凑双模流线型状态栏 (居中双胶囊排布：大屏通道 + 系统原生通道)
                             ModernRemoteStatusTopBar(
@@ -195,7 +167,7 @@ public struct ModernRemoteContainerView: View {
                             }
                         }
                     }
-                    .padding(.top, isTrackpadFullScreen ? 0 : 4)
+                    .padding(.top, isTrackpadFullScreen ? 0 : (coordinatorObserver.isTargetMac ? 12 : 4))
                     .padding(.bottom, isTrackpadFullScreen ? 2 : 6)
                     .frame(maxWidth: geometry.size.width >= 550 ? 560 : .infinity)
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
@@ -377,8 +349,12 @@ public struct ModernRemoteContainerView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBSwitchRemoteTabNotification"))) { note in
             if let targetTab = note.userInfo?["tab"] as? Int {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    selectedControlTab = targetTab
-                    selectedMainTab = 0
+                    if targetTab == 99 {
+                        selectedMainTab = 1
+                    } else {
+                        selectedControlTab = targetTab
+                        selectedMainTab = 0
+                    }
                 }
             }
         }
@@ -386,27 +362,33 @@ public struct ModernRemoteContainerView: View {
     
     // MARK: - 核心场景交互面板 (系统、触控、IPTV、演讲)
     @ViewBuilder
-    private func remoteScenarioPanel(availableHeight: CGFloat) -> some View {
+    private func remoteScenarioPanel(availableHeight: CGFloat, isWideDuo: Bool = false) -> some View {
         ZStack {
             if coordinatorObserver.isTargetMac {
                 // 方案 A：macOS 原生媒体控制中心 (免装软件原生直连)
-                MacOSMediaRemoteView(deviceName: coordinatorObserver.targetDeviceName) {
+                MacOSMediaRemoteView(deviceName: coordinatorObserver.targetDeviceName, isWideDuo: isWideDuo) {
                     DualModeRemoteCoordinator.shared.disconnectAll()
                     NotificationCenter.default.post(name: Notification.Name("HSBExitRemotePageNotification"), object: nil)
                 }
             } else if selectedControlTab == 0 {
                 // Tab 1: 系统遥控 (Apple TV 原生 D-pad 轮盘与一体化控制岛)
                 let dpadSize: CGFloat = availableHeight < 680 ? 200 : 215
-                ModernSystemRemoteView(dpadSize: dpadSize)
+                ModernSystemRemoteView(dpadSize: dpadSize, isWideDuo: isWideDuo) { app in
+                    DualModeRemoteCoordinator.shared.launchApp(bundleID: app.bundleID, url: app.url)
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        selectedControlTab = app.targetMode
+                        selectedMainTab = 0
+                    }
+                }
             } else if selectedControlTab == 1 && isBrowserRemoteVisible {
-                // Tab 2: 扩展触控板 (仅在连接真实 hsbtvbrowser 时呈现)
-                ModernWebRemoteView()
+                // Tab 2: 扩展触控板
+                ModernWebRemoteView(isWideDuo: isWideDuo)
             } else if selectedControlTab == 2 {
                 // Tab 3: IPTV 遥控
-                ModernIPTVRemotePanel(isConnected: coordinatorObserver.isHSBBrowserConnected)
+                ModernIPTVRemotePanel(isConnected: coordinatorObserver.isHSBBrowserConnected, isWideDuo: isWideDuo)
             } else {
                 // Tab 4: PDF 遥控
-                ModernPDFRemotePanel()
+                ModernPDFRemotePanel(isWideDuo: isWideDuo)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -422,7 +404,7 @@ public struct ModernRemoteContainerView: View {
               !DualModeRemoteCoordinator.shared.isCurrentTargetMac else { return }
         
         NSLog("[ModernRemote] Starting Apple TV hardware discovery...")
-        HSBAppleTVDiscovery.shared.startScanning { devices in
+        HSBAppleTVDiscovery.shared.startScanning(observerId: "remoteContainer") { devices in
             guard !DualModeRemoteCoordinator.shared.nativeClient.isConnected,
                   !DualModeRemoteCoordinator.shared.nativeClient.isPairing,
                   !DualModeRemoteCoordinator.shared.isCurrentTargetMac else { return }
@@ -443,3 +425,17 @@ public struct ModernRemoteContainerView: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("遥控容器主页 · 折叠窄屏") {
+    DuoPreviewContainer(expandedDuo: false) {
+        ModernRemoteContainerView()
+    }
+}
+
+#Preview("遥控容器主页 · iPhone Duo 双栏展开") {
+    DuoPreviewContainer(expandedDuo: true) {
+        ModernRemoteContainerView()
+    }
+}
+#endif
