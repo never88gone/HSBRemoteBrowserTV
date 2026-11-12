@@ -33,13 +33,27 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         if device.isMacDevice {
             self.nativeClient.disconnect()
             MacMediaCommandDispatcher.currentTargetHost = device.host
+            MacMediaCommandDispatcher.currentTargetDeviceName = device.name
+            MacMediaCommandDispatcher.setupRouteObserverIfNeeded()
             self.currentMode = .nativeOnly
-            self.stateMachine.handle(event: .socketConnected(deviceName: device.name, mode: .nativeOnly))
-            NotificationCenter.default.post(
-                name: Notification.Name("HSBConnectionStateDidChangeNotification"),
-                object: self,
-                userInfo: ["state": HSBConnectionState.ready(deviceName: device.name, mode: .nativeOnly)]
-            )
+            
+            // 真实校验：只有当前系统音频路由确实输出到该 Mac 时才为 ready，否则为等待隔空投送状态
+            let isRouted = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: device.name)
+            if isRouted {
+                self.stateMachine.handle(event: .socketConnected(deviceName: device.name, mode: .nativeOnly))
+                NotificationCenter.default.post(
+                    name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+                    object: self,
+                    userInfo: ["state": HSBConnectionState.ready(deviceName: device.name, mode: .nativeOnly)]
+                )
+            } else {
+                self.stateMachine.handle(event: .requestDisconnect(reason: "Waiting for AirPlay connection"))
+                NotificationCenter.default.post(
+                    name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+                    object: self,
+                    userInfo: ["state": HSBConnectionState.disconnected]
+                )
+            }
         } else if device.isAndroidTV {
             self.nativeClient.disconnect(userInitiated: true)
             self.currentMode = .screenOnly
@@ -74,6 +88,12 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
             self,
             selector: #selector(handleUnifiedConnectionStateChanged(_:)),
             name: .HSBTVOSConnectionState,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAirPlayRouteChangeNotification),
+            name: MacMediaCommandDispatcher.airPlayRouteChangeNotification,
             object: nil
         )
         
@@ -115,6 +135,27 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
             if currentMode == .screenOnly || !nativeClient.isConnected {
                 self.stateMachine.handle(event: .requestDisconnect(reason: "Unified display disconnected"))
             }
+        }
+    }
+    
+    @objc private func handleAirPlayRouteChangeNotification() {
+        guard isCurrentTargetMac else { return }
+        let isConnected = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: currentTargetDeviceName)
+        NSLog("[DualMode] AirPlay route update for Mac: isConnected=%d", isConnected ? 1 : 0)
+        if isConnected {
+            self.stateMachine.handle(event: .socketConnected(deviceName: currentTargetDeviceName, mode: .nativeOnly))
+            NotificationCenter.default.post(
+                name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+                object: self,
+                userInfo: ["state": HSBConnectionState.ready(deviceName: currentTargetDeviceName, mode: .nativeOnly)]
+            )
+        } else {
+            self.stateMachine.handle(event: .requestDisconnect(reason: "AirPlay disconnected"))
+            NotificationCenter.default.post(
+                name: Notification.Name("HSBConnectionStateDidChangeNotification"),
+                object: self,
+                userInfo: ["state": HSBConnectionState.disconnected]
+            )
         }
     }
     

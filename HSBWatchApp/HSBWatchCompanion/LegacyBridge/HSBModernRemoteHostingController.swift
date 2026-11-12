@@ -182,18 +182,17 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             return
         }
         
-        // 方案 A：针对 macOS 原生系统与媒体终端直连，设置目标设备并就绪
+        // 方案 A：针对 macOS 隔空播放设备直连，进行真实服务探活与就绪
         if device.isMacDevice {
             DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)
-            DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
-            MacMediaCommandDispatcher.verifyConnection(host: device.host) { isOnline in
+            MacMediaCommandDispatcher.verifyAirPlayReceiverService(host: device.host) { isOnline in
                 DispatchQueue.main.async {
-                    NSLog("[MacRemote] Connection verification to Mac %@ (host: %@) result: %d", device.name, device.host, isOnline)
+                    NSLog("[MacRemote] AirPlay Receiver check to Mac %@ (host: %@) result: %d", device.name, device.host, isOnline)
                     if isOnline {
                         completion?(true, nil)
                     } else {
                         DualModeRemoteCoordinator.shared.disconnectAll()
-                        completion?(false, "目标 Mac 未开启系统自带的【隔空播放接收器】功能")
+                        completion?(false, "目标 Mac 未开启系统自带的【隔空播放接收器】功能。请在 Mac 打开【系统设置】->【通用】->【隔空播放与接力】并开启。")
                     }
                 }
             }
@@ -456,7 +455,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     }
     
     @objc @MainActor public static func isUnifiedConnected() -> Bool {
-        return (DualModeRemoteCoordinator.shared.isCurrentTargetMac && !DualModeRemoteCoordinator.shared.currentTargetHost.isEmpty) ||
+        return (DualModeRemoteCoordinator.shared.isCurrentTargetMac && MacMediaCommandDispatcher.isConnectedToTarget(deviceName: DualModeRemoteCoordinator.shared.currentTargetDeviceName)) ||
                DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
                HSBTVOSConnectionManager.shared().isConnected ||
                DualModeRemoteCoordinator.shared.screenClient.isConnected

@@ -31,7 +31,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
             self.isHSBBrowserConnected = false
             self.isHSBBrowserReconnecting = false
             self.browserDeviceName = ""
-            self.isNativeConnected = true
+            self.isNativeConnected = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: coordinator.currentTargetDeviceName)
         } else {
             self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
             self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
@@ -70,6 +70,12 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
             name: Notification.Name("HSBForgetScreenChannelNotification"),
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAirPlayRouteChangeNotification),
+            name: MacMediaCommandDispatcher.airPlayRouteChangeNotification,
+            object: nil
+        )
         
         bonjourDiscovery.delegate = self
         bonjourDiscovery.startDiscovery()
@@ -89,7 +95,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
                 self.isHSBBrowserConnected = false
                 self.isHSBBrowserReconnecting = false
                 self.browserDeviceName = ""
-                self.isNativeConnected = true
+                self.isNativeConnected = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: self.coordinator.currentTargetDeviceName)
             } else {
                 let legacyMgr = HSBTVOSConnectionManager.shared()
                 self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
@@ -126,7 +132,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
                 self.isHSBBrowserConnected = false
                 self.isHSBBrowserReconnecting = false
                 self.browserDeviceName = ""
-                self.isNativeConnected = true
+                self.isNativeConnected = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: coordinator.currentTargetDeviceName)
             } else {
                 let legacyMgr = HSBTVOSConnectionManager.shared()
                 self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
@@ -213,6 +219,13 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
     @objc private func handleForgetScreenChannelNotification() {
         Task { @MainActor in
             self.forgetPairedBrowserAndRescan()
+        }
+    }
+    
+    @objc private func handleAirPlayRouteChangeNotification() {
+        Task { @MainActor in
+            guard self.coordinator.isCurrentTargetMac else { return }
+            self.isNativeConnected = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: self.coordinator.currentTargetDeviceName)
         }
     }
     

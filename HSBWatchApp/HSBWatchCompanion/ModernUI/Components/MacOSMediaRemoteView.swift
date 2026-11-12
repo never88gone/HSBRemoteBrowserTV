@@ -8,6 +8,22 @@
 //
 
 import SwiftUI
+import AVKit
+
+/// 系统原生隔空播放路由选择器按钮 (真实调起系统 AirPlay 投送菜单)
+public struct AirPlayRoutePickerButton: UIViewRepresentable {
+    public init() {}
+    
+    public func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.tintColor = UIColor(Color(red: 224.0 / 255.0, green: 36.0 / 255.0, blue: 56.0 / 255.0))
+        picker.activeTintColor = .systemGreen
+        picker.prioritizesVideoDevices = false
+        return picker
+    }
+    
+    public func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+}
 
 public struct MacOSMediaRemoteView: View {
     public let deviceName: String
@@ -18,7 +34,7 @@ public struct MacOSMediaRemoteView: View {
     @State private var isPlaying: Bool = MacMediaCommandDispatcher.isPlaying
     @State private var isMuted: Bool = MacMediaCommandDispatcher.isMuted
     @State private var volume: Double = MacMediaCommandDispatcher.currentVolume
-    @State private var isAirPlayConnected: Bool = true
+    @State private var isAirPlayConnected: Bool = false
     @State private var showHelpAlert: Bool = false
     
     private let hawthornRed = Color(red: 224.0 / 255.0, green: 36.0 / 255.0, blue: 56.0 / 255.0)
@@ -45,6 +61,9 @@ public struct MacOSMediaRemoteView: View {
         }
         .onAppear {
             checkAirPlayStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: MacMediaCommandDispatcher.airPlayRouteChangeNotification)) { _ in
+            self.isAirPlayConnected = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: deviceName)
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBShowMacAirPlayHelpNotification"))) { _ in
             showHelpAlert = true
@@ -111,15 +130,18 @@ public struct MacOSMediaRemoteView: View {
                         .shadow(color: isPlaying ? hawthornRed.opacity(0.35) : .clear, radius: 8)
                 }
                 
-                // 实时通道状态胶囊
+                // 实时通道状态胶囊 (原生 AirPlay 真实投送与路由选择器)
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(DuoPalette.readyGreen)
+                        .fill(isAirPlayConnected ? DuoPalette.readyGreen : DuoPalette.warmOrange)
                         .frame(width: 7, height: 7)
-                    Text("Port 7000 · 系统音频与快捷键毫秒级通道")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundColor(DuoPalette.textSecondary)
+                    Text(isAirPlayConnected ? "原生隔空播放音频已连通" : "隔空播放未连接 · 请先选择投送")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(isAirPlayConnected ? DuoPalette.textPrimary : DuoPalette.warmOrange)
                         .lineLimit(1)
+                    
+                    AirPlayRoutePickerButton()
+                        .frame(width: 22, height: 22)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -136,7 +158,7 @@ public struct MacOSMediaRemoteView: View {
                 }
                 .frame(height: 44)
                 
-                Text(isPlaying ? "正在通过隔空播放隧道同步音频脉冲" : "已就绪 · 点击右侧主控立即控制 Mac 媒体")
+                Text(isAirPlayConnected ? (isPlaying ? "正在通过隔空播放实时推流音频脉冲" : "已就绪 · 点击右侧主控即可调节 Mac 音量与媒体") : "请点击上方投送图标选择 \(deviceName) 建立连接")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(DuoPalette.textSecondary)
                     .lineLimit(1)
@@ -505,17 +527,12 @@ public struct MacOSMediaRemoteView: View {
                 
                 Spacer(minLength: 4)
                 
-                Button(action: {
-                    if !isAirPlayConnected {
-                        haptic.impactOccurred()
-                        showHelpAlert = true
-                    }
-                }) {
+                HStack(spacing: 6) {
                     HStack(spacing: 4) {
                         Circle()
                             .fill(isAirPlayConnected ? Color.green : Color.orange)
                             .frame(width: 6.5, height: 6.5)
-                        Text(isAirPlayConnected ? "隔空播放已就绪" : "未开启隔空播放")
+                        Text(isAirPlayConnected ? "隔空播放已就绪" : "未投送音频")
                             .font(.system(size: 10.5, weight: .medium))
                             .foregroundColor(isAirPlayConnected ? .white.opacity(0.85) : .orange)
                             .lineLimit(1)
@@ -526,8 +543,10 @@ public struct MacOSMediaRemoteView: View {
                         Capsule()
                             .fill(isAirPlayConnected ? Color.white.opacity(0.08) : Color.orange.opacity(0.16))
                     )
+                    
+                    AirPlayRoutePickerButton()
+                        .frame(width: 22, height: 22)
                 }
-                .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -772,11 +791,7 @@ public struct MacOSMediaRemoteView: View {
     }
     
     private func checkAirPlayStatus() {
-        let host = MacMediaCommandDispatcher.currentTargetHost
-        guard !host.isEmpty else { return }
-        MacMediaCommandDispatcher.verifyConnection(host: host) { isOnline in
-            self.isAirPlayConnected = isOnline
-        }
+        self.isAirPlayConnected = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: deviceName)
     }
     
     private func waveBarHeight(index: Int) -> CGFloat {

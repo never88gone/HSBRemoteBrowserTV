@@ -48,15 +48,15 @@ struct ModernRemoteStatusTopBar: View {
             Spacer()
             
             if coordinatorObserver.isTargetMac {
-                // Mac 原生系统直控专属状态条 (彻底消除非电视大屏的虚假显示)
+                // Mac 原生系统直控专属状态条 (真实展示隔空播放投送连通性)
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(Color.green)
+                        .fill(coordinatorObserver.isNativeConnected ? Color.green : Color.orange)
                         .frame(width: 7, height: 7)
                     Image(systemName: "desktopcomputer")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.green)
-                    Text("Mac系统直控: \(coordinatorObserver.targetDeviceName.isEmpty ? "Mac电脑" : coordinatorObserver.targetDeviceName)")
+                        .foregroundColor(coordinatorObserver.isNativeConnected ? .green : .orange)
+                    Text(coordinatorObserver.isNativeConnected ? "隔空播放已就绪: \(coordinatorObserver.targetDeviceName.isEmpty ? "Mac电脑" : coordinatorObserver.targetDeviceName)" : "未投送隔空播放 · 点击下方投送")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary)
                 }
@@ -208,7 +208,10 @@ struct ModernRemoteStatusTopBar: View {
     }
     
     private var systemStatusColor: Color {
-        if coordinatorObserver.isTargetMac || coordinatorObserver.isNativeConnected {
+        if coordinatorObserver.isTargetMac {
+            return coordinatorObserver.isNativeConnected ? .green : .orange
+        }
+        if coordinatorObserver.isNativeConnected {
             return .green
         }
         if coordinatorObserver.isHSBBrowserConnected {
@@ -226,7 +229,7 @@ struct ModernRemoteStatusTopBar: View {
     private var systemStatusText: String {
         if coordinatorObserver.isTargetMac {
             let name = (!coordinatorObserver.targetDeviceName.isEmpty && coordinatorObserver.targetDeviceName != "Mac") ? coordinatorObserver.targetDeviceName : "Mac电脑"
-            return "Mac: \(name)"
+            return coordinatorObserver.isNativeConnected ? "Mac隔空播放: \(name)" : "Mac: 未投送"
         }
         if coordinatorObserver.isNativeConnected {
             let name = (!coordinatorObserver.targetDeviceName.isEmpty && coordinatorObserver.targetDeviceName != "Mac") ? coordinatorObserver.targetDeviceName : "已连接"

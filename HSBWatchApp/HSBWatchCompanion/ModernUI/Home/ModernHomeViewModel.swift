@@ -145,8 +145,19 @@ public final class ModernHomeViewModel: ObservableObject {
                 guard let self = self else { return }
                 self.connectingDeviceHost = nil
                 if success {
-                    self.tvStatusText = hsbL("🟢 Connected to \(device.name)", "🟢 已连接至 \(device.name)")
-                    self.tvStatusColor = DuoPalette.readyGreen
+                    if device.isMacDevice {
+                        let isRouted = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: device.name)
+                        if isRouted {
+                            self.tvStatusText = hsbL("🟢 AirPlay connected to \(device.name)", "🟢 已隔空投送至 \(device.name)")
+                            self.tvStatusColor = DuoPalette.readyGreen
+                        } else {
+                            self.tvStatusText = hsbL("🟠 AirPlay ready · Connect in remote panel", "🟠 隔空播放接收器就绪 · 请在控台选择投送")
+                            self.tvStatusColor = DuoPalette.warmOrange
+                        }
+                    } else {
+                        self.tvStatusText = hsbL("🟢 Connected to \(device.name)", "🟢 已连接至 \(device.name)")
+                        self.tvStatusColor = DuoPalette.readyGreen
+                    }
                     self.onConnectSuccess?(device)
                 } else {
                     self.tvStatusText = hsbL("🔴 Failed to connect to \(device.name)", "🔴 连接 \(device.name) 失败")
