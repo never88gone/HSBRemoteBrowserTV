@@ -33,6 +33,9 @@ public protocol DualModeRemoteCoordinatorProtocol: AnyObject {
     
     // 系统级控制 (Home, Menu, Volume, Power)
     func sendSystemKey(_ key: SystemKey)
+    func sendSystemKey(_ key: SystemKey, action: KeyAction)
+    func sendLongPressKey(_ key: SystemKey, duration: TimeInterval)
+    func sendLongPressSelect(duration: TimeInterval)
     func wakeDevice(host: String, completion: ((Bool) -> Void)?)
     
     // 专有大屏高级指令
@@ -45,4 +48,18 @@ public protocol DualModeRemoteCoordinatorProtocol: AnyObject {
     
     // 原生 PIN 码配对提交
     func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)?)
+}
+
+public extension DualModeRemoteCoordinatorProtocol {
+    func sendSystemKey(_ key: SystemKey) {
+        sendSystemKey(key, action: .tap)
+    }
+    
+    func sendLongPressKey(_ key: SystemKey) {
+        sendLongPressKey(key, duration: 0.8)
+    }
+    
+    func sendLongPressSelect() {
+        sendLongPressSelect(duration: 0.8)
+    }
 }

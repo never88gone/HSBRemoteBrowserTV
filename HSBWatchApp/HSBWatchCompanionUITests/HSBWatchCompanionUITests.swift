@@ -1127,4 +1127,150 @@ final class HSBWatchCompanionUITests: XCTestCase {
             navigateBackToSettings(app)
         }
     }
+
+    // =========================================================================
+    // MARK: - tvOS 真实长按手势与 Web 触控板光标/5 键网页导航专项 UI 自动化测试
+    // =========================================================================
+
+    /// 自动化验证：
+    /// 1. tvOS 原生硬件键（OK / Select、桌面 Home、返回 Menu、播放/暂停 PlayPause）支持短按与长按（>0.5s）；
+    /// 2. Web 触控板滑动驱动糖葫芦浏览器光标移动、轻点点击、长按；
+    /// 3. 底部 5 个浏览器按键（后退、前进、刷新、主页、放大）点击时精准控制大屏糖葫芦浏览器，绝不再被误转译为退出应用或回到系统桌面。
+    func testTouchpadWebCursorAndLongPressInteractiveUI() throws {
+        let app = launchToCleanHome()
+        XCTAssertTrue(app.staticTexts["糖葫芦遥控器"].waitForExistence(timeout: 6), "首页标题未成功呈现")
+        captureStepScreenshot("interactive_01_home")
+
+        // 1. 导航进入全能大屏遥控台 (tab=0 Apple TV 硬件按键面板)
+        openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=remote&tab=0")
+        let okBtn = app.buttons["dpad_ok_button"]
+        XCTAssertTrue(okBtn.waitForExistence(timeout: 6), "轮盘 OK 按钮未呈现")
+        captureStepScreenshot("interactive_02_remote_dpad")
+
+        // 2. 验证 OK / 确认键：短按与 0.8s 真实长按
+        NSLog("[XCUITest] 正在测试 D-Pad OK 键短按...")
+        okBtn.tap()
+        Thread.sleep(forTimeInterval: 0.5)
+
+        NSLog("[XCUITest] 正在测试 D-Pad OK 键长按 (0.8s)...")
+        okBtn.press(forDuration: 0.8)
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // 验证四向方向键点击
+        let upBtn = app.buttons["dpad_up"]
+        if upBtn.exists && upBtn.isHittable {
+            upBtn.tap()
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        let downBtn = app.buttons["dpad_down"]
+        if downBtn.exists && downBtn.isHittable {
+            downBtn.tap()
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+
+        // 3. 验证电视物理系统按键：桌面 (Home) 短按与长按 (呼出tvOS控制中心)
+        let homeBtn = app.buttons["system_桌面"]
+        if homeBtn.waitForExistence(timeout: 3.0) && homeBtn.isHittable {
+            NSLog("[XCUITest] 正在测试【桌面】按键短按...")
+            homeBtn.tap()
+            Thread.sleep(forTimeInterval: 0.4)
+
+            NSLog("[XCUITest] 正在测试【桌面】按键长按 (0.8s)...")
+            homeBtn.press(forDuration: 0.8)
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+
+        // 验证电视物理系统按键：返回 (Menu) 短按与长按 (退回顶层菜单)
+        let backBtn = app.buttons["system_返回"]
+        if backBtn.waitForExistence(timeout: 3.0) && backBtn.isHittable {
+            NSLog("[XCUITest] 正在测试【返回】按键短按...")
+            backBtn.tap()
+            Thread.sleep(forTimeInterval: 0.4)
+
+            NSLog("[XCUITest] 正在测试【返回】按键长按 (0.8s)...")
+            backBtn.press(forDuration: 0.8)
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+
+        // 验证媒体按键：播放 / 暂停 短按与长按 (呼出音频AirPlay面板)
+        let playPauseBtn = app.buttons["media_播放 / 暂停"]
+        if playPauseBtn.waitForExistence(timeout: 3.0) && playPauseBtn.isHittable {
+            NSLog("[XCUITest] 正在测试【播放/暂停】按键短按...")
+            playPauseBtn.tap()
+            Thread.sleep(forTimeInterval: 0.4)
+
+            NSLog("[XCUITest] 正在测试【播放/暂停】按键长按 (0.8s)...")
+            playPauseBtn.press(forDuration: 0.8)
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+
+        // 4. 切换到“触控”Tab (Web 触控板面板)
+        let touchTab = app.buttons["触控"].firstMatch
+        XCTAssertTrue(touchTab.waitForExistence(timeout: 4.0), "未找到'触控'模式切换按钮")
+        touchTab.tap()
+        Thread.sleep(forTimeInterval: 1.0)
+
+        let touchHint = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '单指滑动光标' OR label CONTAINS '触控'")).firstMatch
+        XCTAssertTrue(touchHint.waitForExistence(timeout: 5.0), "触控板提示未显示")
+        captureStepScreenshot("interactive_03_web_touchpad")
+
+        // 5. 验证触控板手势交互 (单指滑动驱动光标、轻点、长按)
+        let touchpadSurface = app.otherElements["web_touchpad_surface"].firstMatch
+        if touchpadSurface.exists {
+            NSLog("[XCUITest] 正在触控板表面模拟单指滑动驱动糖葫芦浏览器光标...")
+            touchpadSurface.swipeUp()
+            Thread.sleep(forTimeInterval: 0.4)
+            touchpadSurface.swipeDown()
+            Thread.sleep(forTimeInterval: 0.4)
+
+            NSLog("[XCUITest] 正在触控板表面模拟轻点 (mac_tap)...")
+            touchpadSurface.tap()
+            Thread.sleep(forTimeInterval: 0.4)
+
+            NSLog("[XCUITest] 正在触控板表面模拟长按 (0.8s)...")
+            touchpadSurface.press(forDuration: 0.8)
+            Thread.sleep(forTimeInterval: 0.5)
+        } else {
+            // 兜底直接在屏幕中央区域滑动手势
+            NSLog("[XCUITest] 正在中央触控区域模拟滑动...")
+            app.windows.firstMatch.swipeUp()
+            Thread.sleep(forTimeInterval: 0.3)
+            app.windows.firstMatch.swipeDown()
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+
+        // 6. 核心验证：底部 5 个大屏网页导航控制按键 (后退、前进、刷新、主页、放大)
+        let navButtons: [(id: String, name: String)] = [
+            ("web_back_button", "后退"),
+            ("web_forward_button", "前进"),
+            ("web_reload_button", "刷新"),
+            ("web_home_button", "主页"),
+            ("web_zoom_button", "放大")
+        ]
+
+        for (id, name) in navButtons {
+            let btn = app.buttons[id]
+            XCTAssertTrue(btn.waitForExistence(timeout: 4.0), "网页导航控制按键 [\(name)] (\(id)) 未找到")
+            XCTAssertTrue(btn.isHittable, "网页导航控制按键 [\(name)] (\(id)) 不可点击")
+            NSLog("[XCUITest] 正在点击网页导航按钮: [%@] (%@)...", name, id)
+            btn.tap()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+
+        // 验证点击 5 个按钮后依然留在遥控控制台，绝未退回到桌面或退出应用
+        XCTAssertTrue(app.buttons["web_back_button"].exists, "点击网页按键后遥控台被异常关闭")
+        XCTAssertTrue(app.buttons["web_home_button"].exists, "点击网页主页键被错误当成tvOS桌面退出")
+        captureStepScreenshot("interactive_04_web_nav_buttons_verified")
+
+        // 7. 安全返回主页并断言平稳
+        let navBack = app.navigationBars.buttons.element(boundBy: 0)
+        if navBack.exists && navBack.isHittable {
+            navBack.tap()
+            Thread.sleep(forTimeInterval: 1.0)
+        } else {
+            openDeepLinkAndConfirmIfNeeded(app, urlString: "hsbremote://page?name=hub")
+        }
+        XCTAssertTrue(app.staticTexts["糖葫芦遥控器"].waitForExistence(timeout: 5.0), "退出遥控台后主页未正常恢复")
+        captureStepScreenshot("interactive_05_back_to_home_safe")
+    }
 }

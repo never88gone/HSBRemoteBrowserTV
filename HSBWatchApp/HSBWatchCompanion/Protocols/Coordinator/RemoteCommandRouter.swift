@@ -97,20 +97,41 @@ public final class RemoteCommandRouter {
     // MARK: - Touchpad & Cursor
     public func sendCursorPan(dx: CGFloat, dy: CGFloat) {
         if isCurrentTargetMac { return }
-        if currentMode == .nativeOnly {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        // 核心修复：只要大屏通道（TLS 1.2专线）连通，必须无条件发送 mac_pan 驱动糖葫芦浏览器光标移动
+        if screenClient.isConnected || legacyMgr.isConnected {
+            screenClient.send(command: .pan(dx: dx, dy: dy))
+            if legacyMgr.isConnected {
+                let scaledDx = dx * HSBRemoteConstants.cursorScale
+                let scaledDy = dy * HSBRemoteConstants.cursorScale
+                legacyMgr.sendPayload([
+                    "action": "mac_pan",
+                    "dx": scaledDx,
+                    "dy": scaledDy
+                ])
+            }
+        }
+        // 如果处于原生电视通道且大屏专线未连，向系统发送原生微操触控点
+        if nativeClient.isConnected && !legacyMgr.isConnected && !screenClient.isConnected {
             let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
             nativeClient.sendTouchEvent(phase: 2, point: pt)
-        } else {
-            screenClient.send(command: .pan(dx: dx, dy: dy))
         }
     }
     
     public func sendTap(mode: Int = 1, point: CGPoint? = nil) {
         if isCurrentTargetMac { return }
-        if currentMode == .nativeOnly {
-            nativeClient.sendTouchEvent(phase: 1, point: point ?? CGPoint(x: 500, y: 500))
-        } else {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if screenClient.isConnected || legacyMgr.isConnected {
             screenClient.send(command: .tap(mode: mode, point: point))
+            var dict: [String: Any] = ["action": "mac_tap", "mode": mode]
+            if let pt = point {
+                dict["x"] = Double(pt.x)
+                dict["y"] = Double(pt.y)
+            }
+            legacyMgr.sendPayload(dict)
+        }
+        if nativeClient.isConnected && !legacyMgr.isConnected && !screenClient.isConnected {
+            nativeClient.sendTouchEvent(phase: 1, point: point ?? CGPoint(x: 500, y: 500))
         }
     }
     
@@ -135,14 +156,27 @@ public final class RemoteCommandRouter {
     }
     
     public func sendDrag(state: DragState, dx: CGFloat, dy: CGFloat) {
-        if currentMode != .nativeOnly {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if screenClient.isConnected || legacyMgr.isConnected {
             screenClient.send(command: .drag(state: state, dx: dx, dy: dy))
+            if legacyMgr.isConnected {
+                legacyMgr.sendPayload([
+                    "action": "mac_drag",
+                    "state": state.stringValue,
+                    "dx": Double(dx),
+                    "dy": Double(dy)
+                ])
+            }
         }
     }
     
     public func sendZoom(scale: CGFloat) {
-        if currentMode != .nativeOnly {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if screenClient.isConnected || legacyMgr.isConnected {
             screenClient.send(command: .zoom(scale: scale))
+            if legacyMgr.isConnected {
+                legacyMgr.sendPayload(["action": "zoom", "scale": Double(scale)])
+            }
         }
     }
     
@@ -195,8 +229,8 @@ public final class RemoteCommandRouter {
         }
     }
     
-    // MARK: - System Keys
-    public func sendSystemKey(_ key: SystemKey) {
+    // MARK: - System Keys (全量支持短按、长按按下/释放动作)
+    public func sendSystemKey(_ key: SystemKey, action: KeyAction = .tap) {
         if isCurrentTargetMac {
             switch key {
             case .home:
@@ -226,7 +260,7 @@ public final class RemoteCommandRouter {
             }
             return
         }
-        if HSBTVOSConnectionManager.shared().isConnected {
+        if HSBTVOSConnectionManager.shared().isConnected && action == .tap {
             switch key {
             case .home:
                 HSBTVOSConnectionManager.shared().sendSimulateAction(.pageHome)
@@ -246,107 +280,92 @@ public final class RemoteCommandRouter {
         }
         switch key {
         case .home:
-            if isCurrentTargetMac {
-                MacMediaCommandDispatcher.dispatchCommand("play_pause")
-                return
-            }
             if currentMode == .screenOnly {
                 screenClient.send(command: .pageAction(action: .home))
             } else {
-                nativeClient.sendSystemKey(.home)
+                nativeClient.sendSystemKey(.home, action: action)
             }
         case .menu:
-            if isCurrentTargetMac {
-                MacMediaCommandDispatcher.dispatchCommand("mute")
-                return
-            }
             if currentMode == .screenOnly {
                 screenClient.send(command: .button(action: "menu"))
             } else {
-                nativeClient.sendSystemKey(.menu)
+                nativeClient.sendSystemKey(.menu, action: action)
             }
         case .volumeUp:
-            if isCurrentTargetMac {
-                MacMediaCommandDispatcher.dispatchCommand("volume_up")
-                return
-            }
             if currentMode == .nativeOnly {
-                nativeClient.sendSystemKey(.volumeUp)
+                nativeClient.sendSystemKey(.volumeUp, action: action)
             } else {
                 screenClient.send(command: .volume(action: "volume_up", value: nil))
             }
         case .volumeDown:
-            if isCurrentTargetMac {
-                MacMediaCommandDispatcher.dispatchCommand("volume_down")
-                return
-            }
             if currentMode == .nativeOnly {
-                nativeClient.sendSystemKey(.volumeDown)
+                nativeClient.sendSystemKey(.volumeDown, action: action)
             } else {
                 screenClient.send(command: .volume(action: "volume_down", value: nil))
             }
         case .mute:
-            if isCurrentTargetMac {
-                MacMediaCommandDispatcher.dispatchCommand("mute")
-                return
-            }
             if currentMode == .nativeOnly {
                 nativeClient.sendMRPMuteToggle()
             } else {
                 screenClient.send(command: .volume(action: "toggle_mute", value: nil))
             }
         case .power:
-            if isCurrentTargetMac {
-                MacMediaCommandDispatcher.dispatchCommand("pause")
-                return
-            }
-            nativeClient.sendSystemKey(.power)
+            nativeClient.sendSystemKey(.power, action: action)
         case .playPause:
-            if isCurrentTargetMac {
-                MacMediaCommandDispatcher.dispatchCommand("play_pause")
-                return
-            }
             if currentMode == .screenOnly {
                 screenClient.send(command: .media(action: .play, value: nil))
             } else {
-                nativeClient.sendSystemKey(.playPause)
+                nativeClient.sendSystemKey(.playPause, action: action)
             }
         case .up:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .up, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.up)
-            }
+            nativeClient.sendSystemKey(.up, action: action)
         case .down:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .down, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.down)
-            }
+            nativeClient.sendSystemKey(.down, action: action)
         case .left:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .left, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.left)
-            }
+            nativeClient.sendSystemKey(.left, action: action)
         case .right:
-            if currentMode == .screenOnly {
-                sendDPad(direction: .right, action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.right)
-            }
+            nativeClient.sendSystemKey(.right, action: action)
         case .select:
-            if currentMode == .screenOnly {
-                sendSelect(action: .tap)
-            } else {
-                nativeClient.sendSystemKey(.select)
-            }
+            nativeClient.sendSystemKey(.select, action: action)
+        }
+    }
+    
+    /// 发送系统按键真实长按手势（按下并持续 duration 秒后自动松开，tvOS 原生支持长按响应）
+    public func sendLongPressKey(_ key: SystemKey, duration: TimeInterval = 0.8) {
+        sendSystemKey(key, action: .press)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            self?.sendSystemKey(key, action: .release)
+        }
+    }
+    
+    /// 发送确定/OK 键真实长按手势（呼出上下文菜单、编辑模式）
+    public func sendLongPressSelect(duration: TimeInterval = 0.8) {
+        sendSelect(action: .press)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            self?.sendSelect(action: .release)
         }
     }
     
     // MARK: - Screen Browser Actions
     public func sendPageAction(_ action: PageAction) {
-        if currentMode == .nativeOnly {
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        // 核心修复：网页导航按钮专门控制大屏糖葫芦浏览器，绝不能转译成 tvOS 的退出 Menu 或主屏 Home
+        if screenClient.isConnected || legacyMgr.isConnected {
+            screenClient.send(command: .pageAction(action: action))
+            if legacyMgr.isConnected {
+                switch action {
+                case .back:
+                    legacyMgr.sendSimulateAction(.pageBack)
+                case .forward:
+                    legacyMgr.sendSimulateAction(.pageForward)
+                case .reload:
+                    legacyMgr.sendSimulateAction(.pageReload)
+                case .home:
+                    legacyMgr.sendSimulateAction(.pageHome)
+                }
+            }
+        } else {
+            // 降级：仅在大屏通道未连接时，转译为系统按键
             switch action {
             case .back:
                 nativeClient.sendSystemKey(.menu)
@@ -357,8 +376,6 @@ public final class RemoteCommandRouter {
             case .home:
                 nativeClient.sendSystemKey(.home)
             }
-        } else {
-            screenClient.send(command: .pageAction(action: action))
         }
     }
 }

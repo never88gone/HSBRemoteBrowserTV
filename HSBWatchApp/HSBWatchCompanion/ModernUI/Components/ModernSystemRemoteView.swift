@@ -91,14 +91,28 @@ public struct ModernSystemRemoteView: View {
             VStack(spacing: 10) {
                 mediaControlRow
                 
-                // 2. 系统核心功能行 (桌面, 返回, 静音, 待机)
+                // 2. 系统核心功能行 (桌面, 返回, 静音, 待机 - 支持短按与长按唤起tvOS控制中心/顶层菜单)
                 HStack(spacing: 12) {
-                    systemIslandRoundButton(icon: "house.fill", label: "桌面") {
-                        DualModeRemoteCoordinator.shared.sendSystemKey(.home)
-                    }
-                    systemIslandRoundButton(icon: "arrow.uturn.backward", label: "返回") {
-                        DualModeRemoteCoordinator.shared.sendSystemKey(.menu)
-                    }
+                    systemIslandRoundButton(
+                        icon: "house.fill",
+                        label: "桌面",
+                        action: {
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.home)
+                        },
+                        onLongPress: {
+                            DualModeRemoteCoordinator.shared.sendLongPressKey(.home)
+                        }
+                    )
+                    systemIslandRoundButton(
+                        icon: "arrow.uturn.backward",
+                        label: "返回",
+                        action: {
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.menu)
+                        },
+                        onLongPress: {
+                            DualModeRemoteCoordinator.shared.sendLongPressKey(.menu)
+                        }
+                    )
                     systemIslandRoundButton(icon: "speaker.slash.fill", label: "静音") {
                         DualModeRemoteCoordinator.shared.sendSystemKey(.mute)
                     }
@@ -332,12 +346,28 @@ public struct ModernSystemRemoteView: View {
             
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    duoSystemSquareKey(icon: "house.fill", label: "桌面", tint: DuoPalette.brandBlue) {
-                        DualModeRemoteCoordinator.shared.sendSystemKey(.home)
-                    }
-                    duoSystemSquareKey(icon: "arrow.uturn.backward", label: "返回", tint: DuoPalette.textPrimary) {
-                        DualModeRemoteCoordinator.shared.sendSystemKey(.menu)
-                    }
+                    duoSystemSquareKey(
+                        icon: "house.fill",
+                        label: "桌面",
+                        tint: DuoPalette.brandBlue,
+                        action: {
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.home)
+                        },
+                        onLongPress: {
+                            DualModeRemoteCoordinator.shared.sendLongPressKey(.home)
+                        }
+                    )
+                    duoSystemSquareKey(
+                        icon: "arrow.uturn.backward",
+                        label: "返回",
+                        tint: DuoPalette.textPrimary,
+                        action: {
+                            DualModeRemoteCoordinator.shared.sendSystemKey(.menu)
+                        },
+                        onLongPress: {
+                            DualModeRemoteCoordinator.shared.sendLongPressKey(.menu)
+                        }
+                    )
                 }
                 .frame(maxHeight: .infinity)
                 
@@ -362,11 +392,14 @@ public struct ModernSystemRemoteView: View {
         .duoCard(cornerRadius: DuoMetrics.cardRadius)
     }
     
-    private func duoSystemSquareKey(icon: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button {
-            lightHaptic.impactOccurred()
-            action()
-        } label: {
+    private func duoSystemSquareKey(
+        icon: String,
+        label: String,
+        tint: Color,
+        action: @escaping () -> Void,
+        onLongPress: (() -> Void)? = nil
+    ) -> some View {
+        SystemPressableButton(action: action, onLongPress: onLongPress) {
             VStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 24, weight: .semibold))
@@ -379,7 +412,6 @@ public struct ModernSystemRemoteView: View {
             .frame(minHeight: 104, maxHeight: .infinity)
             .duoCard(cornerRadius: DuoMetrics.innerCardRadius, fill: DuoPalette.cardElevated)
         }
-        .buttonStyle(.plain)
         .accessibilityIdentifier("system_\(label)")
         .accessibilityLabel(label)
     }
@@ -427,9 +459,17 @@ public struct ModernSystemRemoteView: View {
                 DualModeRemoteCoordinator.shared.sendDPad(direction: .left, action: .tap)
             }
             
-            mediaControlButton(icon: "playpause.fill", title: "播放 / 暂停", isPrimary: true) {
-                DualModeRemoteCoordinator.shared.sendSystemKey(.playPause)
-            }
+            mediaControlButton(
+                icon: "playpause.fill",
+                title: "播放 / 暂停",
+                isPrimary: true,
+                action: {
+                    DualModeRemoteCoordinator.shared.sendSystemKey(.playPause)
+                },
+                onLongPress: {
+                    DualModeRemoteCoordinator.shared.sendLongPressKey(.playPause)
+                }
+            )
             
             mediaControlButton(icon: "goforward.10", title: "快进 10s") {
                 DualModeRemoteCoordinator.shared.sendDPad(direction: .right, action: .tap)
@@ -478,11 +518,14 @@ public struct ModernSystemRemoteView: View {
         .accessibilityLabel(isUp ? "音量 +" : "音量 -")
     }
     
-    private func mediaControlButton(icon: String, title: String, isPrimary: Bool = false, action: @escaping () -> Void) -> some View {
-        Button {
-            lightHaptic.impactOccurred()
-            action()
-        } label: {
+    private func mediaControlButton(
+        icon: String,
+        title: String,
+        isPrimary: Bool = false,
+        action: @escaping () -> Void,
+        onLongPress: (() -> Void)? = nil
+    ) -> some View {
+        SystemPressableButton(action: action, onLongPress: onLongPress) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: isPrimary ? 13 : 11.5, weight: .semibold))
@@ -507,11 +550,14 @@ public struct ModernSystemRemoteView: View {
     }
     
     @ViewBuilder
-    private func systemIslandRoundButton(icon: String, label: String, tintColor: Color? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: {
-            lightHaptic.impactOccurred()
-            action()
-        }) {
+    private func systemIslandRoundButton(
+        icon: String,
+        label: String,
+        tintColor: Color? = nil,
+        action: @escaping () -> Void,
+        onLongPress: (() -> Void)? = nil
+    ) -> some View {
+        SystemPressableButton(action: action, onLongPress: onLongPress) {
             VStack(spacing: 4) {
                 ZStack {
                     Circle()
@@ -531,9 +577,67 @@ public struct ModernSystemRemoteView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(PlainButtonStyle())
         .accessibilityIdentifier("system_\(label)")
         .accessibilityLabel(label)
+    }
+}
+
+// MARK: - 精准分离短按与长按的高质感触控按钮
+private struct SystemPressableButton<Content: View>: View {
+    let action: () -> Void
+    let onLongPress: (() -> Void)?
+    let label: () -> Content
+    
+    @State private var isPressed: Bool = false
+    @State private var longPressWorkItem: DispatchWorkItem? = nil
+    @State private var didTriggerLongPress: Bool = false
+    private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
+    
+    init(action: @escaping () -> Void, onLongPress: (() -> Void)? = nil, @ViewBuilder label: @escaping () -> Content) {
+        self.action = action
+        self.onLongPress = onLongPress
+        self.label = label
+    }
+    
+    var body: some View {
+        Button(action: {
+            if !didTriggerLongPress {
+                lightHaptic.impactOccurred()
+                action()
+            }
+            didTriggerLongPress = false
+        }) {
+            label()
+                .scaleEffect(isPressed ? 0.94 : 1.0)
+                .animation(.easeInOut(duration: 0.12), value: isPressed)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                        didTriggerLongPress = false
+                        if let onLongPress = onLongPress {
+                            let item = DispatchWorkItem {
+                                guard isPressed else { return }
+                                didTriggerLongPress = true
+                                heavyHaptic.prepare()
+                                heavyHaptic.impactOccurred()
+                                onLongPress()
+                            }
+                            longPressWorkItem = item
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    longPressWorkItem?.cancel()
+                    longPressWorkItem = nil
+                    isPressed = false
+                }
+        )
     }
 }
 

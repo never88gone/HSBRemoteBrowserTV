@@ -272,7 +272,19 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func sendSystemKey(_ key: SystemKey) {
-        router.sendSystemKey(key)
+        router.sendSystemKey(key, action: .tap)
+    }
+    
+    public func sendSystemKey(_ key: SystemKey, action: KeyAction) {
+        router.sendSystemKey(key, action: action)
+    }
+    
+    public func sendLongPressKey(_ key: SystemKey, duration: TimeInterval = 0.8) {
+        router.sendLongPressKey(key, duration: duration)
+    }
+    
+    public func sendLongPressSelect(duration: TimeInterval = 0.8) {
+        router.sendLongPressSelect(duration: duration)
     }
     
     public var isSleeping: Bool {

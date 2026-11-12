@@ -206,29 +206,30 @@ public struct ModernWebRemoteView: View {
                 DualModeRemoteCoordinator.shared.sendZoom(scale: scale)
             }
         )
+        .accessibilityIdentifier("web_touchpad_surface")
     }
     
     @ViewBuilder
     private var webNavRow: some View {
-        webNavButton(icon: "chevron.backward", title: "后退") {
+        webNavButton(icon: "chevron.backward", title: "后退", identifier: "web_back_button") {
             DualModeRemoteCoordinator.shared.sendPageAction(.back)
         }
-        webNavButton(icon: "chevron.forward", title: "前进") {
+        webNavButton(icon: "chevron.forward", title: "前进", identifier: "web_forward_button") {
             DualModeRemoteCoordinator.shared.sendPageAction(.forward)
         }
-        webNavButton(icon: "arrow.clockwise", title: "刷新") {
+        webNavButton(icon: "arrow.clockwise", title: "刷新", identifier: "web_reload_button") {
             DualModeRemoteCoordinator.shared.sendPageAction(.reload)
         }
-        webNavButton(icon: "house", title: "主页") {
+        webNavButton(icon: "house", title: "主页", identifier: "web_home_button") {
             DualModeRemoteCoordinator.shared.sendPageAction(.home)
         }
-        webNavButton(icon: "plus.magnifyingglass", title: "放大") {
+        webNavButton(icon: "plus.magnifyingglass", title: "放大", identifier: "web_zoom_button") {
             DualModeRemoteCoordinator.shared.sendZoom(scale: 1.25)
         }
     }
     
     @ViewBuilder
-    private func webNavButton(icon: String, title: String, action: @escaping () -> Void) -> some View {
+    private func webNavButton(icon: String, title: String, identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: {
             lightHaptic.impactOccurred()
             action()
@@ -245,6 +246,8 @@ public struct ModernWebRemoteView: View {
             .cornerRadius(12)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier(identifier)
+        .accessibilityLabel(title)
     }
 }
 

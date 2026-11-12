@@ -22,10 +22,13 @@ public struct ModernDPadView: View {
     // 触觉反馈发生器
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     private let mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
+    private let heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     
     // 按压高光状态
     @State private var pressedDirection: DPadDirection? = nil
     @State private var isCenterPressed: Bool = false
+    @State private var centerLongPressWorkItem: DispatchWorkItem? = nil
+    @State private var didTriggerCenterLongPress: Bool = false
     
     public init(
         size: CGFloat = 220.0,
@@ -112,15 +115,33 @@ public struct ModernDPadView: View {
                     .onChanged { _ in
                         if !isCenterPressed {
                             isCenterPressed = true
+                            didTriggerCenterLongPress = false
                             mediumHaptic.prepare()
                             mediumHaptic.impactOccurred()
+                            
+                            // 开启 0.5 秒长按计时
+                            let item = DispatchWorkItem {
+                                guard isCenterPressed else { return }
+                                didTriggerCenterLongPress = true
+                                heavyHaptic.prepare()
+                                heavyHaptic.impactOccurred()
+                                onSelect?(.press)
+                            }
+                            centerLongPressWorkItem = item
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: item)
                         }
                     }
                     .onEnded { _ in
+                        centerLongPressWorkItem?.cancel()
+                        centerLongPressWorkItem = nil
                         withAnimation(.easeOut(duration: HSBRemoteConstants.blinkDuration)) {
                             isCenterPressed = false
                         }
-                        onSelect?(.tap)
+                        if didTriggerCenterLongPress {
+                            onSelect?(.release)
+                        } else {
+                            onSelect?(.tap)
+                        }
                     }
             )
         }

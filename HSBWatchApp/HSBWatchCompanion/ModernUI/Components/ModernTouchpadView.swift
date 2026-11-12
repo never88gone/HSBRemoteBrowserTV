@@ -14,6 +14,7 @@ public struct ModernTouchpadView: View {
     public var isFullScreen: Binding<Bool>?
     public var onPan: ((CGFloat, CGFloat) -> Void)?
     public var onTap: ((Int, CGPoint?) -> Void)?
+    public var onLongPress: ((CGPoint) -> Void)?
     public var onScroll: ((CGFloat, CGFloat) -> Void)?
     public var onDrag: ((DragState, CGFloat, CGFloat) -> Void)?
     public var onZoom: ((CGFloat) -> Void)?
@@ -32,11 +33,13 @@ public struct ModernTouchpadView: View {
     
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     private let mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
+    private let heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
     
     public init(
         isFullScreen: Binding<Bool>? = nil,
         onPan: ((CGFloat, CGFloat) -> Void)? = nil,
         onTap: ((Int, CGPoint?) -> Void)? = nil,
+        onLongPress: ((CGPoint) -> Void)? = nil,
         onScroll: ((CGFloat, CGFloat) -> Void)? = nil,
         onDrag: ((DragState, CGFloat, CGFloat) -> Void)? = nil,
         onZoom: ((CGFloat) -> Void)? = nil
@@ -44,6 +47,7 @@ public struct ModernTouchpadView: View {
         self.isFullScreen = isFullScreen
         self.onPan = onPan
         self.onTap = onTap
+        self.onLongPress = onLongPress
         self.onScroll = onScroll
         self.onDrag = onDrag
         self.onZoom = onZoom
@@ -109,6 +113,15 @@ public struct ModernTouchpadView: View {
                     onTwoFingerTap: { pt in
                         lightHaptic.impactOccurred()
                         onTap?(3, pt)
+                    },
+                    onLongPress: { pt in
+                        heavyHaptic.prepare()
+                        heavyHaptic.impactOccurred()
+                        if let onLongPress = onLongPress {
+                            onLongPress(pt)
+                        } else {
+                            DualModeRemoteCoordinator.shared.sendLongPressSelect()
+                        }
                     },
                     onZoom: { scale in
                         onZoom?(scale)
@@ -261,6 +274,7 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
     var onPanEnded: (CGPoint, CGFloat, CGFloat, Bool) -> Void
     var onOneFingerTap: (CGPoint) -> Void
     var onTwoFingerTap: (CGPoint) -> Void
+    var onLongPress: (CGPoint) -> Void
     var onZoom: (CGFloat) -> Void
     var onTouchStateChanged: (Bool, CGPoint?) -> Void
     
@@ -303,6 +317,12 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
         let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
         pinch.delegate = context.coordinator
         view.addGestureRecognizer(pinch)
+        
+        // 6. 单指长按 (tvOS 原生上下文菜单 / 快捷操作)
+        let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
+        longPress.minimumPressDuration = 0.5
+        longPress.delegate = context.coordinator
+        view.addGestureRecognizer(longPress)
         
         return view
     }
@@ -378,6 +398,14 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
             guard let view = recognizer.view else { return }
             let loc = recognizer.location(in: view)
             parent.onTwoFingerTap(loc)
+        }
+        
+        @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard let view = recognizer.view else { return }
+            let loc = recognizer.location(in: view)
+            if recognizer.state == .began {
+                parent.onLongPress(loc)
+            }
         }
         
         @objc func handlePinch(_ recognizer: UIPinchGestureRecognizer) {
