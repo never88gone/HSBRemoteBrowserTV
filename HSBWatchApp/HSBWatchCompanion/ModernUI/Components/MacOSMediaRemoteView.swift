@@ -16,7 +16,6 @@ public struct MacOSMediaRemoteView: View {
     
     // 媒体播放与状态
     @State private var isPlaying: Bool = MacMediaCommandDispatcher.isPlaying
-    @State private var wavePhase: CGFloat = 0.0
     @State private var isMuted: Bool = MacMediaCommandDispatcher.isMuted
     @State private var volume: Double = MacMediaCommandDispatcher.currentVolume
     @State private var isAirPlayConnected: Bool = true
@@ -41,9 +40,11 @@ public struct MacOSMediaRemoteView: View {
                 compactBody
             }
         }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
         .onAppear {
             checkAirPlayStatus()
-            startWaveAnimation()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HSBShowMacAirPlayHelpNotification"))) { _ in
             showHelpAlert = true
@@ -107,8 +108,7 @@ public struct MacOSMediaRemoteView: View {
                     Image(systemName: "music.note")
                         .font(.system(size: 62, weight: .semibold))
                         .foregroundColor(isPlaying ? hawthornRed : Color.white.opacity(0.38))
-                        .scaleEffect(isPlaying ? 1.07 : 0.96)
-                        .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: isPlaying)
+                        .shadow(color: isPlaying ? hawthornRed.opacity(0.35) : .clear, radius: 8)
                 }
                 
                 // 实时通道状态胶囊
@@ -126,13 +126,12 @@ public struct MacOSMediaRemoteView: View {
                 .background(Capsule().fill(DuoPalette.cardElevated))
                 .overlay(Capsule().stroke(DuoPalette.stroke, lineWidth: 1))
                 
-                // 16 阶实时朱砂红频谱律动条
+                // 16 阶实时朱砂红频谱条 (稳定无抖动)
                 HStack(spacing: 5) {
                     ForEach(0..<16, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 2.5)
                             .fill(isPlaying ? DuoPalette.accentRed.opacity(0.9) : Color.white.opacity(0.22))
                             .frame(width: 5, height: wideWaveBarHeight(index: i))
-                            .animation(.easeInOut(duration: 0.25), value: wavePhase)
                     }
                 }
                 .frame(height: 44)
@@ -551,17 +550,15 @@ public struct MacOSMediaRemoteView: View {
                     Image(systemName: "music.note")
                         .font(.system(size: 54, weight: .semibold))
                         .foregroundColor(isPlaying ? hawthornRed : .white.opacity(0.35))
-                        .scaleEffect(isPlaying ? 1.08 : 0.95)
-                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPlaying)
+                        .shadow(color: isPlaying ? hawthornRed.opacity(0.35) : .clear, radius: 8)
                 }
                 
-                // 律动频谱波形条
+                // 稳定频谱波形条
                 HStack(spacing: 4) {
                     ForEach(0..<12, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 2)
                             .fill(isPlaying ? hawthornRed.opacity(0.85) : Color.white.opacity(0.2))
                             .frame(width: 3.5, height: waveBarHeight(index: i))
-                            .animation(.easeInOut(duration: 0.25), value: wavePhase)
                     }
                 }
                 .frame(height: 26)
@@ -771,9 +768,7 @@ public struct MacOSMediaRemoteView: View {
     private func wideWaveBarHeight(index: Int) -> CGFloat {
         if !isPlaying { return 6.0 }
         let pattern: [CGFloat] = [10, 22, 34, 18, 28, 42, 22, 36, 44, 24, 34, 20, 30, 22, 14, 10]
-        let base = pattern[index % pattern.count]
-        let factor = (CGFloat(index % 3) * 0.16 + 0.84)
-        return wavePhase > 0.5 ? base * factor : max(8, base * 0.55)
+        return pattern[index % pattern.count]
     }
     
     private func checkAirPlayStatus() {
@@ -784,27 +779,18 @@ public struct MacOSMediaRemoteView: View {
         }
     }
     
-    private func startWaveAnimation() {
-        withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-            wavePhase = 1.0
-        }
-    }
-    
     private func waveBarHeight(index: Int) -> CGFloat {
         if !isPlaying { return 4.0 }
         let pattern: [CGFloat] = [6, 14, 22, 10, 18, 24, 12, 20, 8, 16, 22, 10]
-        let base = pattern[index % pattern.count]
-        let factor = (CGFloat(index % 3) * 0.2 + 0.8)
-        return wavePhase > 0.5 ? base * factor : max(4, base * 0.5)
+        return pattern[index % pattern.count]
     }
 }
 
-// MARK: - 按压弹性微动效果
+// MARK: - 按压触感反馈效果 (纯透明度变化，杜绝任何尺寸缩放抖动)
 private struct ScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.72 : 1.0)
     }
 }
 

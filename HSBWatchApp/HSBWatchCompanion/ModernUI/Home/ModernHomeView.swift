@@ -48,48 +48,9 @@ public struct ModernHomeView: View {
             if viewModel.isAIPrewarming {
                 aiPrewarmingOverlay
             }
-            
-            // 首屏糖葫芦拟人入场动画
-            if viewModel.showLaunchAnimation {
-                TanghuluLaunchAnimationView {
-                    viewModel.finishLaunchAnimation()
-                }
-                .transition(.opacity)
-                .zIndex(99)
-            }
         }
         .navigationTitle(hsbL("ZE Watch", "糖葫芦遥控器"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    router.isQRScannerPresented = true
-                } label: {
-                    Image(systemName: "qrcode.viewfinder")
-                        .foregroundColor(DuoPalette.warmOrange)
-                }
-                .accessibilityIdentifier("home_scan_button")
-                .accessibilityLabel("扫码连大屏")
-                
-                Button {
-                    router.push(.remote)
-                } label: {
-                    Image(systemName: "appletvremote.gen4.fill")
-                        .foregroundColor(DuoPalette.hawthornRed)
-                }
-                .accessibilityIdentifier("home_remote_button")
-                .accessibilityLabel("进入遥控器")
-                
-                Button {
-                    router.push(.settings)
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .foregroundColor(.white)
-                }
-                .accessibilityIdentifier("home_settings_button")
-                .accessibilityLabel("设置")
-            }
-        }
         .onAppear {
             viewModel.onConnectSuccess = { _ in
                 router.push(.remote)
@@ -393,13 +354,15 @@ public struct ModernHomeView: View {
                 )
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("home_remote_button")
             .accessibilityLabel("进入双栏全能遥控台")
             
             HStack(spacing: 10) {
                 quickTileButton(
                     icon: "qrcode.viewfinder",
                     title: "扫码连大屏",
-                    color: DuoPalette.brandBlue
+                    color: DuoPalette.brandBlue,
+                    accessibilityId: "home_scan_button"
                 ) {
                     router.isQRScannerPresented = true
                 }
@@ -407,7 +370,8 @@ public struct ModernHomeView: View {
                 quickTileButton(
                     icon: "cpu.fill",
                     title: "AI 模型中心",
-                    color: DuoPalette.warmOrange
+                    color: DuoPalette.warmOrange,
+                    accessibilityId: "home_ai_center_button"
                 ) {
                     router.push(.aiModelCenter)
                 }
@@ -415,7 +379,8 @@ public struct ModernHomeView: View {
                 quickTileButton(
                     icon: "gearshape.fill",
                     title: "系统设置",
-                    color: DuoPalette.silverInactive
+                    color: DuoPalette.silverInactive,
+                    accessibilityId: "home_settings_button"
                 ) {
                     router.push(.settings)
                 }
@@ -429,6 +394,7 @@ public struct ModernHomeView: View {
         icon: String,
         title: String,
         color: Color,
+        accessibilityId: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -453,6 +419,7 @@ public struct ModernHomeView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityId ?? title)
         .accessibilityLabel(title)
     }
     

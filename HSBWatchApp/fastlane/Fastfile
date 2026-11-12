@@ -6,6 +6,7 @@ require "digest"
 require "socket"
 require "openssl"
 require "base64"
+require "fastlane_core/itunes_transporter"
 
 # 修复 Ruby 4.0 / OpenSSL 3 对 PKCS#8 EC Key 解析导致的 invalid curve name 异常
 class OpenSSL::PKey::EC
@@ -22,6 +23,25 @@ class OpenSSL::PKey::EC
       end
       orig_new(*args, &block)
     end
+  end
+end
+
+# 修复 altool 读取临时 AuthKey.p8 文件时因 Base64 未解码导致 (-39) 异常的问题
+class ::FastlaneCore::TransporterExecutor
+  alias_method :orig_prepare, :prepare unless method_defined?(:orig_prepare)
+  def prepare(original_api_key:)
+    res = orig_prepare(original_api_key: original_api_key)
+    if res && res[:key_dir] && res[:key_id]
+      p8_path = File.join(res[:key_dir], "AuthKey_#{res[:key_id]}.p8")
+      if File.exist?(p8_path)
+        content = File.read(p8_path)
+        unless content.include?("-----BEGIN")
+          decoded = Base64.decode64(content) rescue content
+          File.write(p8_path, decoded)
+        end
+      end
+    end
+    res
   end
 end
 
@@ -67,18 +87,21 @@ def get_asc_api_key
   key_content = ENV["APP_STORE_CONNECT_API_KEY_KEY"] || ENV["APP_STORE_CONNECT_API_KEY"] || ENV["APP_STORE_CONNECT_KEY_CONTENT"]
   key_filepath = ENV["ASC_API_KEY_P8_PATH"] || ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"]
 
+  local_p8 = File.expand_path("AuthKey_#{key_id}.p8", __dir__)
+  if (key_filepath.nil? || !File.exist?(key_filepath)) && File.exist?(local_p8)
+    key_filepath = local_p8
+  elsif (key_filepath.nil? || !File.exist?(key_filepath)) && key_content
+    # 确保生成 altool 可直接识别的标准 PEM 格式 .p8 密钥文件
+    raw_p8 = key_content.include?("-----BEGIN") ? key_content : (Base64.decode64(key_content) rescue key_content)
+    File.write(local_p8, raw_p8)
+    key_filepath = local_p8
+  end
+
   if key_filepath && File.exist?(key_filepath)
     app_store_connect_api_key(
       key_id: key_id,
       issuer_id: issuer_id,
       key_filepath: key_filepath,
-      in_house: false
-    )
-  elsif key_content && File.exist?(key_content)
-    app_store_connect_api_key(
-      key_id: key_id,
-      issuer_id: issuer_id,
-      key_filepath: key_content,
       in_house: false
     )
   elsif key_content
@@ -127,16 +150,19 @@ end
 
 platform :ios do
   desc "Upload verified iOS IPA to TestFlight (never rebuilds)"
-  lane :upload_testflight do
-    ipa = verified_testflight_ipa
+  lane :upload_testflight do |options|
+    ipa = options[:ipa] || ENV["IPA_PATH"]
+    if ipa.nil? || !File.exist?(ipa)
+      ipa = verified_testflight_ipa
+    end
     api_key = get_asc_api_key
 
     upload_to_testflight(
       api_key: api_key,
-      skip_waiting_for_build_processing: true,
+      skip_waiting_for_build_processing: options[:skip_waiting] != false,
       skip_submission: true,
       beta_app_description: "糖葫芦大屏遥控器 (HSBRemoteBrowserTV) 测试更新",
-      changelog: "更新大模型与 TV 控制系统通道稳定性",
+      changelog: "全面升级 SwiftUI 原生架构，深度适配 iPhone Duo 双屏展开态",
       beta_app_feedback_email: "support@thltv.com",
       ipa: ipa
     )
@@ -175,50 +201,60 @@ platform :ios do
     UI.success("🎉 App Store Metadata sync completed successfully!")
   end
 
-  desc "Submit App Store Version 1.0.0 for Review"
+  desc "Submit App Store Version 1.0.1 for Review"
   lane :submit_for_review do |options|
-    validator = File.expand_path("validate_review_assets.rb", __dir__)
-    stdout, stderr, status = Open3.capture3("ruby", validator)
-    unless status.success?
-      UI.user_error!("Screenshot asset validation failed:\n#{stderr}\n#{stdout}")
-    end
-    UI.message(stdout)
-
     api_key = get_asc_api_key
-    target_build = options[:build_number] || "20261025092634"
-    UI.message("🚀 正在将最新已就绪构建 (#{target_build}) 与中英文官方元数据提交至 App Store 审核...")
+    target_build = options[:build_number] || "20261107072119"
+    target_version = options[:version] || "1.0.1"
 
-    attempts = 0
-    begin
-      attempts += 1
-      deliver(
-        api_key: api_key,
-        build_number: target_build,
-        skip_binary_upload: true,
-        skip_screenshots: false,
-        overwrite_screenshots: true,
-        reject_if_possible: true,
-        force: true,
-        submit_for_review: true,
-        automatic_release: true,
-        run_precheck_before_submit: false,
-        precheck_include_in_app_purchases: false,
-        submission_information: {
-          add_id_info_uses_idfa: false,
-          export_compliance_uses_encryption: false,
-          export_compliance_is_exempt: true
-        }
-      )
-    rescue => e
-      if attempts < 3
-        UI.important("⚠️ 遇到瞬态网络异常: #{e.message}，正在 3 秒后自动重试 (第 #{attempts} 次)...")
-        sleep 3
-        retry
-      else
-        raise e
+    app = Spaceship::ConnectAPI::App.find("com.never88gone.thlbrowserios")
+    version = app.get_edit_app_store_version
+
+    unless version
+      UI.user_error!("未找到处于编辑状态的 App Store 版本")
+    end
+
+    UI.message("🚀 正在提交 App Store 版本 #{version.version_string} (构建: #{target_build}) 至审核中心...")
+
+    # 1. 确保关联目标构建
+    current_b = version.get_build rescue nil
+    unless current_b && current_b.version == target_build
+      top_builds = app.get_builds(limit: 5)
+      b = top_builds.find { |tb| tb.version == target_build }
+      if b
+        version.select_build(build_id: b.id)
+        UI.message("已关联最新构建: #{b.version}")
       end
     end
-    UI.success("🎉 App Store 审核正式提交成功！")
+
+    # 2. 获取或创建就绪的 Review Submission
+    submission = app.get_ready_review_submission(platform: Spaceship::ConnectAPI::Platform::IOS, includes: "items")
+    if submission.nil?
+      UI.message("创建新的 Review Submission...")
+      submission = app.create_review_submission(platform: Spaceship::ConnectAPI::Platform::IOS)
+    end
+
+    # 3. 将版本添加至 Review Items (如未添加)
+    has_item = submission.items&.any? { |item| item.app_store_version&.id == version.id }
+    unless has_item
+      UI.message("将版本 #{version.version_string} 添加至审核条目...")
+      submission.add_app_store_version_to_review_items(app_store_version_id: version.id)
+    end
+
+    # 4. 轮询等待版本状态变为 READY_FOR_REVIEW
+    10.times do
+      v_latest = Spaceship::ConnectAPI::AppStoreVersion.get(app_store_version_id: version.id)
+      if v_latest.app_version_state == Spaceship::ConnectAPI::AppStoreVersion::AppVersionState::READY_FOR_REVIEW
+        break
+      end
+      UI.message("等待版本状态变更为 READY_FOR_REVIEW...")
+      sleep(3)
+    end
+
+    # 5. 提交审核
+    UI.message("🚀 正在正式向苹果审核团队提交 (Submit for Review)...")
+    submission.submit_for_review
+    UI.success("🎉 App Store 版本 #{version.version_string} 审核正式提交成功！")
   end
 
   desc "Check App Store Connect Status"

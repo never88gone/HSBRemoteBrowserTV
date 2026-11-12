@@ -23,11 +23,23 @@ public struct HSBWatchCompanionApp: App {
     
     public var body: some Scene {
         WindowGroup {
-            NavigationStack(path: $router.path) {
-                ModernHomeView(viewModel: homeViewModel, router: router)
-                    .navigationDestination(for: HSBAppRoute.self) { route in
-                        destinationView(for: route)
+            ZStack {
+                NavigationStack(path: $router.path) {
+                    ModernHomeView(viewModel: homeViewModel, router: router)
+                        .navigationDestination(for: HSBAppRoute.self) { route in
+                            destinationView(for: route)
+                        }
+                }
+                
+                // 全屏独立开屏动画（无导航栏、无任何顶栏操作按钮、纯粹沉浸）
+                if homeViewModel.showLaunchAnimation {
+                    TanghuluLaunchAnimationView {
+                        homeViewModel.finishLaunchAnimation()
                     }
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(999)
+                }
             }
             .preferredColorScheme(.dark)
             .tint(DuoPalette.hawthornRed)

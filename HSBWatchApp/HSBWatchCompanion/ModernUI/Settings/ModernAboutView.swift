@@ -18,7 +18,7 @@ public struct ModernAboutView: View {
     }
     
     private var shortVersion: String {
-        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.0.0"
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "1.0.1"
     }
     
     private var buildVersion: String {

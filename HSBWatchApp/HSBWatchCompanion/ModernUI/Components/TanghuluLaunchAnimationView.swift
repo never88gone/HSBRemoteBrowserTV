@@ -106,15 +106,6 @@ public struct TanghuluLaunchAnimationView: View {
             }
             .scaleEffect(isDismissed ? 1.08 : 1.0)
             .opacity(isDismissed ? 0.0 : 1.0)
-            
-            // 跳过提示（可点击屏幕任意位置跳过动画）
-            VStack {
-                Spacer()
-                Text("点击跳过")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.white.opacity(0.35))
-                    .padding(.bottom, 40)
-            }
         }
         .contentShape(Rectangle())
         .onTapGesture {
