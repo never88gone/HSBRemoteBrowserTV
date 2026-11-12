@@ -140,7 +140,7 @@ public final class ModernHomeViewModel: ObservableObject {
         }
         tvStatusColor = DuoPalette.brightYellow
         
-        HSBModernRemoteBridge.connectToDiscoveredDevice(device, timeout: 15.0) { [weak self] success, _ in
+        HSBModernRemoteBridge.connectToDiscoveredDevice(device, timeout: 15.0) { [weak self] success, errorMsg in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.connectingDeviceHost = nil
@@ -160,9 +160,16 @@ public final class ModernHomeViewModel: ObservableObject {
                     }
                     self.onConnectSuccess?(device)
                 } else {
-                    self.tvStatusText = hsbL("🔴 Failed to connect to \(device.name)", "🔴 连接 \(device.name) 失败")
-                    self.tvStatusColor = DuoPalette.accentRed
-                    self.presentConnectionFailureGuide(for: device)
+                    if device.isMacDevice && (errorMsg?.contains("已就绪") == true) {
+                        // 目标 Mac 7000 端口已就绪，但尚未投送音频：正常进入控制台，状态明确显示橙色就绪而非绿色已连接
+                        self.tvStatusText = hsbL("🟠 AirPlay ready · Connect in remote panel", "🟠 隔空播放接收器就绪 · 请在控台选择投送")
+                        self.tvStatusColor = DuoPalette.warmOrange
+                        self.onConnectSuccess?(device)
+                    } else {
+                        self.tvStatusText = hsbL("🔴 Failed to connect to \(device.name)", "🔴 连接 \(device.name) 失败")
+                        self.tvStatusColor = DuoPalette.accentRed
+                        self.presentConnectionFailureGuide(for: device)
+                    }
                 }
             }
         }

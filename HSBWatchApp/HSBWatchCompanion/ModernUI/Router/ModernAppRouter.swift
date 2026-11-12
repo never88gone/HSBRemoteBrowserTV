@@ -123,32 +123,31 @@ public final class HSBAppRouter: ObservableObject {
             push(.privacyPolicy)
         case "mac":
             popToRoot()
-            let macDev = HSBDiscoveredAppleTV(
-                id: "mac_studio",
-                name: "never88gone的 Mac Studio",
-                host: "127.0.0.1",
-                port: 7000,
-                modelName: "AppleTV18,1",
-                isNativeAppleTV: true,
-                isBrowserApp: false,
-                rawEndpoint: nil
-            )
-            HSBModernRemoteBridge.setCurrentTargetDevice(macDev)
+            if let realMac = HSBAppleTVDiscovery.shared.discoveredDevices.first(where: { $0.isMacDevice }) {
+                HSBModernRemoteBridge.setCurrentTargetDevice(realMac)
+            } else {
+                // 当局域网尚未完成 mDNS 扫描或模拟器环境下，以真实通用 Mac 隔空播放模式就绪，绝不伪造 127.0.0.1 假网络连接
+                let macDev = HSBDiscoveredAppleTV(
+                    id: "mac_airplay",
+                    name: "Mac电脑",
+                    host: "",
+                    port: 7000,
+                    modelName: "Mac",
+                    isNativeAppleTV: false,
+                    isBrowserApp: false,
+                    rawEndpoint: nil
+                )
+                HSBModernRemoteBridge.setCurrentTargetDevice(macDev)
+            }
             push(.remote)
         case "remote", "browser", "iptv", "pdf", "video", "apps":
             if path.last != .remote {
                 popToRoot()
-                let tvDev = HSBDiscoveredAppleTV(
-                    id: "hsbtv7",
-                    name: "HSBTV7",
-                    host: "127.0.0.1",
-                    port: 7000,
-                    modelName: "AppleTV14,1",
-                    isNativeAppleTV: true,
-                    isBrowserApp: true,
-                    rawEndpoint: nil
-                )
-                HSBModernRemoteBridge.setCurrentTargetDevice(tvDev)
+                // 严禁塞入 127.0.0.1 假设备：优先选用当前局域网真实扫描到的可用大屏或 Apple TV 物理设备
+                if !HSBModernRemoteBridge.isUnifiedConnected(),
+                   let realTV = HSBAppleTVDiscovery.shared.discoveredDevices.first(where: { !$0.isMacDevice }) {
+                    HSBModernRemoteBridge.setCurrentTargetDevice(realTV)
+                }
                 push(.remote)
             }
             let rawTab = userInfo?["tab"]

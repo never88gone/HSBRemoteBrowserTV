@@ -185,13 +185,15 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         discoveryLock.lock()
         let activeServices = Array(services.values)
         isScanning = true
+        deviceMap.removeAll()
         discoveryLock.unlock()
+        notifyChange()
         
         for service in activeServices {
             service.resolve(withTimeout: 5.0)
         }
         
-        beginBrowsingServices(clearExisting: false)
+        beginBrowsingServices(clearExisting: true)
     }
     
     @objc public func stopScanning() {
@@ -350,20 +352,36 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             let port = service.port > 0 ? UInt16(service.port) : 56789
             let endpoint = nw_endpoint_create_host(host, "\(port)")
             let model = props["model"] ?? "Android TV"
-            let dev = HSBDiscoveredAppleTV(
-                id: cleanName,
-                name: cleanName,
-                host: host,
-                port: port,
-                modelName: model,
-                isNativeAppleTV: false,
-                isBrowserApp: true,
-                rawEndpoint: endpoint
-            )
-            discoveryLock.lock()
-            deviceMap[cleanName] = dev
-            discoveryLock.unlock()
-            notifyChange()
+            
+            // 真实物理探活：只有端口 56789 真实处于监听并可握手状态的大屏，才允许展示给用户，杜绝假设备与幽灵设备
+            Self.probeTCPConnection(host: host, port: port, timeout: 0.8) { [weak self] isReachable in
+                guard let self = self else { return }
+                guard isReachable else {
+                    NSLog("[BONJOUR_TRACE] Filtered out unreachable TV: %@ at %@:%d", cleanName, host, port)
+                    self.discoveryLock.lock()
+                    let removed = self.deviceMap.removeValue(forKey: cleanName) != nil
+                    self.discoveryLock.unlock()
+                    if removed {
+                        self.notifyChange()
+                    }
+                    return
+                }
+                
+                let dev = HSBDiscoveredAppleTV(
+                    id: cleanName,
+                    name: cleanName,
+                    host: host,
+                    port: port,
+                    modelName: model,
+                    isNativeAppleTV: false,
+                    isBrowserApp: true,
+                    rawEndpoint: endpoint
+                )
+                self.discoveryLock.lock()
+                self.deviceMap[cleanName] = dev
+                self.discoveryLock.unlock()
+                self.notifyChange()
+            }
             return
         }
         

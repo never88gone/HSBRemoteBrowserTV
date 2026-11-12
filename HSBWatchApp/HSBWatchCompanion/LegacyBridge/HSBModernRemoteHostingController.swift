@@ -189,7 +189,14 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
                 DispatchQueue.main.async {
                     NSLog("[MacRemote] AirPlay Receiver check to Mac %@ (host: %@) result: %d", device.name, device.host, isOnline)
                     if isOnline {
-                        completion?(true, nil)
+                        // 真实校验：只有当前系统音频确实投送至该 Mac 时，才判定为已连接；
+                        // 未投送音频时，设置好目标设备，但如实返回未投送提示，绝不谎报已连接
+                        let isRouted = MacMediaCommandDispatcher.isConnectedToTarget(deviceName: device.name)
+                        if isRouted {
+                            completion?(true, nil)
+                        } else {
+                            completion?(false, "目标 Mac 接收器已就绪。请在遥控页面顶部点击【投送】图标并选择 “\(device.name)” 建立音频投送。")
+                        }
                     } else {
                         DualModeRemoteCoordinator.shared.disconnectAll()
                         completion?(false, "目标 Mac 未开启系统自带的【隔空播放接收器】功能。请在 Mac 打开【系统设置】->【通用】->【隔空播放与接力】并开启。")

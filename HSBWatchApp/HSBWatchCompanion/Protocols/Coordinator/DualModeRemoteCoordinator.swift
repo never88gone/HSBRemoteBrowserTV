@@ -24,7 +24,7 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     // 当前目标设备是否为 Mac 终端 (方案 A: 原生媒体控制)
     public var isCurrentTargetMac: Bool = false
     public var currentTargetDeviceName: String = ""
-    public var currentTargetHost: String = "127.0.0.1"
+    public var currentTargetHost: String = ""
     
     public func setCurrentTarget(device: HSBDiscoveredAppleTV) {
         self.isCurrentTargetMac = device.isMacDevice
@@ -306,14 +306,29 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func launchApp(bundleID: String, url: String? = nil, completion: ((Bool) -> Void)? = nil) {
-        nativeClient.launchApp(bundleID: bundleID, url: url) { success in
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: Notification.Name("HSBAppLaunchedNotification"),
-                    object: bundleID
-                )
-                completion?(success)
+        if nativeClient.isConnected {
+            nativeClient.launchApp(bundleID: bundleID, url: url) { success in
+                DispatchQueue.main.async {
+                    if success {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("HSBAppLaunchedNotification"),
+                            object: bundleID
+                        )
+                    }
+                    completion?(success)
+                }
             }
+        } else if HSBTVOSConnectionManager.shared().isConnected {
+            if let u = url, !u.isEmpty {
+                HSBTVOSConnectionManager.shared().sendSimulateAction(.openUrl, withParams: ["url": u])
+            }
+            NotificationCenter.default.post(
+                name: Notification.Name("HSBAppLaunchedNotification"),
+                object: bundleID
+            )
+            completion?(true)
+        } else {
+            completion?(false)
         }
     }
     

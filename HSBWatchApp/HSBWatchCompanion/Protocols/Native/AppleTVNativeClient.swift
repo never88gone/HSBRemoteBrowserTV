@@ -379,7 +379,7 @@ public final class AppleTVNativeClient: NSObject {
                 NSLog("[ATV_CONNECT] sendSystemKey triggered while disconnected/sleeping, auto-waking and reconnecting...")
                 wakeAndConnect()
             }
-            completion?(true)
+            completion?(false)
             return
         }
         
@@ -402,7 +402,7 @@ public final class AppleTVNativeClient: NSObject {
             if let host = self.currentHost, let devName = self.currentDeviceName, self.credentialStore.hasCredentials(for: devName) {
                 self.connect(host: host, deviceName: devName, port: self.currentPort)
             }
-            completion?(true)
+            completion?(false)
             return
         }
         session.sendTouchEvent(x: Double(point.x), y: Double(point.y), phase: phase)
@@ -414,7 +414,7 @@ public final class AppleTVNativeClient: NSObject {
             if let host = self.currentHost, let devName = self.currentDeviceName, self.credentialStore.hasCredentials(for: devName) {
                 self.connect(host: host, deviceName: devName, port: self.currentPort)
             }
-            completion?(true)
+            completion?(false)
             return
         }
         session.sendSwipe(direction)
@@ -424,7 +424,7 @@ public final class AppleTVNativeClient: NSObject {
     // MARK: - App Launching
     public func launchApp(bundleID: String, url: String? = nil, completion: ((Bool) -> Void)? = nil) {
         guard let session = self.session, self.isConnected else {
-            completion?(true)
+            completion?(false)
             return
         }
         session.launchApp(bundleID: bundleID) { result in
