@@ -97,7 +97,6 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     
     private var companionBrowser: NetServiceBrowser?
     private var thlTVBrowser: NetServiceBrowser?
-    private var probeWorkItem: DispatchWorkItem?
     
     private var services: [String: NetService] = [:]
     private var deviceMap: [String: HSBDiscoveredAppleTV] = [:]
@@ -149,7 +148,6 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         companionBrowser = nil
         thlTVBrowser?.stop()
         thlTVBrowser = nil
-        stopSmartLANProbing()
         
         if clearExisting {
             discoveryLock.lock()
@@ -168,15 +166,12 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             cBrowser.searchForServices(ofType: "_companion-link._tcp.", inDomain: "local.")
             self.companionBrowser = cBrowser
             
-            // 2. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属通信通道)
+            // 2. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属 Bonjour 通道)
             let tBrowser = NetServiceBrowser()
             tBrowser.delegate = self
             tBrowser.schedule(in: .main, forMode: .common)
             tBrowser.searchForServices(ofType: "_thltv._tcp.", inDomain: "local.")
             self.thlTVBrowser = tBrowser
-            
-            // 3. 并行启动 Smart LAN 探测器（保障 Android 模拟器与局域网 Wi-Fi 隔离环境）
-            self.startSmartLANProbing()
         }
         
         if Thread.isMainThread {
@@ -204,117 +199,12 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         companionBrowser = nil
         thlTVBrowser?.stop()
         thlTVBrowser = nil
-        stopSmartLANProbing()
         
         discoveryLock.lock()
         isScanning = false
         discoveryLock.unlock()
         
         log.info("TV & Hardware Bonjour discovery stopped.")
-    }
-    
-    // MARK: - Smart LAN Probing (解决 Android 模拟器 NAT 限制与局域网组播隔离)
-    
-    private func startSmartLANProbing() {
-        stopSmartLANProbing()
-        
-        let work = DispatchWorkItem { [weak self] in
-            guard let self = self, self.isScanning else { return }
-            self.performSmartLANProbe()
-        }
-        self.probeWorkItem = work
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.1, execute: work)
-    }
-    
-    private func stopSmartLANProbing() {
-        probeWorkItem?.cancel()
-        probeWorkItem = nil
-    }
-    
-    private func performSmartLANProbe() {
-        // 候选端口：56789 (Android TV 默认 TLS-PSK 端口) 与 56790 (Mac 局域网桥接端口)
-        let candidatePorts: [UInt16] = [56789, 56790]
-        var candidateHosts: Set<String> = ["127.0.0.1", "localhost"]
-        
-        // 1. 添加历史配对记录中的所有 host
-        let paired = HSBTVOSConnectionManager.pairedTVRecords()
-        for dict in paired {
-            if let h = dict["host"], !h.isEmpty {
-                candidateHosts.insert(h)
-            }
-        }
-        if let lastHost = UserDefaults.standard.string(forKey: "HSBLastConnectedTVHost"), !lastHost.isEmpty {
-            candidateHosts.insert(lastHost)
-        }
-        
-        // 2. 获取本机网络接口 IP (如 192.168.1.x)
-        var localIPs: [String] = []
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-        if getifaddrs(&ifaddr) == 0 {
-            var ptr = ifaddr
-            while ptr != nil {
-                let flags = Int32(ptr!.pointee.ifa_flags)
-                let addr = ptr!.pointee.ifa_addr.pointee
-                if (flags & (IFF_UP|IFF_RUNNING)) != 0 && addr.sa_family == UInt8(AF_INET) {
-                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-                    if getnameinfo(ptr!.pointee.ifa_addr, socklen_t(addr.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST) == 0 {
-                        let ip = String(cString: hostname)
-                        if !ip.starts(with: "127.") && !ip.starts(with: "169.254.") {
-                            localIPs.append(ip)
-                        }
-                    }
-                }
-                ptr = ptr!.pointee.ifa_next
-            }
-            freeifaddrs(ifaddr)
-        }
-        
-        for localIP in localIPs {
-            candidateHosts.insert(localIP)
-            let parts = localIP.split(separator: ".")
-            if parts.count == 4 {
-                let prefix = "\(parts[0]).\(parts[1]).\(parts[2])."
-                candidateHosts.insert("\(prefix)1")
-                for i in 2...35 {
-                    candidateHosts.insert("\(prefix)\(i)")
-                }
-            }
-        }
-        
-        for host in candidateHosts {
-            for port in candidatePorts {
-                guard self.isScanning else { return }
-                probeHost(host, port: port) { [weak self] isReachable in
-                    guard let self = self, self.isScanning, isReachable else { return }
-                    
-                    let devId = "AndroidTV_\(host)_\(port)"
-                    let devName = "糖葫芦TV (Android TV)"
-                    let endpoint = nw_endpoint_create_host(host, "\(port)")
-                    let dev = HSBDiscoveredAppleTV(
-                        id: devId,
-                        name: devName,
-                        host: host,
-                        port: port,
-                        modelName: "Android TV",
-                        isNativeAppleTV: false,
-                        isBrowserApp: true,
-                        rawEndpoint: endpoint
-                    )
-                    
-                    self.discoveryLock.lock()
-                    let exists = self.deviceMap.values.contains { $0.host == host && $0.port == port }
-                    if !exists {
-                        self.deviceMap[devId] = dev
-                    }
-                    self.discoveryLock.unlock()
-                    
-                    if !exists {
-                        NSLog("[ATV_CONNECT] Smart LAN Probe discovered Android TV at %@:%d", host, Int(port))
-                        self.notifyChange()
-                    }
-                }
-            }
-        }
     }
     
     /// 使用标准 TCP 参数（非空协议栈）快速非阻塞探测指定主机端口连通性
@@ -359,10 +249,6 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         probeQueue.asyncAfter(deadline: .now() + timeout) {
             done(false)
         }
-    }
-
-    private func probeHost(_ host: String, port: UInt16, completion: @escaping (Bool) -> Void) {
-        Self.probeTCPConnection(host: host, port: port, timeout: 0.8, completion: completion)
     }
     
     // MARK: - Port Knocking Wakeup (深度休眠唤醒)
