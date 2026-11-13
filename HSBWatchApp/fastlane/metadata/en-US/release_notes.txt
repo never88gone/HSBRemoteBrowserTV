@@ -1,5 +1,6 @@
-1. [New] Native macOS AirPlay media center with 100% zero-install architecture, controlling system volume and playback natively;
-2. [Redesigned] Apple Watch Companion app featuring D-Pad haptic wheel, Digital Crown infinite scrolling, Air Mouse motion control, and standalone media center;
-3. [Enhanced] Improved Apple TV native remote with anti-double-firing protection and Wake-on-LAN (WoL) support;
-4. [Refined UI] Elegant vinyl record card with real-time waveform frequency visualizer;
-5. [Performance] Faster Bonjour local discovery and robust low-level connection handshake.
+1. [Native tvOS Long-Press Gestures] Full support for native Apple TV long-press interactions (Hold OK for context menus, Hold Home for Control Center sidebar, Hold Menu for top-level navigation, Hold Play/Pause for AirPlay panel) with distinct Taptic Engine haptic feedback.
+2. [Big-Screen Cursor & Trackpad] Re-engineered wireless touchpad gesture engine delivering zero-latency cursor pan, tap, and 8-stage inertial decay for effortless Tanghulu Browser navigation.
+3. [Dedicated Web Navigation] Real 5-key browser controls (Back, Forward, Reload, Home, Zoom) dedicated to the TV browser without accidentally quitting the app or exiting to tvOS home.
+4. [True Hardware Connectivity] Purged all mock devices and demo stubs; local discovery and connection reflect 100% genuine Bonjour/mDNS hardware status.
+5. [Refined Launch & UI] Cleaned up splash screen overlays and consolidated navigation shortcuts for a modern, clutter-free user experience.
+6. [macOS AirPlay Controls] Improved native zero-install AirPlay integration for stable Mac system volume and media playback control.
