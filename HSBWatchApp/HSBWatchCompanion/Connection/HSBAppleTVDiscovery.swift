@@ -97,6 +97,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     
     private var companionBrowser: NetServiceBrowser?
     private var thlTVBrowser: NetServiceBrowser?
+    private var thlNWBrowser: NWBrowser?
+    private let nwQueue = DispatchQueue(label: "com.never88gone.thlbrowserios.nwdiscovery", qos: .userInitiated)
     
     private var services: [String: NetService] = [:]
     private var deviceMap: [String: HSBDiscoveredAppleTV] = [:]
@@ -146,6 +148,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     private func beginBrowsingServices(clearExisting: Bool) {
         companionBrowser?.stop()
         companionBrowser = nil
+        thlNWBrowser?.cancel()
+        thlNWBrowser = nil
         thlTVBrowser?.stop()
         thlTVBrowser = nil
         
@@ -158,26 +162,193 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         
         log.info("Starting TV & Hardware Bonjour discovery (_companion-link & _thltv)...")
         
+        // 1. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属 Bonjour 通道) - 使用现代 Network.framework NWBrowser
+        startThlNWBrowser()
+        
         let startOnMain = {
-            // 1. 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道
+            // 2. 扫描 Apple TV 与 Mac 硬件 Companion Link 协议通道
             let cBrowser = NetServiceBrowser()
             cBrowser.delegate = self
             cBrowser.schedule(in: .main, forMode: .common)
             cBrowser.searchForServices(ofType: "_companion-link._tcp.", inDomain: "local.")
             self.companionBrowser = cBrowser
-            
-            // 2. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属 Bonjour 通道)
-            let tBrowser = NetServiceBrowser()
-            tBrowser.delegate = self
-            tBrowser.schedule(in: .main, forMode: .common)
-            tBrowser.searchForServices(ofType: "_thltv._tcp.", inDomain: "local.")
-            self.thlTVBrowser = tBrowser
         }
         
         if Thread.isMainThread {
             startOnMain()
         } else {
             DispatchQueue.main.async(execute: startOnMain)
+        }
+    }
+    
+    // MARK: - Modern Network.framework Discovery for Android TV & Web Screen
+    
+    private func startThlNWBrowser() {
+        let descriptor = NWBrowser.Descriptor.bonjour(type: "_thltv._tcp", domain: nil)
+        let parameters = NWParameters()
+        parameters.includePeerToPeer = true
+        parameters.prohibitedInterfaceTypes = [.cellular]
+        
+        let nwBrowser = NWBrowser(for: descriptor, using: parameters)
+        nwBrowser.browseResultsChangedHandler = { [weak self] (results, changes) in
+            self?.handleNWBrowserResults(results: results, changes: changes)
+        }
+        nwBrowser.stateUpdateHandler = { state in
+            NSLog("[NWBrowser_THL] State changed: %@", "\(state)")
+        }
+        nwBrowser.start(queue: nwQueue)
+        self.thlNWBrowser = nwBrowser
+        
+        // 主动探活本地开发与模拟器设备，保障本地 Android TV 模拟器 100% 出现并可直接遥控
+        probeLocalCandidates()
+    }
+    
+    private func probeLocalCandidates() {
+        let localHosts = ["10.0.2.15", "127.0.0.1"]
+        let port: UInt16 = 56789
+        for host in localHosts {
+            Self.probeTCPConnection(host: host, port: port, timeout: 0.6) { [weak self] isOnline in
+                guard let self = self, isOnline else { return }
+                let cleanName = "糖葫芦TV"
+                let cEndpoint = nw_endpoint_create_host(host, "\(port)")
+                let device = HSBDiscoveredAppleTV(
+                    id: "Local_\(cleanName)",
+                    name: cleanName,
+                    host: host,
+                    port: port,
+                    modelName: "Android TV",
+                    isNativeAppleTV: false,
+                    isBrowserApp: true,
+                    rawEndpoint: cEndpoint
+                )
+                self.discoveryLock.lock()
+                if self.deviceMap[cleanName] == nil {
+                    self.deviceMap[cleanName] = device
+                }
+                self.discoveryLock.unlock()
+                NSLog("[LocalProbe_THL] Active local Android TV found at %@:%d", host, port)
+                self.notifyChange()
+            }
+        }
+    }
+    
+    private func handleNWBrowserResults(results: Set<NWBrowser.Result>, changes: Set<NWBrowser.Result.Change>) {
+        for change in changes {
+            if case let .removed(res) = change {
+                if case let .service(name, _, _, _) = res.endpoint {
+                    var cleanName = name
+                    if let range = cleanName.range(of: " (") {
+                        cleanName = String(cleanName[..<range.lowerBound])
+                    }
+                    discoveryLock.lock()
+                    let removed = deviceMap.removeValue(forKey: cleanName) != nil
+                    discoveryLock.unlock()
+                    if removed {
+                        notifyChange()
+                    }
+                }
+            }
+        }
+        
+        for result in results {
+            guard case let .service(name, _, _, _) = result.endpoint else { continue }
+            var cleanName = name
+            if let range = cleanName.range(of: " (") {
+                cleanName = String(cleanName[..<range.lowerBound])
+            }
+            
+            var txtDict: [String: String] = [:]
+            if case let .bonjour(txtRecord) = result.metadata {
+                txtDict = txtRecord.dictionary
+            }
+            
+            let candidateIP = txtDict["ip"] ?? txtDict["host"]
+            let portStr = txtDict["port"] ?? "56789"
+            let port = UInt16(portStr) ?? 56789
+            let model = txtDict["model"] ?? "Android TV"
+            
+            probeAndRegisterNWDevice(
+                endpoint: result.endpoint,
+                cleanName: cleanName,
+                candidateIP: candidateIP,
+                port: port,
+                modelName: model
+            )
+        }
+    }
+    
+    private func probeAndRegisterNWDevice(
+        endpoint: NWEndpoint,
+        cleanName: String,
+        candidateIP: String?,
+        port: UInt16,
+        modelName: String
+    ) {
+        let targetHost = candidateIP ?? "10.0.2.15"
+        let probe = NWConnection(to: endpoint, using: .tcp)
+        let queue = DispatchQueue(label: "com.tanghulu.nwprobe.\(cleanName)", qos: .userInitiated)
+        let lock = NSLock()
+        var completed = false
+        
+        let finish = { [weak self] (success: Bool, resolvedHost: String) in
+            lock.lock()
+            guard !completed else {
+                lock.unlock()
+                return
+            }
+            completed = true
+            lock.unlock()
+            probe.cancel()
+            
+            guard let self = self, success else { return }
+            
+            let cEndpoint = nw_endpoint_create_host(resolvedHost, "\(port)")
+            let device = HSBDiscoveredAppleTV(
+                id: cleanName,
+                name: cleanName,
+                host: resolvedHost,
+                port: port,
+                modelName: modelName,
+                isNativeAppleTV: false,
+                isBrowserApp: true,
+                rawEndpoint: cEndpoint
+            )
+            
+            self.discoveryLock.lock()
+            self.deviceMap[cleanName] = device
+            self.discoveryLock.unlock()
+            
+            NSLog("[NWBrowser_THL] Successfully discovered & probed Android TV: %@ at %@:%d", cleanName, resolvedHost, port)
+            self.notifyChange()
+        }
+        
+        probe.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                finish(true, targetHost)
+            case .failed, .cancelled:
+                if let ip = candidateIP {
+                    Self.probeTCPConnection(host: ip, port: port, timeout: 0.8) { ok in
+                        if ok {
+                            finish(true, ip)
+                        } else {
+                            // 降级尝试 127.0.0.1 探活（应对本地 adb forward 调试场景）
+                            Self.probeTCPConnection(host: "127.0.0.1", port: port, timeout: 0.5) { localOk in
+                                finish(localOk, localOk ? "127.0.0.1" : targetHost)
+                            }
+                        }
+                    }
+                } else {
+                    finish(false, targetHost)
+                }
+            default:
+                break
+            }
+        }
+        
+        probe.start(queue: queue)
+        queue.asyncAfter(deadline: .now() + 1.2) {
+            finish(false, targetHost)
         }
     }
     
@@ -199,6 +370,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public func stopScanning() {
         companionBrowser?.stop()
         companionBrowser = nil
+        thlNWBrowser?.cancel()
+        thlNWBrowser = nil
         thlTVBrowser?.stop()
         thlTVBrowser = nil
         

@@ -261,7 +261,7 @@ struct WebScrollCrownView: View {
 
             // 快捷长翻页与页面缩放控制
             HStack(spacing: 4) {
-                Button(action: { motionManager.sendScroll(deltaY: 300) }) {
+                Button(action: { motionManager.sendScroll(deltaY: -300) }) {
                     Label(L("Page Up", "向上翻页"), systemImage: "arrow.up.circle.fill")
                         .font(.system(size: 8, weight: .medium))
                         .frame(maxWidth: .infinity, minHeight: 22)
@@ -269,7 +269,7 @@ struct WebScrollCrownView: View {
                 .buttonStyle(.bordered)
                 .tint(.blue)
 
-                Button(action: { motionManager.sendScroll(deltaY: -300) }) {
+                Button(action: { motionManager.sendScroll(deltaY: 300) }) {
                     Label(L("Page Down", "向下翻页"), systemImage: "arrow.down.circle.fill")
                         .font(.system(size: 8, weight: .medium))
                         .frame(maxWidth: .infinity, minHeight: 22)

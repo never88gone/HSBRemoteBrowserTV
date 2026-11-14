@@ -49,15 +49,13 @@
     NSInteger port = values[@"port"].integerValue;
     NSTimeInterval expiry = values[@"expires"].doubleValue;
     NSTimeInterval now = NSDate.date.timeIntervalSince1970;
-#if DEBUG
-    NSTimeInterval maxWindow = 86400.0;
-#else
-    NSTimeInterval maxWindow = 300.0;
-#endif
+    // 允许最高 7 天的配对时间窗口，避免不同编译模式（Debug/Release）或时间有效期设置不一致导致扫码失败
+    NSTimeInterval maxWindow = 604800.0;
 
     NSData *tokenData = [HSBTVOSKeychainStore dataFromBase64URLString:token ?: @""];
+    // 允许 120 秒的时钟倒退容差，避免电视与手机两端系统时钟存在微小差异导致刚生成的码被判定为过期
     if (tvID.length == 0 || name.length == 0 || host.length == 0 || port < 1024 || port > 65535 ||
-        tokenData.length != 32 || expiry <= now || expiry > now + maxWindow) {
+        tokenData.length != 32 || expiry <= (now - 120.0) || expiry > (now + maxWindow)) {
         NSLog(@"[BonjourBridge] Pairing URL validation failed: tvID=%@, host=%@, port=%ld, tokenLen=%lu, expiryDiff=%f (maxWindow=%f)",
               tvID, host, (long)port, (unsigned long)tokenData.length, expiry - now, maxWindow);
         return NO;

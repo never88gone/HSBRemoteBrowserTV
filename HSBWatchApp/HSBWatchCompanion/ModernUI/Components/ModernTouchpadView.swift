@@ -208,8 +208,9 @@ public struct ModernTouchpadView: View {
     
     private func handleTwoFingerPan(dx: CGFloat, dy: CGFloat) {
         isInTwoFingerScroll = true
-        // 自然滚动换算：两指向下滑动，内容向下移动(dy为正向增加)
-        onScroll?(-dx, -dy)
+        // 修正滚动方向：双指下滑(dy>0)驱动大屏页面向下滚动(scrollBy 0, +dy)；双指上滑(dy<0)向上滚动
+        // 双指右滑(dx>0)向右滚动；双指左滑(dx<0)向左滚动，与大屏视野和遥控直觉完全保持同向一致
+        onScroll?(dx, dy)
     }
     
     private func handlePanEnded(location: CGPoint, vx: CGFloat, vy: CGFloat, isTwoFinger: Bool) {
@@ -249,7 +250,7 @@ public struct ModernTouchpadView: View {
             let stepDy = (currentVy / 60.0) * decay
             
             if isTwoFinger {
-                onScroll?(-stepDx, -stepDy)
+                onScroll?(stepDx, stepDy)
             } else {
                 onPan?(stepDx, stepDy)
             }
