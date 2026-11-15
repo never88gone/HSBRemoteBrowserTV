@@ -37,7 +37,7 @@ Upload and sync App Store metadata and screenshots
 [bundle exec] fastlane ios submit_for_review
 ```
 
-Submit App Store Version 1.0.1 for Review
+Submit App Store Version for Review
 
 ### ios check_status
 

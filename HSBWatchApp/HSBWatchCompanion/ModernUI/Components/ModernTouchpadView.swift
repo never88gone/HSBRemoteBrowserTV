@@ -27,6 +27,7 @@ public struct ModernTouchpadView: View {
     @State private var velocityX: CGFloat = 0.0
     @State private var velocityY: CGFloat = 0.0
     @State private var isInTwoFingerScroll: Bool = false
+    @State private var isDraggingActive: Bool = false
     @State private var inertiaTimer: Timer? = nil
     @State private var lastTouchLocation: CGPoint? = nil
     @State private var isTouching: Bool = false
@@ -89,8 +90,8 @@ public struct ModernTouchpadView: View {
                 // 触控点动态指示器
                 if isTouching, let loc = lastTouchLocation {
                     Circle()
-                        .fill((isInTwoFingerScroll ? Color.green : Color.accentColor).opacity(0.35))
-                        .frame(width: isInTwoFingerScroll ? 44 : 36, height: isInTwoFingerScroll ? 44 : 36)
+                        .fill((isDraggingActive ? Color.orange : (isInTwoFingerScroll ? Color.green : Color.accentColor)).opacity(0.35))
+                        .frame(width: isDraggingActive ? 48 : (isInTwoFingerScroll ? 44 : 36), height: isDraggingActive ? 48 : (isInTwoFingerScroll ? 44 : 36))
                         .position(loc)
                         .transition(.scale.combined(with: .opacity))
                 }
@@ -115,12 +116,25 @@ public struct ModernTouchpadView: View {
                         onTap?(3, pt)
                     },
                     onLongPress: { pt in
-                        heavyHaptic.prepare()
-                        heavyHaptic.impactOccurred()
                         if let onLongPress = onLongPress {
                             onLongPress(pt)
                         } else {
                             DualModeRemoteCoordinator.shared.sendLongPressSelect()
+                        }
+                    },
+                    onDrag: { state, dx, dy in
+                        if state == .began {
+                            isDraggingActive = true
+                            heavyHaptic.prepare()
+                            heavyHaptic.impactOccurred()
+                        } else if state == .ended {
+                            isDraggingActive = false
+                            lightHaptic.impactOccurred()
+                        }
+                        if let onDrag = onDrag {
+                            onDrag(state, dx, dy)
+                        } else {
+                            DualModeRemoteCoordinator.shared.sendDrag(state: state, dx: dx, dy: dy)
                         }
                     },
                     onZoom: { scale in
@@ -135,6 +149,7 @@ public struct ModernTouchpadView: View {
                             lightHaptic.prepare()
                         } else if !touching {
                             self.isInTwoFingerScroll = false
+                            self.isDraggingActive = false
                         }
                     }
                 )
@@ -185,12 +200,14 @@ public struct ModernTouchpadView: View {
     }
     
     private var touchpadStatusText: String {
-        if isInTwoFingerScroll {
+        if isDraggingActive {
+            return "🎯 拖拽锁定中 · 滑动以拖动"
+        } else if isInTwoFingerScroll {
             return "双指无级滚动中"
         } else if isTouching {
             return "单指光标微操中"
         } else {
-            return "单指滑动光标 · 双指无级滚动"
+            return "单指滑动光标 · 长按拖拽 · 双指无级滚动"
         }
     }
     
@@ -276,6 +293,7 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
     var onOneFingerTap: (CGPoint) -> Void
     var onTwoFingerTap: (CGPoint) -> Void
     var onLongPress: (CGPoint) -> Void
+    var onDrag: ((DragState, CGFloat, CGFloat) -> Void)?
     var onZoom: (CGFloat) -> Void
     var onTouchStateChanged: (Bool, CGPoint?) -> Void
     
@@ -319,9 +337,9 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
         pinch.delegate = context.coordinator
         view.addGestureRecognizer(pinch)
         
-        // 6. 单指长按 (tvOS 原生上下文菜单 / 快捷操作)
+        // 6. 单指长按与拖拽 (0.35s 快速触觉响应，锁定拖动目标)
         let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
-        longPress.minimumPressDuration = 0.5
+        longPress.minimumPressDuration = 0.35
         longPress.delegate = context.coordinator
         view.addGestureRecognizer(longPress)
         
@@ -338,12 +356,15 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
     
     class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var parent: NativeTouchpadGestureOverlay
+        var isLongPressDragging: Bool = false
+        var lastDragLocation: CGPoint? = nil
         
         init(parent: NativeTouchpadGestureOverlay) {
             self.parent = parent
         }
         
         @objc func handleOneFingerPan(_ recognizer: UIPanGestureRecognizer) {
+            if isLongPressDragging { return }
             guard let view = recognizer.view else { return }
             let loc = recognizer.location(in: view)
             
@@ -404,8 +425,30 @@ private struct NativeTouchpadGestureOverlay: UIViewRepresentable {
         @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
             guard let view = recognizer.view else { return }
             let loc = recognizer.location(in: view)
-            if recognizer.state == .began {
+            
+            switch recognizer.state {
+            case .began:
+                isLongPressDragging = true
+                lastDragLocation = loc
+                parent.onTouchStateChanged(true, loc)
                 parent.onLongPress(loc)
+                parent.onDrag?(.began, 0, 0)
+            case .changed:
+                guard isLongPressDragging, let last = lastDragLocation else { return }
+                let dx = loc.x - last.x
+                let dy = loc.y - last.y
+                lastDragLocation = loc
+                parent.onTouchStateChanged(true, loc)
+                parent.onDrag?(.changed, dx, dy)
+            case .ended, .cancelled:
+                if isLongPressDragging {
+                    isLongPressDragging = false
+                    lastDragLocation = nil
+                    parent.onTouchStateChanged(false, nil)
+                    parent.onDrag?(.ended, 0, 0)
+                }
+            default:
+                break
             }
         }
         
