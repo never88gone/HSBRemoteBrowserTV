@@ -22,6 +22,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public let modelName: String?
     @objc public let isNativeAppleTV: Bool
     @objc public let isBrowserApp: Bool
+    @objc public let isNativeAndroidTV: Bool
+    @objc public let androidRemotePort: UInt16
     @objc public let rawEndpoint: nw_endpoint_t?
     
     @objc public init(
@@ -32,6 +34,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         modelName: String?,
         isNativeAppleTV: Bool,
         isBrowserApp: Bool,
+        isNativeAndroidTV: Bool = false,
+        androidRemotePort: UInt16 = 0,
         rawEndpoint: nw_endpoint_t? = nil
     ) {
         self.id = id
@@ -41,18 +45,20 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         self.modelName = modelName
         self.isNativeAppleTV = isNativeAppleTV
         self.isBrowserApp = isBrowserApp
+        self.isNativeAndroidTV = isNativeAndroidTV
+        self.androidRemotePort = androidRemotePort
         self.rawEndpoint = rawEndpoint
         super.init()
     }
     
     @objc public var isDualMode: Bool {
-        return isNativeAppleTV && isBrowserApp
+        return (isNativeAppleTV || isNativeAndroidTV) && isBrowserApp
     }
     
     @objc public var isAndroidTV: Bool {
         let lowerModel = (modelName ?? "").lowercased()
         let lowerName = name.lowercased()
-        return lowerModel.contains("android") || lowerName.contains("android") || (isBrowserApp && !isNativeAppleTV && !isMacDevice)
+        return isNativeAndroidTV || lowerModel.contains("android") || lowerName.contains("android") || (isBrowserApp && !isNativeAppleTV && !isMacDevice)
     }
     
     @objc public var isMacDevice: Bool {
@@ -76,6 +82,15 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     }
     
     @objc public var displaySubtitle: String {
+        if isNativeAndroidTV && isBrowserApp {
+            return "Android TV · 原生系统 & 糖葫芦双模就绪"
+        }
+        if isNativeAndroidTV {
+            if let model = modelName, !model.isEmpty, model != "Android TV" {
+                return "Android TV (\(model)) · 系统原生遥控就绪"
+            }
+            return "Android TV · 系统原生遥控就绪"
+        }
         if isAndroidTV {
             return "Android TV · 糖葫芦大屏专属遥控就绪"
         }
@@ -96,6 +111,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public static let devicesDidChangeNotification = Notification.Name("HSBAppleTVDiscoveryDevicesDidChangeNotification")
     
     private var companionBrowser: NetServiceBrowser?
+    private var androidRemoteBrowser: NetServiceBrowser?
     private var thlTVBrowser: NetServiceBrowser?
     private var thlNWBrowser: NWBrowser?
     private let nwQueue = DispatchQueue(label: "com.never88gone.thlbrowserios.nwdiscovery", qos: .userInitiated)
@@ -128,7 +144,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     public func startScanning(observerId: String, onChange: @escaping ([HSBDiscoveredAppleTV]) -> Void) {
         discoveryLock.lock()
         observers[observerId] = onChange
-        let alreadyRunning = isScanning && companionBrowser != nil && thlTVBrowser != nil
+        let alreadyRunning = isScanning && companionBrowser != nil && androidRemoteBrowser != nil && thlNWBrowser != nil
         let snapshot = Array(deviceMap.values).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         if !alreadyRunning {
             isScanning = true
@@ -148,6 +164,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     private func beginBrowsingServices(clearExisting: Bool) {
         companionBrowser?.stop()
         companionBrowser = nil
+        androidRemoteBrowser?.stop()
+        androidRemoteBrowser = nil
         thlNWBrowser?.cancel()
         thlNWBrowser = nil
         thlTVBrowser?.stop()
@@ -160,7 +178,7 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             discoveryLock.unlock()
         }
         
-        log.info("Starting TV & Hardware Bonjour discovery (_companion-link & _thltv)...")
+        log.info("Starting TV & Hardware Bonjour discovery (_companion-link, _androidtvremote2 & _thltv)...")
         
         // 1. 扫描 糖葫芦大屏 (Android TV 及大屏浏览器专属 Bonjour 通道) - 使用现代 Network.framework NWBrowser
         startThlNWBrowser()
@@ -172,6 +190,13 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             cBrowser.schedule(in: .main, forMode: .common)
             cBrowser.searchForServices(ofType: "_companion-link._tcp.", inDomain: "local.")
             self.companionBrowser = cBrowser
+            
+            // 3. 扫描纯原生 Android TV / Google TV 系统遥控服务 (_androidtvremote2._tcp)
+            let aBrowser = NetServiceBrowser()
+            aBrowser.delegate = self
+            aBrowser.schedule(in: .main, forMode: .common)
+            aBrowser.searchForServices(ofType: "_androidtvremote2._tcp.", inDomain: "local.")
+            self.androidRemoteBrowser = aBrowser
         }
         
         if Thread.isMainThread {
@@ -302,24 +327,15 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
             
             guard let self = self, success else { return }
             
-            let cEndpoint = nw_endpoint_create_host(resolvedHost, "\(port)")
-            let device = HSBDiscoveredAppleTV(
-                id: cleanName,
-                name: cleanName,
+            self.upsertAndroidDevice(
+                cleanName: cleanName,
                 host: resolvedHost,
-                port: port,
-                modelName: modelName,
-                isNativeAppleTV: false,
-                isBrowserApp: true,
-                rawEndpoint: cEndpoint
+                browserPort: port,
+                androidRemotePort: nil,
+                modelName: modelName
             )
             
-            self.discoveryLock.lock()
-            self.deviceMap[cleanName] = device
-            self.discoveryLock.unlock()
-            
             NSLog("[NWBrowser_THL] Successfully discovered & probed Android TV: %@ at %@:%d", cleanName, resolvedHost, port)
-            self.notifyChange()
         }
         
         probe.stateUpdateHandler = { state in
@@ -370,6 +386,8 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
     @objc public func stopScanning() {
         companionBrowser?.stop()
         companionBrowser = nil
+        androidRemoteBrowser?.stop()
+        androidRemoteBrowser = nil
         thlNWBrowser?.cancel()
         thlNWBrowser = nil
         thlTVBrowser?.stop()
@@ -461,9 +479,10 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         
         let isCompanion = serviceType.contains("_companion-link")
         let isThlTV = serviceType.contains("_thltv")
+        let isAndroidRemote = serviceType.contains("_androidtvremote2")
         
-        // 核心原生架构：支持 Apple TV 物理硬件 (_companion-link) 与 糖葫芦大屏 (_thltv)
-        guard isCompanion || isThlTV else {
+        // 核心原生架构：支持 Apple TV 物理硬件 (_companion-link)、原生 Android TV (_androidtvremote2) 与 糖葫芦大屏 (_thltv)
+        guard isCompanion || isThlTV || isAndroidRemote else {
             return
         }
         
@@ -523,7 +542,6 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         // 分支 1：如果是 糖葫芦大屏 (_thltv)
         if isThlTV {
             let port = service.port > 0 ? UInt16(service.port) : 56789
-            let endpoint = nw_endpoint_create_host(host, "\(port)")
             let model = props["model"] ?? "Android TV"
             
             // 真实物理探活：只有端口 56789 真实处于监听并可握手状态的大屏，才允许展示给用户，杜绝假设备与幽灵设备
@@ -540,20 +558,38 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
                     return
                 }
                 
-                let dev = HSBDiscoveredAppleTV(
-                    id: cleanName,
-                    name: cleanName,
+                self.upsertAndroidDevice(
+                    cleanName: cleanName,
                     host: host,
-                    port: port,
-                    modelName: model,
-                    isNativeAppleTV: false,
-                    isBrowserApp: true,
-                    rawEndpoint: endpoint
+                    browserPort: port,
+                    androidRemotePort: nil,
+                    modelName: model
                 )
-                self.discoveryLock.lock()
-                self.deviceMap[cleanName] = dev
-                self.discoveryLock.unlock()
-                self.notifyChange()
+            }
+            return
+        }
+        
+        // 分支 1B：如果是纯原生 Android TV / Google TV 系统服务 (_androidtvremote2._tcp)
+        if isAndroidRemote {
+            let port = service.port > 0 ? UInt16(service.port) : HSBRemoteConstants.androidTVDefaultPort
+            let model = props["md"] ?? props["model"] ?? "Android TV"
+            
+            // 真实物理探活 6466 控制端口，确保该 Android TV 当前确实在线可连
+            Self.probeTCPConnection(host: host, port: port, timeout: 0.8) { [weak self] isReachable in
+                guard let self = self else { return }
+                guard isReachable else {
+                    NSLog("[BONJOUR_TRACE] Filtered out unreachable Native Android TV: %@ at %@:%d", cleanName, host, port)
+                    return
+                }
+                
+                NSLog("[BONJOUR_TRACE] Discovered Native Android TV: %@ at %@:%d (model=%@)", cleanName, host, port, model)
+                self.upsertAndroidDevice(
+                    cleanName: cleanName,
+                    host: host,
+                    browserPort: nil,
+                    androidRemotePort: port,
+                    modelName: model
+                )
             }
             return
         }
@@ -605,6 +641,67 @@ private let log = Logger(subsystem: "com.never88gone.thlbrowserios", category: "
         )
         
         deviceMap[cleanName] = device
+        notifyChange()
+    }
+    
+    /// 统一注册或聚合同一 Android TV 上的糖葫芦大屏服务 (_thltv) 与系统原生遥控服务 (_androidtvremote2)
+    private func upsertAndroidDevice(
+        cleanName: String,
+        host: String,
+        browserPort: UInt16?,
+        androidRemotePort: UInt16?,
+        modelName: String
+    ) {
+        discoveryLock.lock()
+        let existingPair = deviceMap.first { key, dev in
+            !dev.isMacDevice && !dev.isNativeAppleTV && (dev.host == host || key == cleanName)
+        }
+        
+        var finalName = cleanName
+        var finalModel = modelName
+        var finalBrowserPort = browserPort
+        var finalAndroidPort = androidRemotePort
+        
+        if let (oldKey, existing) = existingPair {
+            if existing.isBrowserApp && finalBrowserPort == nil {
+                finalBrowserPort = existing.port > 0 ? existing.port : HSBRemoteConstants.screenDefaultPort
+            }
+            if existing.isNativeAndroidTV && finalAndroidPort == nil {
+                finalAndroidPort = existing.androidRemotePort > 0 ? existing.androidRemotePort : HSBRemoteConstants.androidTVDefaultPort
+            }
+            // 原生硬件广播的名称通常比 "糖葫芦TV" 更具辨识度（如客厅小米电视、SONY BRAVIA）
+            if androidRemotePort == nil && existing.isNativeAndroidTV && existing.name != "糖葫芦TV" {
+                finalName = existing.name
+            } else if cleanName == "糖葫芦TV" && existing.name != "糖葫芦TV" {
+                finalName = existing.name
+            }
+            if let existingModel = existing.modelName, !existingModel.isEmpty, existingModel != "Android TV" {
+                finalModel = existingModel
+            }
+            if oldKey != finalName {
+                deviceMap.removeValue(forKey: oldKey)
+            }
+        }
+        
+        let hasBrowser = finalBrowserPort != nil
+        let hasNativeAndroid = finalAndroidPort != nil
+        let primaryPort = finalBrowserPort ?? finalAndroidPort ?? HSBRemoteConstants.androidTVDefaultPort
+        let endpoint = nw_endpoint_create_host(host, "\(primaryPort)")
+        
+        let merged = HSBDiscoveredAppleTV(
+            id: finalName,
+            name: finalName,
+            host: host,
+            port: primaryPort,
+            modelName: finalModel,
+            isNativeAppleTV: false,
+            isBrowserApp: hasBrowser,
+            isNativeAndroidTV: hasNativeAndroid,
+            androidRemotePort: finalAndroidPort ?? 0,
+            rawEndpoint: endpoint
+        )
+        deviceMap[finalName] = merged
+        discoveryLock.unlock()
         notifyChange()
     }
     

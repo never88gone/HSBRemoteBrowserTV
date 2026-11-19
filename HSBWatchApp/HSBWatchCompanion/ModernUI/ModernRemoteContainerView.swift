@@ -187,13 +187,18 @@ public struct ModernRemoteContainerView: View {
                     ModernKeyboardInputView(
                         isPresented: $isKeyboardPresented,
                         onTextChange: { text, isMarked in
-                            if !coordinatorObserver.isTargetMac {
+                            let isAndroidDirect = DualModeRemoteCoordinator.shared.androidClient.isConnected && !coordinatorObserver.isHSBBrowserConnected
+                            if !coordinatorObserver.isTargetMac && !isAndroidDirect {
                                 textInputManager.handleTextChanged(newText: text, hasMarkedText: isMarked)
                             }
                         },
                         onSubmitText: { committedText in
-                            if coordinatorObserver.isTargetMac {
+                            let isAndroidDirect = DualModeRemoteCoordinator.shared.androidClient.isConnected && !coordinatorObserver.isHSBBrowserConnected
+                            if coordinatorObserver.isTargetMac || isAndroidDirect {
                                 DualModeRemoteCoordinator.shared.sendTextInput(text: committedText)
+                                if isAndroidDirect {
+                                    DualModeRemoteCoordinator.shared.sendKeyCommand(key: .enter)
+                                }
                             } else {
                                 textInputManager.handleTextChanged(newText: committedText, hasMarkedText: false)
                                 DualModeRemoteCoordinator.shared.sendKeyCommand(key: .enter)
@@ -399,27 +404,43 @@ public struct ModernRemoteContainerView: View {
     }
     
     private func startNativeAppleTVAutoConnect() {
-        guard !DualModeRemoteCoordinator.shared.nativeClient.isConnected,
-              !DualModeRemoteCoordinator.shared.nativeClient.isPairing,
+        guard !DualModeRemoteCoordinator.shared.isAnyNativeConnected,
+              !DualModeRemoteCoordinator.shared.isAnyNativePairing,
               !DualModeRemoteCoordinator.shared.isCurrentTargetMac else { return }
         
-        NSLog("[ModernRemote] Starting Apple TV hardware discovery...")
+        if DualModeRemoteCoordinator.shared.isCurrentTargetNativeAndroidTV,
+           !DualModeRemoteCoordinator.shared.currentTargetHost.isEmpty {
+            let host = DualModeRemoteCoordinator.shared.currentTargetHost
+            let name = DualModeRemoteCoordinator.shared.currentTargetDeviceName
+            NSLog("[ModernRemote] Reconnecting to Android TV target: %@ at %@", name, host)
+            DualModeRemoteCoordinator.shared.connectToAndroidNative(host: host, deviceName: name)
+            return
+        }
+        
+        NSLog("[ModernRemote] Starting TV hardware discovery...")
         HSBAppleTVDiscovery.shared.startScanning(observerId: "remoteContainer") { devices in
-            guard !DualModeRemoteCoordinator.shared.nativeClient.isConnected,
-                  !DualModeRemoteCoordinator.shared.nativeClient.isPairing,
+            guard !DualModeRemoteCoordinator.shared.isAnyNativeConnected,
+                  !DualModeRemoteCoordinator.shared.isAnyNativePairing,
                   !DualModeRemoteCoordinator.shared.isCurrentTargetMac else { return }
             
-            // 过滤非 Mac 终端的 Apple TV 硬件设备
+            // 过滤非 Mac 终端的电视硬件设备
             let tvCandidates = devices.filter { !$0.isMacDevice }
             guard !tvCandidates.isEmpty else { return }
             
             // 仅对已有配对凭据的设备发起自动重连
-            if let paired = tvCandidates.first(where: {
-                DualModeRemoteCoordinator.shared.nativeClient.credentialStore.hasCredentials(for: $0.name)
+            if let pairedApple = tvCandidates.first(where: {
+                $0.isNativeAppleTV && DualModeRemoteCoordinator.shared.nativeClient.credentialStore.hasCredentials(for: $0.name)
             }) {
-                NSLog("[ModernRemote] Auto-discovered paired Apple TV: %@, reconnecting", paired.name)
-                HSBModernRemoteBridge.connectToDiscoveredDevice(paired) { success, err in
-                    NSLog("[ModernRemote] Native connection result: success=%d, error=%@", success ? 1 : 0, err ?? "nil")
+                NSLog("[ModernRemote] Auto-discovered paired Apple TV: %@, reconnecting", pairedApple.name)
+                HSBModernRemoteBridge.connectToDiscoveredDevice(pairedApple) { success, err in
+                    NSLog("[ModernRemote] Apple TV connection result: success=%d, error=%@", success ? 1 : 0, err ?? "nil")
+                }
+            } else if let pairedAndroid = tvCandidates.first(where: {
+                $0.isNativeAndroidTV && DualModeRemoteCoordinator.shared.androidClient.certificateManager.isPaired(deviceKey: $0.name)
+            }) {
+                NSLog("[ModernRemote] Auto-discovered paired Android TV: %@, reconnecting", pairedAndroid.name)
+                HSBModernRemoteBridge.connectToDiscoveredDevice(pairedAndroid) { success, err in
+                    NSLog("[ModernRemote] Android TV connection result: success=%d, error=%@", success ? 1 : 0, err ?? "nil")
                 }
             }
         }

@@ -140,10 +140,12 @@ public struct HSBRemoteConstants {
     public static let defaultScreenBonjourType = "_thltv._tcp"
     public static let defaultNativeCompanionBonjourType = "_companion-link._tcp"
     public static let defaultNativeAirPlayBonjourType = "_airplay._tcp"
+    public static let defaultAndroidTVRemoteBonjourType = "_androidtvremote2._tcp"
     
     public static let screenDefaultPort: UInt16 = 56789
     public static let companionDefaultPort: UInt16 = 49152
     public static let airPlayDefaultPort: UInt16 = 7000
+    public static let androidTVDefaultPort: UInt16 = 6466
     
     // Scale & Tuning Constants
     public static let cursorScale: CGFloat = 5.5

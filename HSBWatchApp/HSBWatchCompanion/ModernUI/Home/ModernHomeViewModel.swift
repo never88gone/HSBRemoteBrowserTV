@@ -123,15 +123,21 @@ public final class ModernHomeViewModel: ObservableObject {
             finishLaunchAnimation()
         }
         if HSBModernRemoteBridge.isUnifiedConnected() {
-            onConnectSuccess?(device)
-            return
+            if DualModeRemoteCoordinator.shared.currentTargetHost == device.host {
+                onConnectSuccess?(device)
+                return
+            } else {
+                DualModeRemoteCoordinator.shared.disconnectAll()
+            }
         }
         if connectingDeviceHost == device.host {
             return
         }
         
         connectingDeviceHost = device.host
-        if device.isAndroidTV {
+        if device.isNativeAndroidTV {
+            tvStatusText = hsbL("🟡 Pairing/Connecting Android TV \(device.name)...", "🟡 正在连接原生 Android TV \(device.name)...")
+        } else if device.isAndroidTV {
             tvStatusText = hsbL("🟡 Connecting to Android TV \(device.name)...", "🟡 正在连接 Android TV \(device.name)...")
         } else if device.isMacDevice {
             tvStatusText = hsbL("🟡 Connecting to Mac \(device.name)...", "🟡 正在连接 Mac \(device.name)...")
@@ -177,10 +183,14 @@ public final class ModernHomeViewModel: ObservableObject {
     
     private func presentConnectionFailureGuide(for device: HSBDiscoveredAppleTV) {
         failedDeviceForRetry = device
-        if device.isAndroidTV {
+        if device.isNativeAndroidTV {
+            failureAlertTitle = hsbL("原生 Android TV 连接指引", "原生 Android TV 连接指引")
+            failureAlertMessage = "未能与 Android TV “\(device.name)” 建立系统原生遥控连接。\n\n• 如为首次连接或配对码有误：\n请点击【🔄 重试连接】，电视屏幕将弹出 6 位字母/数字配对码（如 A1B2C3），在手机正确输入即可永久免密连接；\n\n• 检查系统与网络：\n请确保电视已开机，且与手机处于同一 Wi-Fi 局域网（Android TV 系统需保留 Google TV / Android TV Remote Service 开启）。"
+            showsQRScannerButtonInFailureAlert = device.isBrowserApp
+        } else if device.isAndroidTV {
             failureAlertTitle = hsbL("Android TV 连接指引", "Android TV 连接指引")
             failureAlertMessage = "未能与 Android TV “\(device.name)” 建立大屏遥控连接。\n\n• 确保应用就绪：\n请确保电视上已打开【糖葫芦TV】；\n\n• 检查网络环境：\n请确保手机与该 Android TV 处于同一局域网 Wi-Fi 网络下。"
-            showsQRScannerButtonInFailureAlert = false
+            showsQRScannerButtonInFailureAlert = true
         } else if device.isMacDevice {
             failureAlertTitle = hsbL("Mac 隔空播放连接指引", "Mac 隔空播放连接指引")
             failureAlertMessage = "未能与 “\(device.name)” 建立原生隔空播放媒体控制连接。\n\n• 开启免装软件原生控制：\n请在目标 Mac 打开【系统设置】->【通用】->【隔空播放与接力】，确保已开启【隔空播放接收器】；\n\n• 检查网络环境：\n请确保手机与该 Mac 处于同一 Wi-Fi 局域网下。"

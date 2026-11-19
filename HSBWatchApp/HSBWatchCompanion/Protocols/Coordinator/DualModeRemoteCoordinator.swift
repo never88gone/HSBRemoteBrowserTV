@@ -15,23 +15,37 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     
     public let screenClient = HSBBrowserProtocolClient()
     public let nativeClient = AppleTVNativeClient()
+    public let androidClient = AndroidTVNativeClient()
     public let stateMachine = HSBConnectionStateMachine()
     public private(set) lazy var router = RemoteCommandRouter(coordinator: self)
     
     // 纯原生通道单连接模式 (Single Unified Native Connection)
     public var currentMode: HSBRemoteMode = .nativeOnly
     
-    // 当前目标设备是否为 Mac 终端 (方案 A: 原生媒体控制)
+    // 当前目标设备类型与上下文
     public var isCurrentTargetMac: Bool = false
+    public var isCurrentTargetAndroidTV: Bool = false
+    public var isCurrentTargetNativeAndroidTV: Bool = false
     public var currentTargetDeviceName: String = ""
     public var currentTargetHost: String = ""
     
+    public var isAnyNativeConnected: Bool {
+        return nativeClient.isConnected || androidClient.isConnected
+    }
+    
+    public var isAnyNativePairing: Bool {
+        return nativeClient.isPairing || androidClient.isPairing
+    }
+    
     public func setCurrentTarget(device: HSBDiscoveredAppleTV) {
         self.isCurrentTargetMac = device.isMacDevice
+        self.isCurrentTargetAndroidTV = device.isAndroidTV
+        self.isCurrentTargetNativeAndroidTV = device.isNativeAndroidTV
         self.currentTargetDeviceName = device.name
         self.currentTargetHost = device.host
         if device.isMacDevice {
-            self.nativeClient.disconnect()
+            self.nativeClient.disconnect(userInitiated: true)
+            self.androidClient.disconnect(userInitiated: true)
             MacMediaCommandDispatcher.currentTargetHost = device.host
             MacMediaCommandDispatcher.currentTargetDeviceName = device.name
             MacMediaCommandDispatcher.setupRouteObserverIfNeeded()
@@ -54,15 +68,17 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
                     userInfo: ["state": HSBConnectionState.disconnected]
                 )
             }
+        } else if device.isNativeAndroidTV {
+            self.nativeClient.disconnect(userInitiated: true)
+            self.currentMode = device.isBrowserApp ? .dual : .nativeOnly
+            self.stateMachine.handle(event: .requestConnect(deviceName: device.name, mode: self.currentMode))
         } else if device.isAndroidTV {
             self.nativeClient.disconnect(userInitiated: true)
+            self.androidClient.disconnect(userInitiated: true)
             self.currentMode = .screenOnly
-            self.stateMachine.handle(event: .socketConnected(deviceName: device.name, mode: .screenOnly))
-            NotificationCenter.default.post(
-                name: Notification.Name("HSBConnectionStateDidChangeNotification"),
-                object: self,
-                userInfo: ["state": HSBConnectionState.ready(deviceName: device.name, mode: .screenOnly)]
-            )
+            self.stateMachine.handle(event: .requestConnect(deviceName: device.name, mode: .screenOnly))
+        } else {
+            self.androidClient.disconnect(userInitiated: true)
         }
     }
     
@@ -72,11 +88,13 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     
     private var pendingPINCompletion: ((String) -> Void)?
     private var pendingPINDeviceName: String?
+    private var pendingPINIsAndroidTV: Bool = false
     
     public override init() {
         super.init()
         screenClient.delegate = self
         nativeClient.delegate = self
+        androidClient.delegate = self
         stateMachine.delegate = self
         
         setupUnifiedConnectionObserver()
@@ -110,18 +128,22 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
             return
         }
         let legacyMgr = HSBTVOSConnectionManager.shared()
-        let deviceName = legacyMgr.deviceName ?? "Apple TV"
+        let deviceName = legacyMgr.deviceName ?? (currentTargetDeviceName.isEmpty ? "TV" : currentTargetDeviceName)
         
         if legacyMgr.isConnected {
-            if !self.nativeClient.isConnected {
+            if isAnyNativeConnected {
+                self.currentMode = .dual
+            } else if isCurrentTargetAndroidTV && !isCurrentTargetNativeAndroidTV {
+                self.currentMode = .screenOnly
+            } else {
                 self.currentMode = .dual
             }
             self.stateMachine.handle(event: .requestConnect(deviceName: deviceName, mode: self.currentMode))
             self.stateMachine.handle(event: .socketConnected(deviceName: deviceName, mode: self.currentMode))
             
-            // 自动并发连接/唤醒 Native 系统通道（实现一键双模聚合）
-            if !self.nativeClient.isConnected {
-                var host = "apple-tv.local"
+            // 自动并发连接/唤醒 Native 系统通道（实现一键双模聚合，按设备系统精准区分 Apple TV 与 Android TV）
+            if !self.isAnyNativeConnected {
+                var host = currentTargetHost.isEmpty ? "apple-tv.local" : currentTargetHost
                 if let ep = legacyMgr.currentEndpoint {
                     if nw_endpoint_get_type(ep) == nw_endpoint_type_host {
                         host = String(cString: nw_endpoint_get_hostname(ep))
@@ -129,10 +151,14 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
                         host = "\(String(cString: nw_endpoint_get_bonjour_service_name(ep))).local"
                     }
                 }
-                self.connectToNative(host: host, deviceName: deviceName)
+                if isCurrentTargetNativeAndroidTV {
+                    self.connectToAndroidNative(host: host, deviceName: deviceName)
+                } else if !isCurrentTargetAndroidTV {
+                    self.connectToNative(host: host, deviceName: deviceName)
+                }
             }
         } else {
-            if currentMode == .screenOnly || !nativeClient.isConnected {
+            if currentMode == .screenOnly || !isAnyNativeConnected {
                 self.stateMachine.handle(event: .requestDisconnect(reason: "Unified display disconnected"))
             }
         }
@@ -185,38 +211,55 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
         nativeClient.connect(host: host, deviceName: deviceName, port: port)
     }
     
+    public func connectToAndroidNative(host: String, deviceName: String, port: UInt16 = 6466) {
+        androidClient.connect(host: host, deviceName: deviceName, port: port)
+    }
+    
     // MARK: - Auto Discovery & Quick Reconnect
     @MainActor
     public func startAutoDiscoveryAndConnect() {
         guard !isCurrentTargetMac else {
             return
         }
-        guard !nativeClient.isConnected, !nativeClient.isPairing else {
+        guard !isAnyNativeConnected, !isAnyNativePairing else {
             return
         }
         
         // 1. 如果有上次成功连接的 IP 与名字，且已有配对凭据，先尝试快速重连
         if let lastHost = UserDefaults.standard.string(forKey: "HSBLastConnectedTVHost"),
-           let lastName = UserDefaults.standard.string(forKey: "HSBLastConnectedTVName"),
-           nativeClient.credentialStore.hasCredentials(for: lastName) {
-            NSLog("[DualMode] Quick reconnecting to cached Apple TV: %@ at %@", lastName, lastHost)
-            currentTargetDeviceName = lastName
-            connectToNative(host: lastHost, deviceName: lastName)
+           let lastName = UserDefaults.standard.string(forKey: "HSBLastConnectedTVName") {
+            let lastIsAndroid = UserDefaults.standard.bool(forKey: "HSBLastConnectedTVIsAndroid")
+            if lastIsAndroid, androidClient.certificateManager.isPaired(deviceKey: lastName) {
+                NSLog("[DualMode] Quick reconnecting to cached Android TV: %@ at %@", lastName, lastHost)
+                currentTargetDeviceName = lastName
+                isCurrentTargetAndroidTV = true
+                isCurrentTargetNativeAndroidTV = true
+                connectToAndroidNative(host: lastHost, deviceName: lastName)
+            } else if !lastIsAndroid, nativeClient.credentialStore.hasCredentials(for: lastName) {
+                NSLog("[DualMode] Quick reconnecting to cached Apple TV: %@ at %@", lastName, lastHost)
+                currentTargetDeviceName = lastName
+                connectToNative(host: lastHost, deviceName: lastName)
+            }
         }
         
         // 2. 同时启动局域网 Bonjour 硬件扫描，供设备列表选择
-        NSLog("[DualMode] Starting Apple TV Bonjour hardware scan...")
+        NSLog("[DualMode] Starting TV Bonjour hardware scan...")
         HSBAppleTVDiscovery.shared.startScanning(observerId: "coordinator") { [weak self] devices in
             guard let self = self else { return }
             guard !self.isCurrentTargetMac else { return }
-            guard !self.nativeClient.isConnected, !self.nativeClient.isPairing else { return }
+            guard !self.isAnyNativeConnected, !self.isAnyNativePairing else { return }
             
             let tvCandidates = devices.filter { !$0.isMacDevice }
             // 仅对已配对过的设备自动恢复连接
-            if let paired = tvCandidates.first(where: { self.nativeClient.credentialStore.hasCredentials(for: $0.name) }) {
-                NSLog("[DualMode] Auto-reconnecting to paired device: %@", paired.name)
-                self.currentTargetDeviceName = paired.name
-                self.connectToNative(host: paired.host, deviceName: paired.name, port: paired.port)
+            if let pairedApple = tvCandidates.first(where: { $0.isNativeAppleTV && self.nativeClient.credentialStore.hasCredentials(for: $0.name) }) {
+                NSLog("[DualMode] Auto-reconnecting to paired Apple TV: %@", pairedApple.name)
+                self.setCurrentTarget(device: pairedApple)
+                self.connectToNative(host: pairedApple.host, deviceName: pairedApple.name, port: pairedApple.port)
+            } else if let pairedAndroid = tvCandidates.first(where: { $0.isNativeAndroidTV && self.androidClient.certificateManager.isPaired(deviceKey: $0.name) }) {
+                NSLog("[DualMode] Auto-reconnecting to paired Android TV: %@", pairedAndroid.name)
+                self.setCurrentTarget(device: pairedAndroid)
+                let targetPort = pairedAndroid.androidRemotePort > 0 ? pairedAndroid.androidRemotePort : HSBRemoteConstants.androidTVDefaultPort
+                self.connectToAndroidNative(host: pairedAndroid.host, deviceName: pairedAndroid.name, port: targetPort)
             }
         }
     }
@@ -224,11 +267,14 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     public func disconnectAll() {
         screenClient.disconnect()
         nativeClient.disconnect(userInitiated: true)
+        androidClient.disconnect(userInitiated: true)
         let legacyMgr = HSBTVOSConnectionManager.shared()
         if legacyMgr.isConnected {
             legacyMgr.disconnect()
         }
         self.isCurrentTargetMac = false
+        self.isCurrentTargetAndroidTV = false
+        self.isCurrentTargetNativeAndroidTV = false
         self.currentTargetDeviceName = ""
         self.currentTargetHost = ""
         stateMachine.handle(event: .requestDisconnect(reason: "User requested disconnect"))
@@ -288,14 +334,36 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public var isSleeping: Bool {
+        if androidClient.isConnected {
+            return !androidClient.isTVOn
+        }
         return nativeClient.isSleeping
     }
     
     public func wakeAndConnect(completion: ((Bool) -> Void)? = nil) {
+        if isCurrentTargetNativeAndroidTV || androidClient.isConnected {
+            if androidClient.isConnected {
+                androidClient.sendKey(.wakeup)
+                completion?(true)
+            } else if !currentTargetHost.isEmpty {
+                connectToAndroidNative(host: currentTargetHost, deviceName: currentTargetDeviceName)
+                completion?(true)
+            } else {
+                completion?(false)
+            }
+            return
+        }
         nativeClient.wakeAndConnect(completion: completion)
     }
     
     public func wakeDevice(host: String, completion: ((Bool) -> Void)? = nil) {
+        if isCurrentTargetNativeAndroidTV {
+            if androidClient.isConnected {
+                androidClient.sendKey(.wakeup)
+            }
+            completion?(true)
+            return
+        }
         nativeClient.wakeDevice(host: host, completion: completion)
     }
     
@@ -314,12 +382,29 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func sendMediaControl(_ action: MediaAction, value: Double? = nil) {
+        if androidClient.isConnected && !screenClient.isConnected {
+            androidClient.sendMediaAction(action, value: value)
+            return
+        }
         screenClient.send(command: .media(action: action, value: value))
     }
     
     public func launchApp(bundleID: String, url: String? = nil, completion: ((Bool) -> Void)? = nil) {
         if nativeClient.isConnected {
             nativeClient.launchApp(bundleID: bundleID, url: url) { success in
+                DispatchQueue.main.async {
+                    if success {
+                        NotificationCenter.default.post(
+                            name: Notification.Name("HSBAppLaunchedNotification"),
+                            object: bundleID
+                        )
+                    }
+                    completion?(success)
+                }
+            }
+        } else if androidClient.isConnected {
+            let targetLink = (url != nil && !url!.isEmpty) ? url! : bundleID
+            androidClient.sendLaunchApp(appLink: targetLink) { success in
                 DispatchQueue.main.async {
                     if success {
                         NotificationCenter.default.post(
@@ -345,6 +430,15 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     }
     
     public func submitNativePIN(_ pin: String, completion: ((Bool) -> Void)? = nil) {
+        if androidClient.isPairing || pendingPINIsAndroidTV {
+            androidClient.submitPIN(pin) { [weak self] success in
+                if success {
+                    self?.stateMachine.handle(event: .pairingSucceeded)
+                }
+                completion?(success)
+            }
+            return
+        }
         nativeClient.submitPIN(pin) { [weak self] success in
             if success {
                 self?.stateMachine.handle(event: .pairingSucceeded)
@@ -355,6 +449,7 @@ public final class DualModeRemoteCoordinator: NSObject, DualModeRemoteCoordinato
     
     @objc public func clearNativeCredentials(for deviceName: String) {
         nativeClient.clearCredentials(for: deviceName)
+        androidClient.clearCredentials(for: deviceName)
     }
 }
 
@@ -363,18 +458,18 @@ extension DualModeRemoteCoordinator: HSBBrowserProtocolClientDelegate {
     public func browserClient(_ client: HSBBrowserProtocolClient, didChangeState state: HSBConnectionState) {
         switch state {
         case .ready(let name, let mode):
-            let targetMode = self.nativeClient.isConnected ? .dual : mode
+            let targetMode = self.isAnyNativeConnected ? .dual : mode
             stateMachine.handle(event: .socketConnected(deviceName: name, mode: targetMode))
         case .failed(let err):
-            if currentMode == .dual && nativeClient.isConnected {
-                let name = nativeClient.currentDeviceName ?? "Apple TV"
+            if currentMode == .dual && isAnyNativeConnected {
+                let name = nativeClient.currentDeviceName ?? androidClient.currentDeviceName ?? "TV"
                 stateMachine.handle(event: .socketConnected(deviceName: name, mode: .nativeOnly))
             } else {
                 stateMachine.handle(event: .connectionLost(error: err))
             }
         case .disconnected:
-            if currentMode == .dual && nativeClient.isConnected {
-                let name = nativeClient.currentDeviceName ?? "Apple TV"
+            if currentMode == .dual && isAnyNativeConnected {
+                let name = nativeClient.currentDeviceName ?? androidClient.currentDeviceName ?? "TV"
                 stateMachine.handle(event: .socketConnected(deviceName: name, mode: .nativeOnly))
             } else {
                 stateMachine.handle(event: .requestDisconnect(reason: "Disconnected"))
@@ -391,9 +486,8 @@ extension DualModeRemoteCoordinator: HSBBrowserProtocolClientDelegate {
     }
 }
 
-extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
-    public func nativeClient(_ client: AppleTVNativeClient, didChangeState state: HSBConnectionState) {
-        NSLog("[DualMode] nativeClient didChangeState: %@", "\(state)")
+extension DualModeRemoteCoordinator {
+    fileprivate func handleNativeClientStateChange(_ state: HSBConnectionState, host: String?, isAndroid: Bool) {
         if currentMode == .nativeOnly || currentMode == .dual {
             switch state {
             case .ready(let name, _):
@@ -402,7 +496,8 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
                 }
                 self.currentTargetDeviceName = name
                 UserDefaults.standard.set(name, forKey: "HSBLastConnectedTVName")
-                if let h = client.currentHost {
+                UserDefaults.standard.set(isAndroid, forKey: "HSBLastConnectedTVIsAndroid")
+                if let h = host {
                     UserDefaults.standard.set(h, forKey: "HSBLastConnectedTVHost")
                 }
                 let targetMode: HSBRemoteMode = (currentMode == .dual && screenClient.isConnected) ? .dual : .nativeOnly
@@ -431,34 +526,17 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
         }
     }
     
-    @MainActor
-    public func reopenNativePINAlertIfNeeded() {
-        guard let completion = pendingPINCompletion else {
-            NSLog("[DualMode] No pending PIN completion to reopen")
-            return
-        }
-        let name = pendingPINDeviceName ?? "Apple TV"
-        NSLog("[DualMode] Reopening native PIN alert for %@", name)
-        HSBNativePINAlertPresenter.shared.presentPINAlert(deviceName: name) { [weak self] pin in
-            self?.pendingPINCompletion = nil
-            self?.pendingPINDeviceName = nil
-            completion(pin)
-        }
-    }
-
-    public func nativeClient(_ client: AppleTVNativeClient, didRequirePINCompletion completion: @escaping (String) -> Void) {
-        let fallback = currentTargetDeviceName.isEmpty ? "Apple TV" : currentTargetDeviceName
-        let name = client.currentDeviceName ?? fallback
-        NSLog("[ATV_CONNECT] Native PIN required for %@. Presenting PIN alert directly from Swift...", name)
-        
+    fileprivate func presentNativePINPrompt(deviceName: String, isAndroidTV: Bool, completion: @escaping (String) -> Void) {
         self.pendingPINCompletion = completion
-        self.pendingPINDeviceName = name
+        self.pendingPINDeviceName = deviceName
+        self.pendingPINIsAndroidTV = isAndroidTV
         
         DispatchQueue.main.async {
-            HSBNativePINAlertPresenter.shared.presentPINAlert(deviceName: name) { [weak self] pin in
-                NSLog("[ATV_CONNECT] PIN entered: %@, submitting to native client", pin)
+            HSBNativePINAlertPresenter.shared.presentPINAlert(deviceName: deviceName, isAndroidTV: isAndroidTV) { [weak self] pin in
+                NSLog("[TV_CONNECT] PIN entered (android=%d): %@, submitting to client", isAndroidTV ? 1 : 0, pin)
                 self?.pendingPINCompletion = nil
                 self?.pendingPINDeviceName = nil
+                self?.pendingPINIsAndroidTV = false
                 completion(pin)
             }
         }
@@ -466,8 +544,53 @@ extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
         NotificationCenter.default.post(
             name: Notification.Name("HSBAppleTVNativePINRequiredNotification"),
             object: self,
-            userInfo: ["name": name]
+            userInfo: ["name": deviceName, "isAndroidTV": isAndroidTV]
         )
+    }
+    
+    @MainActor
+    public func reopenNativePINAlertIfNeeded() {
+        guard let completion = pendingPINCompletion else {
+            NSLog("[DualMode] No pending PIN completion to reopen")
+            return
+        }
+        let isAndroid = pendingPINIsAndroidTV
+        let name = pendingPINDeviceName ?? (isAndroid ? "Android TV" : "Apple TV")
+        NSLog("[DualMode] Reopening native PIN alert for %@ (android=%d)", name, isAndroid ? 1 : 0)
+        HSBNativePINAlertPresenter.shared.presentPINAlert(deviceName: name, isAndroidTV: isAndroid) { [weak self] pin in
+            self?.pendingPINCompletion = nil
+            self?.pendingPINDeviceName = nil
+            self?.pendingPINIsAndroidTV = false
+            completion(pin)
+        }
+    }
+}
+
+extension DualModeRemoteCoordinator: AppleTVNativeClientDelegate {
+    public func nativeClient(_ client: AppleTVNativeClient, didChangeState state: HSBConnectionState) {
+        NSLog("[DualMode] nativeClient didChangeState: %@", "\(state)")
+        handleNativeClientStateChange(state, host: client.currentHost, isAndroid: false)
+    }
+
+    public func nativeClient(_ client: AppleTVNativeClient, didRequirePINCompletion completion: @escaping (String) -> Void) {
+        let fallback = currentTargetDeviceName.isEmpty ? "Apple TV" : currentTargetDeviceName
+        let name = client.currentDeviceName ?? fallback
+        NSLog("[ATV_CONNECT] Native PIN required for %@. Presenting PIN alert directly from Swift...", name)
+        presentNativePINPrompt(deviceName: name, isAndroidTV: false, completion: completion)
+    }
+}
+
+extension DualModeRemoteCoordinator: AndroidTVNativeClientDelegate {
+    public func androidClient(_ client: AndroidTVNativeClient, didChangeState state: HSBConnectionState) {
+        NSLog("[DualMode] androidClient didChangeState: %@", "\(state)")
+        handleNativeClientStateChange(state, host: client.currentHost, isAndroid: true)
+    }
+    
+    public func androidClient(_ client: AndroidTVNativeClient, didRequirePINCompletion completion: @escaping (String) -> Void) {
+        let fallback = currentTargetDeviceName.isEmpty ? "Android TV" : currentTargetDeviceName
+        let name = client.currentDeviceName ?? fallback
+        NSLog("[AndroidTV_CONNECT] Native PIN required for %@. Presenting hex PIN alert...", name)
+        presentNativePINPrompt(deviceName: name, isAndroidTV: true, completion: completion)
     }
 }
 

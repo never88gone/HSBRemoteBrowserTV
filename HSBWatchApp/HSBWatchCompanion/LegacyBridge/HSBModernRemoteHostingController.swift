@@ -173,9 +173,11 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         completion: ((Bool, String?) -> Void)? = nil
     ) {
         // 1. 如果原生通道已连通当前设备，直接主线程完成
-        let isNative = DualModeRemoteCoordinator.shared.nativeClient.isConnected
-        let currentHost = DualModeRemoteCoordinator.shared.nativeClient.currentHost
-        if isNative, currentHost == device.host {
+        let isAppleConnected = DualModeRemoteCoordinator.shared.nativeClient.isConnected &&
+                               DualModeRemoteCoordinator.shared.nativeClient.currentHost == device.host
+        let isAndroidConnected = DualModeRemoteCoordinator.shared.androidClient.isConnected &&
+                                 DualModeRemoteCoordinator.shared.androidClient.currentHost == device.host
+        if isAppleConnected || isAndroidConnected {
             DispatchQueue.main.async {
                 completion?(true, nil)
             }
@@ -206,11 +208,13 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             return
         }
         
-        // 方案 B：针对 Android TV 糖葫芦大屏专属遥控直连
-        if device.isAndroidTV {
+        // 方案 B：针对仅运行糖葫芦大屏的 Android TV (非原生系统服务) 直连
+        if device.isAndroidTV && !device.isNativeAndroidTV {
             DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)
-            let targetPort = device.port > 0 ? Int(device.port) : 56789
-            HSBModernRemoteBridge.connectWithHost(device.host, port: targetPort, deviceName: device.name)
+            let targetPort = device.port > 0 ? Int(device.port) : Int(HSBRemoteConstants.screenDefaultPort)
+            let screenEndpoint = nw_endpoint_create_host(device.host, "\(targetPort)")
+            HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
+            DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
             
             var hasCompleted = false
             var timeoutItem: DispatchWorkItem?
@@ -297,13 +301,13 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
             Log.companion.report("Bridge: Native pairing initiated, extending timeout to 90s for user PIN entry")
             timeoutWorkItem?.cancel()
             let pairingItem = DispatchWorkItem {
-                let connected = DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+                let connected = DualModeRemoteCoordinator.shared.isAnyNativeConnected ||
                                 HSBTVOSConnectionManager.shared().isConnected ||
                                 DualModeRemoteCoordinator.shared.screenClient.isConnected
                 if connected {
                     finish(true, nil)
                 } else {
-                    finish(false, "配对超时：未在规定时间内输入电视屏幕上的 PIN 码。")
+                    finish(false, "配对超时：未在规定时间内输入电视屏幕上的配对码。")
                 }
             }
             timeoutWorkItem = pairingItem
@@ -322,7 +326,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         }
         observerTokens.append(token1)
         
-        // 3. 监听原生状态变迁通知
+        // 3. 监听原生状态变迁通知 (Apple TV & 原生 Android TV)
         let token2 = NotificationCenter.default.addObserver(
             forName: Notification.Name("HSBConnectionStateDidChangeNotification"),
             object: nil,
@@ -335,7 +339,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
                 case .pairing:
                     startPairingTimeout()
                 case .failed(let err):
-                    if !HSBTVOSConnectionManager.shared().isConnected {
+                    if !HSBTVOSConnectionManager.shared().isConnected && !DualModeRemoteCoordinator.shared.isAnyNativeConnected {
                         finish(false, "连接失败: \(err)")
                     }
                 default:
@@ -357,12 +361,12 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         
         // 5. 超时保底处理（常规探测放宽至 15 秒，如遇待配对则放宽给用户输入 PIN 码时间）
         let initialTimeoutItem = DispatchWorkItem {
-            if isPairingPhase || DualModeRemoteCoordinator.shared.nativeClient.isPairing {
+            if isPairingPhase || DualModeRemoteCoordinator.shared.isAnyNativePairing {
                 Log.companion.report("Bridge: Native pairing in progress, skipping initial timeout")
                 return
             }
             
-            let connected = DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+            let connected = DualModeRemoteCoordinator.shared.isAnyNativeConnected ||
                             HSBTVOSConnectionManager.shared().isConnected ||
                             DualModeRemoteCoordinator.shared.screenClient.isConnected
             if connected {
@@ -376,16 +380,27 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
         
         // 5. 触发原生通道连接与待机唤醒
         DualModeRemoteCoordinator.shared.setCurrentTarget(device: device)
-        DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
-        let nativePort = device.port > 0 ? device.port : 49152
-        DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name, port: nativePort)
-        DualModeRemoteCoordinator.shared.wakeDevice(host: device.host, completion: nil)
-        
-        // 6. 仅在目标为电视时在后台尝试连接伴随大屏端服务 (56789)
-        if !device.isMacDevice {
-            let screenEndpoint = nw_endpoint_create_host(device.host, "\(HSBRemoteConstants.screenDefaultPort)")
-            HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
-            DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
+        if device.isNativeAndroidTV {
+            DualModeRemoteCoordinator.shared.currentMode = device.isBrowserApp ? .dual : .nativeOnly
+            let androidPort = device.androidRemotePort > 0 ? device.androidRemotePort : HSBRemoteConstants.androidTVDefaultPort
+            DualModeRemoteCoordinator.shared.connectToAndroidNative(host: device.host, deviceName: device.name, port: androidPort)
+            if device.isBrowserApp {
+                let screenEndpoint = nw_endpoint_create_host(device.host, "\(HSBRemoteConstants.screenDefaultPort)")
+                HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
+                DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
+            }
+        } else {
+            DualModeRemoteCoordinator.shared.currentMode = .nativeOnly
+            let nativePort = device.port > 0 ? device.port : 49152
+            DualModeRemoteCoordinator.shared.connectToNative(host: device.host, deviceName: device.name, port: nativePort)
+            DualModeRemoteCoordinator.shared.wakeDevice(host: device.host, completion: nil)
+            
+            // 6. 仅在目标为 Apple TV 时在后台尝试连接伴随大屏端服务 (56789)
+            if !device.isMacDevice {
+                let screenEndpoint = nw_endpoint_create_host(device.host, "\(HSBRemoteConstants.screenDefaultPort)")
+                HSBTVOSConnectionManager.shared().connect(to: screenEndpoint, deviceName: device.name)
+                DualModeRemoteCoordinator.shared.screenClient.connect(to: screenEndpoint, deviceName: device.name)
+            }
         }
     }
     
@@ -463,7 +478,7 @@ public final class HSBModernRemoteHostingController: UIHostingController<ModernR
     
     @objc @MainActor public static func isUnifiedConnected() -> Bool {
         return (DualModeRemoteCoordinator.shared.isCurrentTargetMac && MacMediaCommandDispatcher.isConnectedToTarget(deviceName: DualModeRemoteCoordinator.shared.currentTargetDeviceName)) ||
-               DualModeRemoteCoordinator.shared.nativeClient.isConnected ||
+               DualModeRemoteCoordinator.shared.isAnyNativeConnected ||
                HSBTVOSConnectionManager.shared().isConnected ||
                DualModeRemoteCoordinator.shared.screenClient.isConnected
     }

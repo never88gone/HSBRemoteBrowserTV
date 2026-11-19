@@ -16,8 +16,14 @@ public final class RemoteCommandRouter {
     
     private var screenClient: HSBBrowserProtocolClient { coordinator.screenClient }
     private var nativeClient: AppleTVNativeClient { coordinator.nativeClient }
+    private var androidClient: AndroidTVNativeClient { coordinator.androidClient }
     private var currentMode: HSBRemoteMode { coordinator.currentMode }
     private var isCurrentTargetMac: Bool { coordinator.isCurrentTargetMac }
+    
+    // 原生 Android TV 触控板滑动导航累加器（无大屏光标时提供 Google TV 风格滑动切焦点）
+    private var androidSwipeAccumX: CGFloat = 0
+    private var androidSwipeAccumY: CGFloat = 0
+    private var androidLastSwipeAt: Date = .distantPast
     
     // MARK: - D-pad & Select
     public func sendDPad(direction: DPadDirection, action: KeyAction = .tap) {
@@ -49,18 +55,24 @@ public final class RemoteCommandRouter {
         case .screenOnly:
             screenClient.send(command: .button(action: direction.actionName))
         case .nativeOnly:
-            let sysKey: SystemKey = {
-                switch direction {
-                case .up: return .up
-                case .down: return .down
-                case .left: return .left
-                case .right: return .right
-                }
-            }()
-            nativeClient.sendSystemKey(sysKey, action: action)
+            if androidClient.isConnected {
+                androidClient.sendDPad(direction: direction, action: action)
+            } else {
+                let sysKey: SystemKey = {
+                    switch direction {
+                    case .up: return .up
+                    case .down: return .down
+                    case .left: return .left
+                    case .right: return .right
+                    }
+                }()
+                nativeClient.sendSystemKey(sysKey, action: action)
+            }
         case .dual:
             if screenClient.isConnected {
                 screenClient.send(command: .button(action: direction.actionName))
+            } else if androidClient.isConnected {
+                androidClient.sendDPad(direction: direction, action: action)
             } else {
                 let sysKey: SystemKey = {
                     switch direction {
@@ -84,12 +96,20 @@ public final class RemoteCommandRouter {
             HSBTVOSConnectionManager.shared().sendSimulateAction(.select)
         }
         if currentMode == .nativeOnly {
-            nativeClient.sendSystemKey(.select, action: action)
+            if androidClient.isConnected {
+                androidClient.sendSelect(action: action)
+            } else {
+                nativeClient.sendSystemKey(.select, action: action)
+            }
         } else {
             if screenClient.isConnected {
                 screenClient.send(command: .button(action: "select"))
             } else if currentMode == .dual {
-                nativeClient.sendSystemKey(.select, action: action)
+                if androidClient.isConnected {
+                    androidClient.sendSelect(action: action)
+                } else {
+                    nativeClient.sendSystemKey(.select, action: action)
+                }
             }
         }
     }
@@ -111,7 +131,29 @@ public final class RemoteCommandRouter {
                 ])
             }
         }
-        // 如果处于原生电视通道且大屏专线未连，向系统发送原生微操触控点
+        // 如果处于原生 Android TV 且大屏专线未连，将触控滑动转换为 D-Pad 焦点切换
+        if androidClient.isConnected && !legacyMgr.isConnected && !screenClient.isConnected {
+            let now = Date()
+            if now.timeIntervalSince(androidLastSwipeAt) > 0.35 {
+                androidSwipeAccumX = 0
+                androidSwipeAccumY = 0
+            }
+            androidLastSwipeAt = now
+            androidSwipeAccumX += dx
+            androidSwipeAccumY += dy
+            let threshold: CGFloat = 42.0
+            if abs(androidSwipeAccumX) >= threshold || abs(androidSwipeAccumY) >= threshold {
+                if abs(androidSwipeAccumX) > abs(androidSwipeAccumY) {
+                    androidClient.sendDPad(direction: androidSwipeAccumX > 0 ? .right : .left, action: .tap)
+                } else {
+                    androidClient.sendDPad(direction: androidSwipeAccumY > 0 ? .down : .up, action: .tap)
+                }
+                androidSwipeAccumX = 0
+                androidSwipeAccumY = 0
+            }
+            return
+        }
+        // 如果处于原生 Apple TV 通道且大屏专线未连，向系统发送原生微操触控点
         if nativeClient.isConnected && !legacyMgr.isConnected && !screenClient.isConnected {
             let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
             nativeClient.sendTouchEvent(phase: 2, point: pt)
@@ -129,6 +171,14 @@ public final class RemoteCommandRouter {
                 dict["y"] = Double(pt.y)
             }
             legacyMgr.sendPayload(dict)
+        }
+        if androidClient.isConnected && !legacyMgr.isConnected && !screenClient.isConnected {
+            if mode == 2 {
+                androidClient.sendKey(.back)
+            } else {
+                androidClient.sendSelect(action: .tap)
+            }
+            return
         }
         if nativeClient.isConnected && !legacyMgr.isConnected && !screenClient.isConnected {
             nativeClient.sendTouchEvent(phase: 1, point: point ?? CGPoint(x: 500, y: 500))
@@ -148,6 +198,19 @@ public final class RemoteCommandRouter {
                     "dx": scaledDx,
                     "dy": scaledDy
                 ])
+            }
+        } else if androidClient.isConnected {
+            let threshold: CGFloat = 50.0
+            androidSwipeAccumX += dx
+            androidSwipeAccumY += dy
+            if abs(androidSwipeAccumY) >= threshold {
+                androidClient.sendDPad(direction: androidSwipeAccumY > 0 ? .down : .up, action: .tap)
+                androidSwipeAccumY = 0
+                androidSwipeAccumX = 0
+            } else if abs(androidSwipeAccumX) >= threshold {
+                androidClient.sendDPad(direction: androidSwipeAccumX > 0 ? .right : .left, action: .tap)
+                androidSwipeAccumX = 0
+                androidSwipeAccumY = 0
             }
         } else {
             let pt = CGPoint(x: 500.0 + dx, y: 500.0 + dy)
@@ -183,6 +246,11 @@ public final class RemoteCommandRouter {
     // MARK: - Text Input
     public func sendTextInput(text: String, isAtomicReplace: Bool = false) {
         if isCurrentTargetMac { return }
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if androidClient.isConnected && !screenClient.isConnected && !legacyMgr.isConnected {
+            androidClient.sendText(text)
+            return
+        }
         if isAtomicReplace {
             let script = "if (document.activeElement && 'value' in document.activeElement) { document.activeElement.value = '\(text)'; document.activeElement.dispatchEvent(new Event('input', {bubbles:true})); }"
             coordinator.executeJavaScript(script, completion: nil)
@@ -203,6 +271,11 @@ public final class RemoteCommandRouter {
             case .backspace:
                 break
             }
+            return
+        }
+        let legacyMgr = HSBTVOSConnectionManager.shared()
+        if androidClient.isConnected && (currentMode == .nativeOnly || (!screenClient.isConnected && !legacyMgr.isConnected)) {
+            androidClient.sendSpecialKey(key)
             return
         }
         if currentMode == .nativeOnly {
@@ -278,6 +351,27 @@ public final class RemoteCommandRouter {
                 break
             }
         }
+        
+        // 若连接着原生 Android TV，直接优先透传原生系统指令（支持完整短按与长按）
+        if androidClient.isConnected {
+            let shouldUseAndroidNative: Bool = {
+                if currentMode == .nativeOnly || (!screenClient.isConnected && !HSBTVOSConnectionManager.shared().isConnected) {
+                    return true
+                }
+                // 在双模中，硬件音量、静音、电源始终交由 Android TV 系统底层协议执行
+                switch key {
+                case .volumeUp, .volumeDown, .mute, .power:
+                    return true
+                default:
+                    return false
+                }
+            }()
+            if shouldUseAndroidNative {
+                androidClient.sendSystemKey(key, action: action)
+                return
+            }
+        }
+        
         switch key {
         case .home:
             if currentMode == .screenOnly {
@@ -363,6 +457,17 @@ public final class RemoteCommandRouter {
                 case .home:
                     legacyMgr.sendSimulateAction(.pageHome)
                 }
+            }
+        } else if androidClient.isConnected {
+            switch action {
+            case .back:
+                androidClient.sendKey(.back)
+            case .forward:
+                androidClient.sendDPad(direction: .right, action: .tap)
+            case .reload:
+                androidClient.sendKey(.refresh)
+            case .home:
+                androidClient.sendKey(.home)
             }
         } else {
             // 降级：仅在大屏通道未连接时，转译为系统按键

@@ -12,7 +12,7 @@ public struct ModernSystemRemoteView: View {
     public var onLaunchApp: ((TanghuluAppItem) -> Void)? = nil
     
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
-    @State private var isAwakeAndConnected: Bool = DualModeRemoteCoordinator.shared.nativeClient.isConnected && !DualModeRemoteCoordinator.shared.isSleeping
+    @State private var isAwakeAndConnected: Bool = DualModeRemoteCoordinator.shared.isAnyNativeConnected && !DualModeRemoteCoordinator.shared.isSleeping
     private let timer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
     
     public init(
@@ -34,7 +34,7 @@ public struct ModernSystemRemoteView: View {
             }
         }
         .onReceive(timer) { _ in
-            let current = DualModeRemoteCoordinator.shared.nativeClient.isConnected && !DualModeRemoteCoordinator.shared.isSleeping
+            let current = DualModeRemoteCoordinator.shared.isAnyNativeConnected && !DualModeRemoteCoordinator.shared.isSleeping
             if current != self.isAwakeAndConnected {
                 self.isAwakeAndConnected = current
             }
@@ -51,7 +51,7 @@ public struct ModernSystemRemoteView: View {
     private func triggerPowerToggle() {
         DualModeRemoteCoordinator.shared.sendSystemKey(.power)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            self.isAwakeAndConnected = DualModeRemoteCoordinator.shared.nativeClient.isConnected && !DualModeRemoteCoordinator.shared.isSleeping
+            self.isAwakeAndConnected = DualModeRemoteCoordinator.shared.isAnyNativeConnected && !DualModeRemoteCoordinator.shared.isSleeping
         }
     }
     

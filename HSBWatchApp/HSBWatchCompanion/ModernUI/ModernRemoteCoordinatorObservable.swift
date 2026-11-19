@@ -36,7 +36,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
             self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
             self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
             self.browserDeviceName = legacyMgr.deviceName ?? ""
-            self.isNativeConnected = coordinator.nativeClient.isConnected
+            self.isNativeConnected = coordinator.isAnyNativeConnected
         }
         coordinator.delegate = self
         
@@ -101,7 +101,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
                 self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
                 self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
                 self.browserDeviceName = legacyMgr.deviceName ?? ""
-                self.isNativeConnected = self.coordinator.nativeClient.isConnected
+                self.isNativeConnected = self.coordinator.isAnyNativeConnected
             }
             if !self.coordinator.currentTargetDeviceName.isEmpty {
                 self.targetDeviceName = self.coordinator.currentTargetDeviceName
@@ -120,7 +120,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
             self.isHSBBrowserConnected = legacyMgr.isConnected || self.coordinator.screenClient.isConnected
             self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
             self.browserDeviceName = legacyMgr.deviceName ?? ""
-            self.isNativeConnected = self.coordinator.nativeClient.isConnected
+            self.isNativeConnected = self.coordinator.isAnyNativeConnected
         }
     }
     
@@ -138,7 +138,7 @@ final class CoordinatorObservable: ObservableObject, DualModeRemoteCoordinatorDe
                 self.isHSBBrowserConnected = legacyMgr.isConnected || coordinator.screenClient.isConnected
                 self.isHSBBrowserReconnecting = legacyMgr.isReconnecting
                 self.browserDeviceName = legacyMgr.deviceName ?? ""
-                self.isNativeConnected = coordinator.nativeClient.isConnected
+                self.isNativeConnected = coordinator.isAnyNativeConnected
             }
             if !coordinator.currentTargetDeviceName.isEmpty {
                 self.targetDeviceName = coordinator.currentTargetDeviceName

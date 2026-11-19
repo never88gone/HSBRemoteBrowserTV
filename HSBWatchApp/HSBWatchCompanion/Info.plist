@@ -31,6 +31,7 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_thltv._tcp</string>
+		<string>_androidtvremote2._tcp</string>
 		<string>_companion-link._tcp</string>
 		<string>_airplay._tcp</string>
 		<string>_mediaremotetv._tcp</string>
@@ -40,7 +41,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>需要访问您的相机，以便扫描 Apple TV 屏幕上的配对二维码，完成遥控器安全配对绑定。</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>需要访问您的本地网络，以便自动发现并连接局域网中的 Apple TV 与糖葫芦大屏浏览器，提供双模无线遥控、光标微操及实时多媒体控制功能。</string>
+	<string>需要访问您的本地网络，以便自动发现并连接局域网中的 Apple TV、原生 Android TV 与糖葫芦大屏浏览器，提供双模无线遥控、光标微操及实时多媒体控制功能。</string>
 	<key>NSMotionUsageDescription</key>
 	<string>使用设备运动传感器以支持遥控器体感空中飞鼠光标控制与健康运动数据联动。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

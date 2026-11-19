@@ -16,6 +16,7 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
     
     private weak var currentAlertController: UIAlertController?
     private var pendingCompletion: ((String) -> Void)?
+    private var isHexPINMode: Bool = false
     @objc public private(set) var isPresenting: Bool = false
     
     private override init() {
@@ -45,9 +46,17 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         return top
     }
     
-    /// 在主 Window 顶层呈现 PIN 码输入弹窗，并自动激活系统数字小键盘
+    /// 在主 Window 顶层呈现 PIN 码输入弹窗，并自动激活系统数字或十六进制键盘
     @objc public func presentPINAlert(
         deviceName: String?,
+        completion: @escaping (String) -> Void
+    ) {
+        presentPINAlert(deviceName: deviceName, isAndroidTV: false, completion: completion)
+    }
+    
+    @objc public func presentPINAlert(
+        deviceName: String?,
+        isAndroidTV: Bool,
         completion: @escaping (String) -> Void
     ) {
         if DualModeRemoteCoordinator.shared.isCurrentTargetMac {
@@ -64,14 +73,14 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
                     obs = nil
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self?.presentPINAlert(deviceName: deviceName, completion: completion)
+                    self?.presentPINAlert(deviceName: deviceName, isAndroidTV: isAndroidTV, completion: completion)
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                 if let observer = obs {
                     NotificationCenter.default.removeObserver(observer)
                     obs = nil
-                    self?.presentPINAlert(deviceName: deviceName, completion: completion)
+                    self?.presentPINAlert(deviceName: deviceName, isAndroidTV: isAndroidTV, completion: completion)
                 }
             }
             return
@@ -88,21 +97,27 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         }
         
         self.pendingCompletion = completion
+        self.isHexPINMode = isAndroidTV
         self.isPresenting = true
         
-        let tvName = (deviceName != nil && !deviceName!.isEmpty) ? deviceName! : "Apple TV"
-        let title = " 请输入电视上的 PIN 码"
-        let message = "Apple TV “\(tvName)” 已发起安全配对。\n请查看电视大屏上显示的 4 位数字配对码并输入："
+        let defaultName = isAndroidTV ? "Android TV" : "Apple TV"
+        let tvName = (deviceName != nil && !deviceName!.isEmpty) ? deviceName! : defaultName
+        let title = isAndroidTV ? "📺 请输入电视上的配对码" : " 请输入电视上的 PIN 码"
+        let message = isAndroidTV
+            ? "Android TV “\(tvName)” 已发起系统原生配对。\n请查看电视屏幕上显示的 6 位字母/数字配对码（如 A1B2C3）并输入："
+            : "Apple TV “\(tvName)” 已发起安全配对。\n请查看电视大屏上显示的 4 位数字配对码并输入："
         
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         self.currentAlertController = alert
         
         alert.addTextField { [weak self] textField in
             guard let self = self else { return }
-            textField.placeholder = "4 位数字 PIN 码"
-            textField.keyboardType = .numberPad
+            textField.placeholder = isAndroidTV ? "6 位字母/数字配对码" : "4 位数字 PIN 码"
+            textField.keyboardType = isAndroidTV ? .asciiCapable : .numberPad
+            textField.autocapitalizationType = isAndroidTV ? .allCharacters : .none
+            textField.autocorrectionType = .no
             textField.textAlignment = .center
-            textField.font = UIFont.systemFont(ofSize: 28, weight: .bold)
+            textField.font = UIFont.systemFont(ofSize: isAndroidTV ? 24 : 28, weight: .bold)
             textField.textColor = UIColor.label
             textField.delegate = self
             textField.returnKeyType = .done
@@ -200,15 +215,18 @@ public final class HSBNativePINAlertPresenter: NSObject, UITextFieldDelegate {
         if string.isEmpty {
             return true
         }
-        let allowed = CharacterSet.decimalDigits
+        let allowed = isHexPINMode
+            ? CharacterSet(charactersIn: "0123456789ABCDEFabcdef")
+            : CharacterSet.decimalDigits
         let characterSet = CharacterSet(charactersIn: string)
         if !allowed.isSuperset(of: characterSet) {
             return false
         }
+        let maxLength = isHexPINMode ? 6 : 4
         let currentText = textField.text ?? ""
         guard let stringRange = Range(range, in: currentText) else { return false }
         let updatedText = currentText.replacingCharacters(in: stringRange, with: string)
-        return updatedText.count <= 4
+        return updatedText.count <= maxLength
     }
     
     // MARK: - Programmatic Submission
