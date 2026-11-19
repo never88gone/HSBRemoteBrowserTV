@@ -26,8 +26,14 @@ public enum AndroidTVTLSFactory {
         }
         sec_protocol_options_set_verify_block(secOptions, { (_, secTrust, completionHandler) in
             let trust = sec_trust_copy_ref(secTrust).takeRetainedValue()
+            var extractedLeaf: SecCertificate? = nil
             if let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
                let leaf = chain.first {
+                extractedLeaf = leaf
+            } else if let leaf = SecTrustGetCertificateAtIndex(trust, 0) {
+                extractedLeaf = leaf
+            }
+            if let leaf = extractedLeaf {
                 let der = SecCertificateCopyData(leaf) as Data
                 onServerCertificate(der)
             }
