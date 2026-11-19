@@ -387,13 +387,14 @@ public final class AndroidTVNativeClient: NSObject {
                 return "iPhone"
                 #endif
             }()
+            let clientVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.3"
             let clientInfo = AndroidTVDeviceInfo(
                 model: deviceModelName,
                 vendor: "Apple",
                 unknown1: 1,
                 unknown2: "1",
-                packageName: "com.never88gone.thlbrowserios",
-                appVersion: "1.0.2"
+                packageName: Bundle.main.bundleIdentifier ?? "com.never88gone.thlbrowserios",
+                appVersion: clientVersion
             )
             sendRemoteMessage(.remoteConfigure(code1: activeFeatures, deviceInfo: clientInfo))
             

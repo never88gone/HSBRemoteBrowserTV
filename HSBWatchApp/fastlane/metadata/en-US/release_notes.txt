@@ -1,4 +1,5 @@
-1. [Trackpad Natural Scrolling] Corrected the two-finger scroll direction on the wireless trackpad to align naturally with your intuitive gestures when browsing on the big screen.
-2. [Apple Watch Page Controls] Calibrated watchOS Page Up and Page Down buttons for accurate and responsive big-screen webpage navigation.
+1. [Native Android TV Remote Support] Fully integrated Google TV Remote v2 protocol — pair and control Android TV / Google TV system desktops and native keyboard input directly without installing TV apps or enabling ADB.
+2. [Trackpad Natural Scrolling] Optimized two-finger scroll direction on the wireless trackpad to align naturally with your intuitive gestures when browsing on the big screen.
 3. [Enhanced tvOS Long-Press Support] Full support for native Apple TV long-press continuous actions with distinct Taptic Engine haptic feedback.
 4. [Precision Cursor & Navigation] Seamless big-screen trackpad cursor control with 8-stage physical inertia and dedicated 5-button browser controls.
+5. [Reliability & Quick Reconnect] Improved mixed-device Bonjour auto-discovery and instant credential reconnect.

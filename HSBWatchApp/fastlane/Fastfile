@@ -173,7 +173,7 @@ platform :ios do
   lane :metadata do |options|
     app_version_cfg = File.expand_path("../HSBWatchCompanion/AppVersion.xcconfig", __dir__)
     cfg_version = File.read(app_version_cfg)[/MARKETING_VERSION\s*=\s*([0-9\.]+)/, 1] rescue nil
-    target_version = options[:version] || cfg_version || "1.0.2"
+    target_version = options[:version] || cfg_version || "1.0.3"
 
     skip_shots = options[:skip_screenshots] == true
 
@@ -213,7 +213,7 @@ platform :ios do
     api_key = get_asc_api_key
     app_version_cfg = File.expand_path("../HSBWatchCompanion/AppVersion.xcconfig", __dir__)
     cfg_version = File.read(app_version_cfg)[/MARKETING_VERSION\s*=\s*([0-9\.]+)/, 1] rescue nil
-    target_version = options[:version] || cfg_version || "1.0.2"
+    target_version = options[:version] || cfg_version || "1.0.3"
     target_build = options[:build_number]
 
     app = Spaceship::ConnectAPI::App.find("com.never88gone.thlbrowserios")
